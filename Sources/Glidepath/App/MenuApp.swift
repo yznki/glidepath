@@ -107,7 +107,7 @@ enum Snapshotter {
         }
     }
 
-    /// One window screen in the mockup frame: 1100x720, radius 12, a drop shadow, a 1 pt edge, the three fake traffic
+    /// One window screen in the mockup frame: 1100x720, radius 12, a 1 pt edge, the three fake traffic
     /// lights at (20, 20), and a 40 pt #2a2a2d backdrop. Drawn at 2x, so the PNG is 2360x1600 like the mockups.
     static func writeWindow<V: View>(_ view: V, dark: Bool, to url: URL) {
         let shape = RoundedRectangle(cornerRadius: 12)
@@ -124,7 +124,6 @@ enum Snapshotter {
                 .padding(.top, 20)
             }
             .overlay { shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1) }
-            .shadow(color: .black.opacity(0.5), radius: 40, y: 30)
             .padding(40)
             .frame(width: WinMetrics.windowWidth + 80, height: WinMetrics.windowHeight + 80)
             .background(Color(hex: "2A2A2D"))
