@@ -132,9 +132,12 @@ enum Fixtures {
     static let schedule = ["07:00", "13:00", "19:00"].compactMap(ScheduleTime.init)
 
     static func pr(_ repo: String, _ n: Int, _ author: String, _ title: String, reason: String? = nil,
-                   stage: Stage = .gather, active: Bool = false, verdict: Verdict? = nil, tokens: Int = 0) -> (String, PRState) {
-        (repo, PRState(n: n, author: author, title: title, stage: stage, active: active && verdict == nil,
-                       verdict: verdict, reason: reason, tokens: tokens))
+                   stage: Stage = .gather, active: Bool = false, verdict: Verdict? = nil, tokens: Int = 0,
+                   carried: Bool = false) -> (String, PRState) {
+        var state = PRState(n: n, author: author, title: title, stage: stage, active: active && verdict == nil,
+                            verdict: verdict, reason: reason, tokens: tokens)
+        if carried { state.carriedFrom = clockToday(10, 12, Date()) }
+        return (repo, state)
     }
 
     static func run(_ id: String, now: Date, finished: Bool, prs: [(String, PRState)],
@@ -199,8 +202,8 @@ enum Fixtures {
     static func failed(_ now: Date) -> Snapshot {
         let r = run("fixture-failed", now: now, finished: true, prs: [
             pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
-            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log"),
-            pr("lumen/web", 91, "kai", "Redesign the empty states for the projects list"),
+            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes, carried: true),
+            pr("lumen/web", 91, "kai", "Redesign the empty states for the projects list", verdict: .approve, carried: true),
         ], error: "claude exited 1: see the log for details\nFull log: ~/Library/Logs/glidepath.log", tokens: 70_000)
         return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }

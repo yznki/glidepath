@@ -46,7 +46,7 @@ struct HeaderCopy: Equatable {
         case .paused(let since, let lastStarted):
             let last = lastStarted.map { "Last sweep \(clock($0)) · scheduled sweeps skipped" }
                 ?? "Scheduled sweeps are skipped"
-            return HeaderCopy(headline: "Paused", line2: last,
+            return HeaderCopy(headline: "Paused", headlineTone: .changes, line2: last,
                               line3: since.map { "Paused since \(clock($0))" }, line3Tone: .tertiary)
         case .running(let changes, let reviewing, let total, let landed, let started):
             var copy = HeaderCopy(headline: "Reviewing \(reviewing) of \(total)",
@@ -76,9 +76,9 @@ struct HeaderCopy: Equatable {
                               line2: last,
                               line3: next.map { "Next sweep \(clock($0)), in \(untilText($0, now))" } ?? "No sweep scheduled",
                               line3Tone: .tertiary)
-        case .noSweeps(let next, let repos):
+        case .noSweeps(let next, _):
             return HeaderCopy(headline: "Ready for the first sweep",
-                              line2: "Reviews every open PR in \(repos) repo\(repos == 1 ? "" : "s")",
+                              line2: "Pick the repos Glidepath should review.",
                               line3: next.map { "First sweep at \(clock($0))" }, line3Tone: .tertiary)
         }
     }
@@ -125,24 +125,11 @@ struct PopoverView: View {
 
     // MARK: Header
 
-    /// Profile: full while running; the compact strip when idle, paused or failed with a last run; hidden when
-    /// there is no run yet or no PR at all.
-    private var showsProfile: Bool {
-        if store.snap.running { return true }
-        if store.snap.run == nil || store.snap.jobInstalled == false { return false }
-        return !store.strips.isEmpty
-    }
-
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if showsProfile {
-                ApproachProfile(marks: marks, mode: profileMode, compact: profileMode != .running,
-                                hovered: store.hovered, justLanded: store.justLanded,
-                                motion: store.profileMotion, onHover: { store.setHovered($0) })
-                    .frame(width: Metrics.contentWidth,
-                           height: profileMode == .running ? Metrics.profileFull : Metrics.profileCompact,
-                           alignment: .topLeading)
-            }
+            ApproachProfile(marks: marks, mode: profileMode, hovered: store.hovered,
+                            justLanded: store.justLanded, motion: store.profileMotion,
+                            onHover: { store.setHovered($0) })
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 headerText(HeaderCopy.make(Presentation.headerKind(store.snap, now: context.date), now: context.date))
             }
@@ -205,6 +192,7 @@ struct PopoverView: View {
         if store.snap.running { return .running }
         if store.snap.paused { return .paused }
         if let run = store.snap.run, run.finished != nil, Presentation.failureMessage(run) != nil { return .failed }
+        if store.snap.run == nil || !store.snap.jobInstalled || store.strips.isEmpty { return .empty }
         return .idle
     }
 
@@ -261,7 +249,8 @@ struct PopoverView: View {
                         .padding(.bottom, 4)
                 }
                 ForEach(group.rows) { row in
-                    PRRow(row: row, hovered: store.hovered == row.id, store: store, offscreen: offscreen)
+                    PRRow(row: row, hovered: store.hovered == row.id, store: store,
+                          dimmed: store.snap.paused, offscreen: offscreen)
                 }
             }
         }
@@ -269,7 +258,7 @@ struct PopoverView: View {
 
     // MARK: Footer
 
-    /// 12 pt above the footer row, 16 pt inset below it.
+    /// 12 pt above the footer row and 12 pt below it: the popover ends where the buttons end.
     private var footer: some View {
         HStack(spacing: 8) {
             footerButton
@@ -314,32 +303,45 @@ struct PopoverView: View {
             }
         }
         .padding(.horizontal, Metrics.inset)
+        .frame(height: Metrics.footerRow)
         .padding(.top, 12)
-        .padding(.bottom, Metrics.inset)
-        .frame(height: 12 + Metrics.footerRow + Metrics.inset, alignment: .top)
+        .padding(.bottom, 12)
     }
 
     /// The bordered button, drawn in SwiftUI when rendering offscreen. Same size and outline.
-    private func standIn(_ label: String, enabled: Bool = true) -> some View {
+    private func standIn(_ label: String, prominent: Bool = false, enabled: Bool = true) -> some View {
         Text(label)
             .font(.system(size: 13))
-            .foregroundStyle(p.ink.opacity(enabled ? 1 : 0.4))
+            .foregroundStyle(prominent ? Color.white : p.ink.opacity(enabled ? 1 : 0.4))
             .padding(.horizontal, 10)
             .padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(p.ink.opacity(0.22), lineWidth: 1))
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(prominent ? p.doingMark : Color.clear)
+                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .stroke(p.ink.opacity(prominent ? 0 : 0.22), lineWidth: 1))
+            )
     }
 
     @ViewBuilder
     private var footerButton: some View {
+        let firstRun = store.snap.run == nil && !store.snap.running
         if offscreen {
-            standIn(store.snap.running ? "Stop" : (store.snap.paused ? "Resume" : "Run now"))
+            if store.snap.running { standIn("Stop") }
+            else if store.snap.paused { standIn("Resume", prominent: true) }
+            else if firstRun { standIn("Edit repos…", prominent: true) }
+            else { standIn("Run now") }
         } else if store.snap.running {
             Button("Stop") { confirmAndStop() }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
         } else if store.snap.paused {
             Button("Resume") { store.togglePause() }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+        } else if firstRun {
+            Button("Edit repos…") { store.editRepos() }
+                .buttonStyle(.borderedProminent)
                 .controlSize(.small)
         } else {
             Button("Run now") { confirmAndRun() }
@@ -373,12 +375,14 @@ struct PopoverView: View {
     }
 }
 
-/// One PR row (docs/design.md, section 4): a one-line title (or three lines with a reason), the meta line,
-/// and the status idiom in a fixed 84 pt column. Heights are fixed: 44 pt or 60 pt.
+/// One PR row (docs/design.md, pass 4): the title on line 1 with the full width; line 2 has `#number · author`
+/// on the left and the status (meter, then label, then mark) on the right; line 3 is the reason for changes.
 struct PRRow: View {
     let row: RowModel
     let hovered: Bool
     let store: Store
+    /// Paused: status labels and marks at 60% opacity.
+    var dimmed = false
     var offscreen = false
     @Environment(\.colorScheme) private var scheme
     @FocusState private var focused: Bool
@@ -397,31 +401,31 @@ struct PRRow: View {
                 NSWorkspace.shared.open(url)
             }
         } label: {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(strip.title ?? "Untitled PR")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(p.ink)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(strip.title ?? "Untitled PR")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(p.ink)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(.trailing, Metrics.chevronReserve)
+                HStack(spacing: 0) {
                     // verbatim: a plain string, so PR numbers are never grouped as 1,212.
-                    Text(verbatim: "#\(strip.number) · \(strip.author ?? "unknown")")
+                    Text(verbatim: metaText)
                         .font(.system(size: 12))
                         .foregroundStyle(p.secondary)
                         .lineLimit(1)
-                    if case .changes = row.status, let reason = strip.reason {
-                        Text(reason)
-                            .font(.system(size: 12))
-                            .foregroundStyle(p.changesText)
-                            .lineLimit(1)
-                            .help(reason)
-                    }
+                    Spacer(minLength: 8)
+                    statusLine
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                statusColumn
-                    .frame(width: Metrics.statusColumnWidth, alignment: .trailing)
-                    .padding(.trailing, Metrics.chevronReserve)
+                if case .changes = row.status, let reason = strip.reason {
+                    Text(reason)
+                        .font(.system(size: 12))
+                        .foregroundStyle(p.changesText)
+                        .lineLimit(1)
+                        .help(reason)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, Metrics.inset)
             .frame(height: height)
             .background(
@@ -429,13 +433,13 @@ struct PRRow: View {
                     .fill(p.ink.opacity(hovered ? 0.05 : 0))
                     .padding(.horizontal, 8)
             )
-            .overlay(alignment: .trailing) {
-                // Inside the reserved strip of the status column, so nothing moves on hover.
+            .overlay(alignment: .topTrailing) {
+                // The chevron sits on line 1, in the strip the title leaves free.
                 Image(systemName: "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(p.secondary.opacity(0.5))
-                    .opacity(hovered ? 1 : 0)
+                    .foregroundStyle(p.secondary.opacity(hovered ? 0.5 : 0))
                     .padding(.trailing, Metrics.inset)
+                    .padding(.top, 15)
             }
             .contentShape(Rectangle())
         }
@@ -450,48 +454,51 @@ struct PRRow: View {
         .onHover { inside in store.setHovered(inside ? strip.id : nil) }
     }
 
-    @ViewBuilder
-    private var statusColumn: some View {
-        VStack(alignment: .trailing, spacing: 4) {
-            switch row.status {
-            case .changes:
-                statusLine(.triangle, p.changesMark, "Changes", p.changesText)
-            case .approved:
-                statusLine(.disc, p.approveMark, "Approved", p.approveText)
-            case .skipped:
-                statusLine(.dash, p.skipMark, "Skipped", p.secondary)
-            case .noResult:
-                statusLine(.hollow, p.skipMark, "No result", p.secondary)
-            case .active(let phase):
-                statusLine(.hollow, p.doingMark, phase, p.doingText)
-                if let meter = row.meter {
-                    meterView(meter)
-                }
-            case .queued:
-                statusLine(.hollow, p.skipMark, "Queued", p.secondary)
-            }
+    private var metaText: String {
+        var text = "#\(strip.number) · \(strip.author ?? "unknown")"
+        if let carried = strip.carriedFrom {
+            text += " · from \(HeaderCopy.clock(carried))"
         }
+        return text
     }
 
-    private func statusLine(_ shape: StatusShape, _ colour: Color, _ label: String, _ text: Color) -> some View {
+    /// Meter (in flight only), then the label, then the mark, in one line.
+    private var statusLine: some View {
         HStack(spacing: 6) {
+            if let meter = row.meter {
+                meterView(meter)
+            }
+            let (shape, colour, label, text) = statusParts
             Text(label)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(text)
                 .lineLimit(1)
-            StatusMark(shape: shape, colour: colour)
+            StatusMark(shape: shape, colour: strip.carriedFrom == nil ? colour : p.tertiary)
+        }
+        .opacity(dimmed ? 0.6 : 1)
+    }
+
+    private var statusParts: (StatusShape, Color, String, Color) {
+        switch row.status {
+        case .changes: return (.triangle, p.changesMark, "Changes", p.changesText)
+        case .approved: return (.disc, p.approveMark, "Approved", p.approveText)
+        case .skipped: return (.dash, p.skipMark, "Skipped", p.secondary)
+        case .noResult: return (.hollow, p.skipMark, "No result", p.secondary)
+        case .active(let phase): return (.hollow, p.doingMark, phase, p.doingText)
+        case .queued: return (.hollow, p.skipMark, "Queued", p.secondary)
         }
     }
 
-    /// Four dashes: done 35% ink, the current one the system blue, future 12% ink.
+    /// Four dashes, 36 pt wide: done 35% ink, the current one the system blue, future 12% ink.
     private func meterView(_ segments: [MeterSegment]) -> some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 4) {
             ForEach(0..<segments.count, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(colour(segments[i]))
-                    .frame(width: 9, height: 3)
+                    .frame(width: 6, height: 3)
             }
         }
+        .frame(width: 36)
     }
 
     private func colour(_ s: MeterSegment) -> Color {

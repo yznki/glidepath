@@ -19,9 +19,6 @@ enum MenuGlyph {
 
     /// The glyph in `ink`. `template` marks it for the menu bar; snapshots pass false so the ink shows.
     static func image(_ state: GlyphState, progress: Double, ink: NSColor, template: Bool) -> NSImage {
-        if state == .failed {
-            return triangle(ink: ink, template: template)
-        }
         let count: Int? = {
             switch state {
             case .running(let n), .changesWaiting(let n): return n
@@ -38,6 +35,9 @@ enum MenuGlyph {
             } else {
                 slope()
                 runway()
+            }
+            if state == .failed {
+                cross()
             }
             if case .running = state {
                 dot(progress: progress)
@@ -91,23 +91,15 @@ enum MenuGlyph {
         NSBezierPath(ovalIn: NSRect(x: x - 1.5, y: y - 1.5, width: 3, height: 3)).fill()
     }
 
-    /// The failed state: the system's outline warning symbol, nothing else.
-    private static func triangle(ink: NSColor, template: Bool) -> NSImage {
-        guard let symbol = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15, weight: .regular)) else {
-            return NSImage(size: NSSize(width: canvas, height: canvas))
-        }
-        let size = symbol.size
-        let image = NSImage(size: NSSize(width: canvas, height: canvas), flipped: false) { rect in
-            let target = NSRect(x: (rect.width - size.width) / 2, y: (rect.height - size.height) / 2,
-                                width: size.width, height: size.height)
-            symbol.draw(in: target)
-            ink.set()
-            target.fill(using: .sourceAtop)
-            return true
-        }
-        image.isTemplate = template
-        return image
+    /// Failed: a 5 pt cross just past the touchdown point, above the runway.
+    private static func cross() {
+        let c = NSPoint(x: slopeEnd.x + 3, y: slopeEnd.y + 4.5)
+        let x = NSBezierPath()
+        x.move(to: NSPoint(x: c.x - 2.5, y: c.y - 2.5)); x.line(to: NSPoint(x: c.x + 2.5, y: c.y + 2.5))
+        x.move(to: NSPoint(x: c.x + 2.5, y: c.y - 2.5)); x.line(to: NSPoint(x: c.x - 2.5, y: c.y + 2.5))
+        x.lineWidth = stroke
+        x.lineCapStyle = .round
+        x.stroke()
     }
 }
 

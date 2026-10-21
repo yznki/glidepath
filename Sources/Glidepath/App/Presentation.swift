@@ -43,7 +43,7 @@ struct RepoGroup: Equatable, Identifiable {
 
 enum Presentation {
     /// Stage words in the status idiom, capitalised, and as the profile's stage labels.
-    static let phaseWords = ["Gathering", "Reviewing", "Checking", "Landing"]
+    static let phaseWords = ["Gather", "Review", "Check", "Land"]
 
     static func headerKind(_ snap: Snapshot, now: Date) -> HeaderKind {
         if !snap.jobInstalled { return .notScheduled }
@@ -85,24 +85,31 @@ enum Presentation {
         return message
     }
 
-    /// Sort order: needs changes, then in progress (and queued while running), then approved, then skipped,
-    /// then no result. Ties go by PR number, highest first.
+    /// Sort order (docs/design.md, pass 4): needs changes, no result, in flight (queued last), approved, skipped.
     static func rank(_ s: Strip, running: Bool) -> Int {
         if s.verdict == .changes { return 0 }
-        if s.active || (running && s.verdict == nil) { return 1 }
-        if s.verdict == .approve { return 2 }
-        if s.verdict == .skipped { return 3 }
+        if s.verdict == nil && !s.active && !running { return 1 }
+        if s.active || (running && s.verdict == nil) { return 2 }
+        if s.verdict == .approve { return 3 }
         return 4
+    }
+
+    /// In-flight rows lead with the latest stage. Otherwise ties go by PR number, highest first.
+    static func before(_ a: Strip, _ b: Strip, running: Bool) -> Bool {
+        let ra = rank(a, running: running), rb = rank(b, running: running)
+        if ra != rb { return ra < rb }
+        if ra == 2 {
+            let sa = a.active ? a.stage : 0, sb = b.active ? b.stage : 0
+            if sa != sb { return sa > sb }
+        }
+        return a.number > b.number
     }
 
     static func rows(from strips: [Strip], running: Bool, repos: [RepoState]) -> [RepoGroup] {
         let order = repos.map(\.slug)
         let uniqueOrder = order.isEmpty ? Array(Set(strips.map(\.repo))).sorted() : order
         return uniqueOrder.map { slug in
-            let mine = strips.filter { $0.repo == slug }.sorted { a, b in
-                let ra = rank(a, running: running), rb = rank(b, running: running)
-                return ra != rb ? ra < rb : a.number > b.number
-            }
+            let mine = strips.filter { $0.repo == slug }.sorted { before($0, $1, running: running) }
             return RepoGroup(repo: slug, error: repos.first { $0.slug == slug }?.error,
                              rows: mine.map { row($0, running: running) })
         }
@@ -145,7 +152,7 @@ enum Presentation {
             } else {
                 kind = .dropped
             }
-            return ProfileMark(id: s.id, kind: kind, label: "#\(s.number)")
+            return ProfileMark(id: s.id, kind: kind, label: "#\(s.number)", carried: s.carriedFrom != nil)
         }
     }
 }

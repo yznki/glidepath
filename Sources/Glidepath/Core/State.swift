@@ -22,6 +22,8 @@ struct PRState: Codable, Equatable {
     var tokens: Int
     /// Head SHA recorded by `pr info` at gather time. Posting refuses if the head has moved since.
     var head: String? = nil
+    /// Set when the PR was not reviewed in this sweep and its last result is carried over from an earlier one.
+    var carriedFrom: Date? = nil
 }
 
 struct RepoState: Codable, Equatable {

@@ -14,6 +14,7 @@ struct Strip: Identifiable, Equatable {
     var active: Bool
     var verdict: Verdict?
     var tokens: Int
+    var carriedFrom: Date? = nil
 
     var id: String { "\(repo)#\(number)" }
 }
@@ -240,6 +241,19 @@ final class Store: ObservableObject {
         }
     }
 
+    /// First run: opens the config in the default editor. Creates it from the commented template when missing.
+    func editRepos() {
+        let path = paths.configFile
+        if !FileManager.default.fileExists(atPath: path) {
+            let empty = Config(schedule: Config.defaultSchedule.compactMap(ScheduleTime.init), limits: Limits(), repos: [])
+            let template = "# Glidepath config. Add one [[repo]] table per repository to review.\n" + empty.render()
+            try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
+                                                     withIntermediateDirectories: true)
+            try? template.write(toFile: path, atomically: true, encoding: .utf8)
+        }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
     func openLog() {
         NSWorkspace.shared.open(URL(fileURLWithPath: paths.logFile))
     }
@@ -273,7 +287,8 @@ final class Store: ObservableObject {
         return run.repos.flatMap { repo in
             repo.prs.map { pr in
                 Strip(repo: repo.slug, number: pr.n, author: pr.author, title: pr.title, reason: pr.reason,
-                      stage: pr.stage.rank + 1, active: pr.active, verdict: pr.verdict, tokens: pr.tokens)
+                      stage: pr.stage.rank + 1, active: pr.active, verdict: pr.verdict, tokens: pr.tokens,
+                      carriedFrom: pr.carriedFrom)
             }
         }
     }

@@ -32,8 +32,8 @@ struct Palette {
     var rule: Color { ink.opacity(dark ? 0.10 : 0.08) }
     /// Slope line of the approach profile.
     var slope: Color { pick("3A3A3C", "D0D0D0") }
-    /// The runway, in ink at 25%.
-    var runway: Color { ink.opacity(0.25) }
+    /// The runway bar: #D0D0D0 light, #4A4A4A dark.
+    var runwayBar: Color { pick("D0D0D0", "4A4A4A") }
     /// In-progress text, and the stage word on an active row.
     var doingText: Color { pick("0060CC", "4DA3FF") }
     /// In-progress marks: the system blue.
@@ -62,7 +62,7 @@ enum Metrics {
     static let rowOneLine: CGFloat = 44
     static let rowThreeLines: CGFloat = 60
     static let profileFull: CGFloat = 64
-    static let profileCompact: CGFloat = 32
+    static let profileQuiet: CGFloat = 36
     static let footerRow: CGFloat = 44
     static let maxVisibleHeight: CGFloat = 380
 }

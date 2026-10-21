@@ -13,6 +13,8 @@ struct ProfileMark: Equatable, Identifiable {
     let kind: MarkKind
     /// "#1113", shown above an in-flight dot.
     var label: String = ""
+    /// Carried over from an earlier sweep: drawn in tertiary grey.
+    var carried = false
 }
 
 /// A mark with its position worked out. Pure, so the layout rules can be tested.
@@ -20,9 +22,10 @@ struct PlacedMark: Equatable {
     let id: String
     let kind: MarkKind
     let label: String
+    let carried: Bool
     /// Circles: the centre on the slope. Landed marks: the centre on the runway.
     let centre: CGPoint
-    /// Landed marks: their size (9 pt, smaller only when more than five land).
+    /// Landed marks: their size (10 pt, smaller only when more than five land).
     let side: CGFloat
     var isLanded: Bool {
         switch kind {
@@ -36,35 +39,51 @@ struct PlacedMark: Equatable {
     }
 }
 
-/// Geometry of the approach profile, in points, origin top left. Documented in docs/design.md.
+/// Geometry of the approach profile, in points, origin top left (docs/design.md, pass 4).
 enum Profile {
+    /// Full width in every state.
     static let width: CGFloat = 328
-    static let height: CGFloat = 64
-    static let compactHeight: CGFloat = 32
-    static let slopeStart = CGPoint(x: 0, y: 18)
-    static let slopeEnd = CGPoint(x: 268, y: 50)
+    static let runningHeight: CGFloat = 64
+    static let quietHeight: CGFloat = 36
+
+    /// Running: the slope from (0, 36) to (268, 52), stage labels above it (clear of the tick row), the runway at y = 52.
+    static let runningSlopeStart = CGPoint(x: 0, y: 36)
+    static let runningSlopeEnd = CGPoint(x: 268, y: 52)
+    static let runningRunwayTop: CGFloat = 52
+    /// Quiet states: the slope runs the full width to the runway at y = 30; no labels, no dots.
+    static let quietSlopeStart = CGPoint(x: 0, y: 6)
+    static let quietSlopeEnd = CGPoint(x: 268, y: 30)
+    static let quietRunwayTop: CGFloat = 30
+
     static let runwayX: CGFloat = 268
     static let runwayLength: CGFloat = 60
-    static let runwayHeight: CGFloat = 4
-    /// The runway's top edge: full profile at y = 52, compact at y = 26.
-    static func runwayY(compact: Bool) -> CGFloat { compact ? 26 : 52 }
-    static let landedSide: CGFloat = 9
+    /// The runway is a 2 pt bar.
+    static let runwayBar: CGFloat = 2
+
+    static let markSide: CGFloat = 10
+    /// Landed marks: 10 pt, 6 pt apart, the first aligned under "land".
+    static let markStep: CGFloat = 16
     static let inFlightDiameter: CGFloat = 10
     static let spread: CGFloat = 11
     static let landingDuration: Double = 0.7
 
-    static func slopeY(_ x: CGFloat) -> CGFloat {
-        slopeStart.y + x / slopeEnd.x * (slopeEnd.y - slopeStart.y)
+    static func runwayTop(running: Bool) -> CGFloat {
+        running ? runningRunwayTop : quietRunwayTop
+    }
+
+    static func runningSlopeY(_ x: CGFloat) -> CGFloat {
+        runningSlopeStart.y + x / runningSlopeEnd.x * (runningSlopeEnd.y - runningSlopeStart.y)
     }
 
     /// Centre x of stage n (1...4) on the slope: the middle of its quarter.
     static func stageX(_ n: Int) -> CGFloat {
-        (CGFloat(min(max(n, 1), 4)) - 0.5) / 4 * slopeEnd.x
+        (CGFloat(min(max(n, 1), 4)) - 0.5) / 4 * runningSlopeEnd.x
     }
 
-    /// Places every mark. Circles on one stage spread 11 pt apart along the slope. Landed marks sit on the
-    /// runway in list order, packed left to right; past five they shrink so they still fit.
-    static func place(_ marks: [ProfileMark], compact: Bool = false) -> [PlacedMark] {
+    /// Places every mark. Running circles spread 11 pt apart along the slope within their stage. Landed marks sit
+    /// on the runway in list order, the first aligned under "land". More than four shrink the spacing so they still
+    /// fit the 60 pt runway; past six they shrink too.
+    static func place(_ marks: [ProfileMark], running: Bool) -> [PlacedMark] {
         var out: [PlacedMark] = []
         var byStage: [Int: [ProfileMark]] = [:]
         for m in marks { if case .active(let s) = m.kind { byStage[s, default: []].append(m) } }
@@ -75,24 +94,28 @@ enum Profile {
             default: return false
             }
         }
-        for (stage, group) in byStage {
-            for (k, m) in group.enumerated() {
-                let offset = CGFloat(k) - CGFloat(group.count - 1) / 2
-                let x = min(max(stageX(stage) + offset * spread, 0), slopeEnd.x - 6)
-                out.append(PlacedMark(id: m.id, kind: m.kind, label: m.label, centre: CGPoint(x: x, y: slopeY(x)), side: inFlightDiameter))
+        if running {
+            for (stage, group) in byStage {
+                for (k, m) in group.enumerated() {
+                    let offset = CGFloat(k) - CGFloat(group.count - 1) / 2
+                    let x = min(max(stageX(stage) + offset * spread, 0), runningSlopeEnd.x - 6)
+                    out.append(PlacedMark(id: m.id, kind: m.kind, label: m.label, carried: m.carried,
+                                          centre: CGPoint(x: x, y: runningSlopeY(x)), side: inFlightDiameter))
+                }
+            }
+            for (k, m) in queued.enumerated() {
+                let x = min(CGFloat(k) * spread + 4, runningSlopeEnd.x - 6)
+                out.append(PlacedMark(id: m.id, kind: m.kind, label: m.label, carried: m.carried,
+                                      centre: CGPoint(x: x, y: runningSlopeY(x)), side: markSide))
             }
         }
-        for (k, m) in queued.enumerated() {
-            let x = min(CGFloat(k) * spread + 4, slopeEnd.x - 6)
-            out.append(PlacedMark(id: m.id, kind: m.kind, label: m.label, centre: CGPoint(x: x, y: slopeY(x)), side: landedSide))
-        }
         let count = landed.count
-        let step: CGFloat = count <= 1 ? 0 : min(11, (runwayLength - landedSide) / CGFloat(count - 1))
-        let side: CGFloat = count <= 5 ? landedSide : max(min(landedSide, step - 1.5), 3)
-        let top = runwayY(compact: compact)
+        let step: CGFloat = count <= 4 ? markStep : (count <= 1 ? markStep : (runwayLength - markSide) / CGFloat(count - 1))
+        let side: CGFloat = step >= 12 ? markSide : max(min(markSide, step - 2), 4)
+        let top = runwayTop(running: running)
         for (k, m) in landed.enumerated() {
             let left = runwayX + CGFloat(k) * step
-            out.append(PlacedMark(id: m.id, kind: m.kind, label: m.label,
+            out.append(PlacedMark(id: m.id, kind: m.kind, label: m.label, carried: m.carried,
                                   centre: CGPoint(x: left + side / 2, y: top - side / 2), side: side))
         }
         return out
@@ -104,8 +127,8 @@ enum Profile {
     }
 }
 
-/// Per-frame motion for the profile: circles drift along the slope, landings slide onto the runway. Not SwiftUI
-/// state, so animating it does not re-render the view tree.
+/// Per-frame motion for the profile: in-flight circles drift along the slope, landings slide onto the runway. Not
+/// SwiftUI state, so animating it does not re-render the view tree.
 final class ProfileMotion {
     private(set) var lastCircle: [String: CGPoint] = [:]
     private var landings: [String: (from: CGPoint, start: Date)] = [:]
@@ -135,15 +158,22 @@ final class ProfileMotion {
 }
 
 enum ProfileMode: Equatable {
-    case running, idle, paused, failed
+    /// A sweep is in progress: the full 64 pt profile with stage labels and numbered dots.
+    case running
+    /// Idle with a last run: the 36 pt profile with landed marks.
+    case idle
+    /// Paused: the 36 pt profile at 40%, pause glyph at the runway's end.
+    case paused
+    /// A run that did not finish: the 36 pt profile, the runway in error colour, a red cross at the touchdown point.
+    case failed
+    /// No run yet, or no PRs: the 36 pt profile with a dashed slope at 50% and an empty runway.
+    case empty
 }
 
-/// The approach profile (docs/design.md). Full (328 x 64) only while running. Idle, paused and failed with a
-/// last run show the compact strip (32 pt): runway and landed marks, with a short lead-in of slope.
+/// The approach profile (docs/design.md, pass 4). It is present in every state at full width.
 struct ApproachProfile: View {
     let marks: [ProfileMark]
     let mode: ProfileMode
-    let compact: Bool
     let hovered: String?
     let justLanded: Set<String>
     let motion: ProfileMotion
@@ -156,7 +186,7 @@ struct ApproachProfile: View {
     private static let driftLoop = 4.0
 
     var body: some View {
-        let height = compact ? Profile.compactHeight : Profile.height
+        let height = mode == .running ? Profile.runningHeight : Profile.quietHeight
         TimelineView(.animation(minimumInterval: reduceMotion ? 1 : nil)) { context in
             Canvas { gc, _ in
                 draw(&gc, now: context.date)
@@ -164,7 +194,7 @@ struct ApproachProfile: View {
         }
         .frame(width: Profile.width, height: height)
         .overlay(alignment: .topLeading) {
-            if !compact { ticks }
+            if mode == .running { ticks }
         }
         .contentShape(Rectangle())
         .onContinuousHover { phase in
@@ -193,78 +223,110 @@ struct ApproachProfile: View {
             .offset(x: x, y: 0)
     }
 
+    private var running: Bool { mode == .running }
+
     private func nearest(to p: CGPoint) -> String? {
         var best: (String, CGFloat)?
-        for pm in Profile.place(marks, compact: compact) {
+        for pm in Profile.place(marks, running: running) {
             let d = hypot(pm.centre.x - p.x, pm.centre.y - p.y)
             if d < 10, best == nil || d < best!.1 { best = (pm.id, d) }
         }
         return best?.0
     }
 
+    /// Numbered labels: one per cluster of in-flight dots. A cluster shows its hovered dot, or else its most advanced
+    /// PR (the most recent activity). Labels are always above their dot.
+    private func labelled(_ placed: [PlacedMark]) -> Set<String> {
+        let dots = placed.filter(\.isActive).sorted { $0.centre.x < $1.centre.x }
+        var clusters: [[PlacedMark]] = []
+        for dot in dots {
+            if let last = clusters.last?.last, abs(dot.centre.x - last.centre.x) < 36 {
+                clusters[clusters.count - 1].append(dot)
+            } else {
+                clusters.append([dot])
+            }
+        }
+        var shown: Set<String> = []
+        for cluster in clusters {
+            if let hover = cluster.first(where: { $0.id == hovered }) {
+                shown.insert(hover.id)
+            } else if let best = cluster.max(by: { stage($0) < stage($1) }) {
+                shown.insert(best.id)
+            }
+        }
+        return shown
+    }
+
+    private func stage(_ pm: PlacedMark) -> Int {
+        if case .active(let s) = pm.kind { return s }
+        return 0
+    }
+
     private func draw(_ gc: inout GraphicsContext, now: Date) {
         let p = Palette(scheme)
         let t = now.timeIntervalSinceReferenceDate
-        let placed = Profile.place(marks, compact: compact)
+        let placed = Profile.place(marks, running: running)
         let alpha: Double = mode == .paused ? 0.4 : 1
         motion.advance(placed, justLanded: justLanded, now: now, reduce: reduceMotion)
-        let top = Profile.runwayY(compact: compact)
+        let top = Profile.runwayTop(running: running)
 
-        // Slope: the full profile, or the short lead-in of the compact strip.
+        // Slope.
         var slope = Path()
-        if compact {
-            slope.move(to: CGPoint(x: 196, y: 6))
-            slope.addLine(to: CGPoint(x: Profile.runwayX, y: 24))
-        } else {
-            slope.move(to: Profile.slopeStart)
-            slope.addLine(to: Profile.slopeEnd)
+        switch mode {
+        case .running:
+            slope.move(to: Profile.runningSlopeStart)
+            slope.addLine(to: Profile.runningSlopeEnd)
+        default:
+            slope.move(to: Profile.quietSlopeStart)
+            slope.addLine(to: Profile.quietSlopeEnd)
         }
-        gc.stroke(slope, with: .color(p.slope.opacity(alpha)), lineWidth: 2)
+        if mode == .empty {
+            gc.stroke(slope, with: .color(p.slope.opacity(0.5)), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
+        } else {
+            gc.stroke(slope, with: .color(p.slope.opacity(alpha)), lineWidth: 2)
+        }
 
-        // Runway, failed in the error colour with a 9 pt cross at its left end.
-        let runway = CGRect(x: Profile.runwayX, y: top, width: Profile.runwayLength, height: Profile.runwayHeight)
-        gc.fill(Path(runway), with: .color(mode == .failed ? p.error : p.runway.opacity(alpha)))
+        // Runway: a 2 pt grey bar in every state.
+        let runway = CGRect(x: Profile.runwayX, y: top, width: Profile.runwayLength, height: Profile.runwayBar)
+        gc.fill(Path(runway), with: .color(p.runwayBar.opacity(alpha)))
+
+        // Failed: a red cross at the touchdown point. Paused: the pause glyph at the runway's end.
         if mode == .failed {
             var cross = Path()
-            cross.move(to: CGPoint(x: 261.5, y: top - 9 + 2)); cross.addLine(to: CGPoint(x: 270.5, y: top - 9 + 11))
-            cross.move(to: CGPoint(x: 270.5, y: top - 9 + 2)); cross.addLine(to: CGPoint(x: 261.5, y: top - 9 + 11))
-            gc.stroke(cross, with: .color(p.error), lineWidth: 1.5)
+            // Just short of the runway: the touchdown point, clear of the first landed mark.
+            let c = CGPoint(x: Profile.runwayX - 6, y: top - 5)
+            cross.move(to: CGPoint(x: c.x - 5, y: c.y - 5)); cross.addLine(to: CGPoint(x: c.x + 5, y: c.y + 5))
+            cross.move(to: CGPoint(x: c.x + 5, y: c.y - 5)); cross.addLine(to: CGPoint(x: c.x - 5, y: c.y + 5))
+            gc.stroke(cross, with: .color(p.error), lineWidth: 2)
         }
-        // Paused: the pause glyph moves to the runway's right end.
         if mode == .paused {
             for x in [CGFloat(316), 322] {
                 gc.fill(Path(CGRect(x: x, y: top - 10, width: 2, height: 8)), with: .color(p.secondary))
             }
         }
 
-        // Marks, and the labels of in-flight dots that have room.
-        var labelled: [CGFloat] = []
-        for pm in placed.sorted(by: { $0.centre.x < $1.centre.x }) where pm.isActive {
-            let shows = hovered == pm.id || labelled.allSatisfy { abs($0 - pm.centre.x) >= 36 }
-            if shows { labelled.append(pm.centre.x) }
-        }
+        // Numbered labels for in-flight dots, shown per cluster.
+        let shownLabels = labelled(placed)
+
         for pm in placed {
-            let drift: CGFloat = (mode == .running && pm.isActive && !reduceMotion)
+            let drift: CGFloat = (running && pm.isActive && !reduceMotion)
                 ? Self.drift * CGFloat(1 - cos(2 * Double.pi * t / Self.driftLoop)) / 2 : 0
             let drawn = mark(pm, drift: drift, p: p, alpha: alpha)
             if let landing = motion.landing(pm.id, target: pm.centre, now: now) {
-                let colour = landing.progress < 0.6 ? p.doingMark : verdictColour(pm.kind, p)
+                let colour = landing.progress < 0.6 ? p.doingMark : markColour(pm.kind, p)
                 gc.fill(Path(ellipseIn: CGRect(x: landing.point.x - 5, y: landing.point.y - 5, width: 10, height: 10)),
                         with: .color(colour))
             } else {
                 draw(drawn, in: &gc)
             }
-            if pm.isActive, hovered == pm.id || labelled.contains(pm.centre.x) {
+            if pm.isActive, shownLabels.contains(pm.id) {
                 let text = Text(pm.label).font(.system(size: 11, weight: .medium)).foregroundStyle(p.tertiary)
-                // Above the dot when the label clears the tick row (y 0 to 12); below it otherwise.
-                let above = drawn.centre.y >= 33
-                gc.draw(text, at: CGPoint(x: drawn.centre.x, y: above ? drawn.centre.y - 8 : drawn.centre.y + 8),
-                        anchor: above ? .bottom : .top)
+                gc.draw(text, at: CGPoint(x: drawn.centre.x, y: drawn.centre.y - 11), anchor: .bottom)
             }
             if hovered == pm.id {
                 let r = Profile.radius(pm) + 5
                 gc.stroke(Path(ellipseIn: CGRect(x: drawn.centre.x - r, y: drawn.centre.y - r, width: 2 * r, height: 2 * r)),
-                          with: .color(ringColour(pm.kind, p)), lineWidth: 2)
+                          with: .color(markColour(pm.kind, p)), lineWidth: 2)
             }
         }
     }
@@ -278,9 +340,10 @@ struct ApproachProfile: View {
 
     private func mark(_ pm: PlacedMark, drift: CGFloat, p: Palette, alpha: Double) -> Drawn {
         let slides = pm.isActive || pm.kind == .queued
-        let x = min(pm.centre.x + drift, Profile.slopeEnd.x - 6)
-        let centre = slides ? CGPoint(x: x, y: Profile.slopeY(x)) : pm.centre
-        return Drawn(centre: centre, side: pm.side, colour: markColour(pm.kind, p).opacity(alpha), kind: pm.kind)
+        let x = min(pm.centre.x + drift, Profile.runningSlopeEnd.x - 6)
+        let centre = slides ? CGPoint(x: x, y: Profile.runningSlopeY(x)) : pm.centre
+        let colour = pm.carried ? p.tertiary : markColour(pm.kind, p)
+        return Drawn(centre: centre, side: pm.side, colour: colour.opacity(alpha), kind: pm.kind)
     }
 
     private func markColour(_ kind: MarkKind, _ p: Palette) -> Color {
@@ -294,14 +357,6 @@ struct ApproachProfile: View {
             case .skipped: return p.skipMark
             }
         }
-    }
-
-    private func ringColour(_ kind: MarkKind, _ p: Palette) -> Color {
-        markColour(kind, p)
-    }
-
-    private func verdictColour(_ kind: MarkKind, _ p: Palette) -> Color {
-        markColour(kind, p)
     }
 
     /// Shapes: in-flight and approved are circles, changes are triangles, skipped is a dash, queued and no result
