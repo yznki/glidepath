@@ -3,9 +3,13 @@ import AppKit
 
 /// The Reviews section (v1.2 mockup 6-reviews): a 340 pt list of the reviews from the last 50 sweeps, beside the
 /// selected review. Review text comes from `ReviewText` and is drawn as plain text only.
+/// Where keyboard focus sits in Reviews: the list (arrows move the selection) or the detail (Return moves here).
+enum ReviewsFocus: Hashable { case list, detail }
+
 struct ReviewsView: View {
     @ObservedObject var store: Store
     @StateObject private var model = ReviewsModel()
+    @FocusState private var focus: ReviewsFocus?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -17,9 +21,90 @@ struct ReviewsView: View {
                 }
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .focusable()
+                .focused($focus, equals: .detail)
         }
-        .onAppear { model.load(store) }
+        .onAppear {
+            model.load(store)
+            focus = .list
+        }
         .onReceive(store.$snap) { _ in model.load(store) }
+        .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
+            takeFilter()
+        }
+        .onChange(of: model.selected?.id) { _ in ShortcutContext.shared.setReview(model.selected) }
+        .onDisappear { ShortcutContext.shared.setReview(nil) }
+        .onKeyPress(phases: .down) { handleKey($0) }
+    }
+
+    // MARK: Keys
+
+    /// Arrows, Home and End move the selection; Return moves focus to the detail; Esc clears the filter; a letter
+    /// jumps to the first title that starts with the letters typed. Nothing fires while a text field has focus.
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        guard !TextFocus.isEditing, focus != .detail else { return .ignored }
+        let mods = ShortcutModifiers(press.modifiers)
+        if press.key == .return, mods.isEmpty {
+            focus = .detail
+            return .handled
+        }
+        if press.key == .escape, mods.isEmpty {
+            guard model.filter != .all else { return .ignored }
+            model.filter = .all
+            return .handled
+        }
+        if let key = Self.listKey(press.key), let move = ListNav.move(key, mods) {
+            step(move)
+            return .handled
+        }
+        if mods.subtracting(.shift).isEmpty, press.characters.count == 1, let ch = press.characters.first,
+           ch.isLetter || ch.isNumber {
+            typeSelect(String(ch))
+            return .handled
+        }
+        return .ignored
+    }
+
+    private static func listKey(_ key: KeyEquivalent) -> ListKey? {
+        switch key {
+        case .upArrow: return .up
+        case .downArrow: return .down
+        case .home: return .home
+        case .end: return .end
+        case .pageUp: return .pageUp
+        case .pageDown: return .pageDown
+        default: return nil
+        }
+    }
+
+    private func step(_ move: ListMove) {
+        let rows = model.visible.flatMap(\.rows)
+        let current = rows.firstIndex { $0.id == model.selected?.id }
+        guard let i = ListNav.move(move, from: current, count: rows.count, groupStarts: model.groupStarts) else { return }
+        model.selectedID = rows[i].id
+    }
+
+    /// Letters typed within a second make one search string. The first title that starts with it is selected.
+    private func typeSelect(_ letter: String) {
+        let now = Date()
+        model.typed = (now.timeIntervalSince(model.typedAt) < 1 ? model.typed : "") + letter
+        model.typedAt = now
+        let rows = model.visible.flatMap(\.rows)
+        let titles = rows.map { $0.title ?? "#\($0.number)" }
+        let current = rows.firstIndex { $0.id == model.selected?.id }
+        if let i = ListNav.typeSelect(model.typed, titles: titles, from: current) {
+            model.selectedID = rows[i].id
+        }
+    }
+
+    /// The filter shortcuts (View menu) set the filter. Other actions belong to the detail.
+    private func takeFilter() {
+        let filters: [ShortcutAction: ReviewFilter] = [.filterAll: .all, .filterChanges: .changes,
+                                                      .filterDrafts: .drafts, .filterSkipped: .skipped]
+        let actions = Set(filters.keys)
+        if let action = WindowRouter.shared.take(actions), let filter = filters[action] {
+            model.filter = filter
+        }
     }
 
     // MARK: List
@@ -35,6 +120,7 @@ struct ReviewsView: View {
             WinSegmented(segments: ReviewFilter.allCases.map { segment($0) }, selected: model.filter) { model.filter = $0 }
                 .padding(.top, WinMetrics.s16)
                 .padding(.horizontal, WinMetrics.s20)
+            ScrollViewReader { proxy in
             WinScroll {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(model.visible) { sweep in
@@ -58,6 +144,12 @@ struct ReviewsView: View {
                 .padding(.bottom, WinMetrics.canvasBottom)
             }
             .frame(maxHeight: .infinity)
+            .onChange(of: model.selectedID) { id in
+                if let id { proxy.scrollTo(id) }
+            }
+            }
+            .focusable()
+            .focused($focus, equals: .list)
         }
         .padding(.top, WinMetrics.titlebarZone)
     }
@@ -73,6 +165,7 @@ struct ReviewsView: View {
         let on = model.selected?.id == row.id
         return Button {
             model.selectedID = row.id
+            focus = .list
         } label: {
             HStack(spacing: WinMetrics.s12) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -98,6 +191,9 @@ struct ReviewsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // The list takes the keys, so the rows are not separate Tab stops.
+        .focusable(false)
+        .id(row.id)
     }
 
     // MARK: Detail
@@ -146,6 +242,9 @@ struct ReviewDetail: View {
                 .padding(.horizontal, WinMetrics.canvasLeft)
                 .padding(.top, WinMetrics.s16)
                 .padding(.bottom, WinMetrics.canvasBottom)
+        }
+        .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
+            takeReviewAction()
         }
     }
 
@@ -371,6 +470,34 @@ struct ReviewDetail: View {
         NSWorkspace.shared.open(url)
     }
 
+    /// The review menu's actions, for the selected row. Each is enabled only when it applies (see `ShortcutAvailability`).
+    private func takeReviewAction() {
+        let actions: Set<ShortcutAction> = [.postReview, .discardDraft, .reviewAnyway, .openOnGitHub, .copyLink,
+                                            .copyReviewText]
+        guard let action = WindowRouter.shared.take(actions) else { return }
+        switch action {
+        case .postReview:
+            if row.draft, store.draftBusy[row.stripID] == nil, !store.snap.running { confirmAndPost() }
+        case .discardDraft:
+            if row.draft, !store.snap.running { store.discardDraft(strip) }
+        case .reviewAnyway:
+            if row.tooLarge, !store.snap.running { confirmAndReview() }
+        case .openOnGitHub:
+            openOnGitHub()
+        case .copyLink:
+            copy("https://github.com/\(row.repo)/pull/\(row.number)")
+        case .copyReviewText:
+            if let body = text?.body { copy(body) }
+        default:
+            break
+        }
+    }
+
+    private func copy(_ string: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(string, forType: .string)
+    }
+
     // MARK: Confirmations (the same alerts as the popover)
 
     private func confirmAndPost() {
@@ -564,6 +691,20 @@ final class ReviewsModel: ObservableObject {
     @Published var selectedID: String?
     @Published private(set) var sweeps: [ReviewSweep] = []
     private var loadTask: Task<Void, Never>?
+    /// Type-to-select: the letters typed so far, and when the last one came.
+    var typed = ""
+    var typedAt = Date.distantPast
+
+    /// The index of each visible sweep's first row, in the flat list. Group jumps (⌥↑ ⌥↓) move between these.
+    var groupStarts: [Int] {
+        var starts: [Int] = []
+        var index = 0
+        for sweep in visible {
+            starts.append(index)
+            index += sweep.rows.count
+        }
+        return starts
+    }
 
     /// Keeps the newest 50 sweeps. Live, the run files are read off the main actor, after a 300 ms pause: a burst of
     /// store changes costs one read, and a read still waiting when the next change lands is cancelled. Fixtures load at

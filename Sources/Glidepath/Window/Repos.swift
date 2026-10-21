@@ -24,9 +24,13 @@ extension Posting {
 /// The Repos section (v1.2 mockup 7-repos): the configured repos in a 260 pt list, beside the selected repo's settings.
 /// Each control saves at once through `ConfigEditor`, then the store reloads. Invalid input writes nothing and shows
 /// its message in amber under the control it came from.
+/// Where keyboard focus sits in Repos: the list, or the detail (Return moves there).
+enum ReposFocus: Hashable { case list, detail }
+
 struct ReposView: View {
     @ObservedObject var store: Store
     @StateObject private var model = ReposModel()
+    @FocusState private var focus: ReposFocus?
 
     private var repos: [RepoConfig] { store.snap.config?.repos ?? [] }
 
@@ -45,9 +49,81 @@ struct ReposView: View {
                 }
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .focusable()
+                .focused($focus, equals: .detail)
         }
         .sheet(isPresented: $model.addingRepo) {
             AddRepoSheet(store: store, model: model)
+        }
+        .onAppear { focus = .list }
+        .onChange(of: selected?.slug) { _ in ShortcutContext.shared.repoSelected = selected != nil }
+        .onDisappear { ShortcutContext.shared.repoSelected = false }
+        .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
+            takeAction()
+        }
+        .onKeyPress(phases: .down) { handleKey($0) }
+    }
+
+    // MARK: Keys and actions
+
+    /// Arrows, Home and End move the selection; Return moves focus to the detail; a letter jumps to a repo whose
+    /// name starts with the letters typed. Nothing fires while a text field has focus.
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        let mods = ShortcutModifiers(press.modifiers)
+        // ⌘ combos work from anywhere, the detail included; the detail takes them through the router.
+        if mods == [.command], press.key == .delete {
+            WindowRouter.shared.deliver(.removeRepo, section: nil)
+            return .handled
+        }
+        if mods == [.command], press.characters == "e" {
+            WindowRouter.shared.deliver(.editRules, section: nil)
+            return .handled
+        }
+        guard !TextFocus.isEditing, focus != .detail else { return .ignored }
+        if press.key == .return, mods.isEmpty {
+            focus = .detail
+            return .handled
+        }
+        if let key = ReposView.listKey(press.key), let move = ListNav.move(key, mods) {
+            let current = repos.firstIndex { $0.slug == selected?.slug }
+            if let i = ListNav.move(move, from: current, count: repos.count), repos.indices.contains(i) {
+                model.select(repos[i].slug)
+            }
+            return .handled
+        }
+        if mods.subtracting(.shift).isEmpty, press.characters.count == 1, let ch = press.characters.first,
+           ch.isLetter || ch.isNumber {
+            let current = repos.firstIndex { $0.slug == selected?.slug }
+            if let i = ListNav.typeSelect(String(ch), titles: repos.map(\.slug), from: current) {
+                model.select(repos[i].slug)
+            }
+            return .handled
+        }
+        return .ignored
+    }
+
+    private static func listKey(_ key: KeyEquivalent) -> ListKey? {
+        switch key {
+        case .upArrow: return .up
+        case .downArrow: return .down
+        case .home: return .home
+        case .end: return .end
+        case .pageUp: return .pageUp
+        case .pageDown: return .pageDown
+        default: return nil
+        }
+    }
+
+    /// Add Repo, Find (the add sheet holds the repo search) and Review This Repo Now.
+    private func takeAction() {
+        guard let action = WindowRouter.shared.take([.addRepo, .find, .reviewRepoNow]) else { return }
+        switch action {
+        case .addRepo, .find:
+            model.openAddRepo()
+        case .reviewRepoNow:
+            if let slug = selected?.slug, !store.snap.running { store.runNow(repo: slug) }
+        default:
+            break
         }
     }
 
@@ -77,6 +153,8 @@ struct ReposView: View {
             }
             .frame(maxHeight: .infinity)
             .padding(.top, WinMetrics.s16)
+            .focusable()
+            .focused($focus, equals: .list)
         }
         .padding(.top, WinMetrics.titlebarZone)
     }
@@ -87,6 +165,7 @@ struct ReposView: View {
         let on = selected?.slug == repo.slug
         return Button {
             model.select(repo.slug)
+            focus = .list
         } label: {
             HStack(spacing: WinMetrics.s12) {
                 Text(initials(repo.slug))
@@ -114,6 +193,8 @@ struct ReposView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusable(false)
+        .id(repo.slug)
     }
 
     /// Two letters for the avatar: the first of the owner and the first of the name, as "la" for lumen/api.
@@ -168,6 +249,9 @@ struct RepoDetail: View {
         .padding(.leading, WinMetrics.canvasLeft)
         .padding(.trailing, WinMetrics.canvasRight)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
+            takeAction()
+        }
         .alert("Remove \(repo.slug) from Glidepath?", isPresented: $model.confirmRemove) {
             Button("Remove", role: .destructive) { model.remove(repo.slug, store: store) }
             Button("Cancel", role: .cancel) {}
@@ -317,6 +401,19 @@ struct RepoDetail: View {
             model.loginText = ""
             model.editingLogins = false
         }) { try ConfigEditor.setAuthors($0, slug: repo.slug, .logins(next)) }
+    }
+
+    /// Edit rules (⌘E) and Remove repo (⌘⌫). Remove still asks first.
+    private func takeAction() {
+        guard let action = WindowRouter.shared.take([.editRules, .removeRepo]) else { return }
+        switch action {
+        case .editRules:
+            editRules(repo.rules ?? ConfigEditor.defaultRulesPath(slug: repo.slug, paths: store.paths))
+        case .removeRepo:
+            model.confirmRemove = true
+        default:
+            break
+        }
     }
 
     private var rulesSection: some View {

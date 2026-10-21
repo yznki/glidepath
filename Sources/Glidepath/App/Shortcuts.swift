@@ -96,6 +96,17 @@ struct ShortcutModifiers: OptionSet {
     static let shift = ShortcutModifiers(rawValue: 4)
     static let command = ShortcutModifiers(rawValue: 8)
 
+    init(rawValue: Int) { self.rawValue = rawValue }
+
+    init(_ modifiers: EventModifiers) {
+        var out: ShortcutModifiers = []
+        if modifiers.contains(.control) { out.insert(.control) }
+        if modifiers.contains(.option) { out.insert(.option) }
+        if modifiers.contains(.shift) { out.insert(.shift) }
+        if modifiers.contains(.command) { out.insert(.command) }
+        self = out
+    }
+
     var eventModifiers: EventModifiers {
         var out: EventModifiers = []
         if contains(.control) { out.insert(.control) }

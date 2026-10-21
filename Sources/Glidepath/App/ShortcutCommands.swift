@@ -32,7 +32,7 @@ enum ShortcutAvailability {
         case .togglePause:
             return s.configured && !s.onboarding
         case .reviewRepoNow:
-            return s.section == .repos && s.repoSelected && s.configured && !s.onboarding
+            return s.section == .repos && s.repoSelected && s.configured && !s.onboarding && !s.sweepRunning
         case .postReview:
             return inReviews && s.reviewCanPost
         case .discardDraft:
@@ -56,6 +56,12 @@ enum ShortcutAvailability {
         default: return Shortcuts.shortcut(action).title
         }
     }
+}
+
+/// Whether a text field has focus. Plain-key shortcuts stay out of the way while it does; ⌘ combos and Esc still work.
+@MainActor
+enum TextFocus {
+    static var isEditing: Bool { NSApp.keyWindow?.firstResponder is NSText }
 }
 
 /// The Reviews and Repos views publish their selection here, so the menus can enable the right items.
