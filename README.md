@@ -29,8 +29,8 @@ without polling.
 - macOS 14 or later, Apple Silicon or Intel.
 - Xcode Command Line Tools (`xcode-select --install`).
 - `git`, from the Command Line Tools.
-- `gh`, the GitHub CLI, signed in (`gh auth login`).
-- `claude`, Claude Code, logged in. Install with `brew install --cask claude-code`.
+- `gh`, the GitHub CLI, signed in with the `repo` scope (`gh auth login`, or `gh auth refresh -s repo`).
+- `claude`, Claude Code 2.1.306 or later, logged in. Install with `brew install --cask claude-code`.
 - GitNexus is optional. See [Config](#config) for `gitnexus`.
 
 `review-radar init` checks each of these and prints the fix command for any that is missing.
@@ -116,42 +116,69 @@ Edits take effect on the next run. `review-radar doctor` checks the file.
 
 ## Security model
 
-- **Tool allowlist, no bypass.** The run uses `--permission-mode dontAsk` with an explicit
-  `--allowedTools` list. Anything not on the list is denied rather than prompted, because there is no
-  one to answer a prompt. `bypassPermissions` is never used.
+A review session can read the PR and post one review. It cannot run git, gh or arbitrary commands,
+and it cannot read or write outside the directories it needs.
 
-  The list, in Claude Code's rule syntax:
+**Wrappers, not commands.** The session gets review-radar's own subcommands and no general shell:
 
-  ```
-  Read, Grep, Glob, Agent
-  Bash(git fetch:*)  Bash(git diff:*)  Bash(git show:*)  Bash(git log:*)
-  Bash(gh pr view:*)  Bash(gh pr diff:*)  Bash(gh pr list:*)
-  Bash(gh api repos/*/pulls/*/reviews:*)     # left out of dry runs
-  Bash(review-radar state:*)
-  Edit(<run scratch directory>/**)           # Write is covered by Edit rules
-  Read(<rules file>)                         # only when rules is set
-  mcp__gitnexus__*                           # only when GitNexus is enabled
-  ```
+| Command | What it does |
+| --- | --- |
+| `review-radar pr info --repo R --pr N` | Title, author, head SHA, files and body, as JSON. Records the head SHA. |
+| `review-radar pr diff --repo R --pr N [--path F]` | The diff, or one file's part of it. `F` must be a file in the PR. |
+| `review-radar pr threads --repo R --pr N` | Existing comments and reviews. Read-only. Also works in dry runs. |
+| `review-radar post --repo R --pr N` | Posts `final.json` after validation. Dry runs print the payload instead. |
+| `review-radar state set ...` | Stage progress for this run only. Cannot set verdicts. |
 
-  There is no general shell. `gh api` matches by prefix, so the rule allows any method on
-  those paths; the skill only issues POST for the review payload.
+Each wrapper takes only the flags listed above and no others. Each one checks its arguments against the
+run it is bound to. The run binding is set in the child process environment, not by the model. A repo or
+PR outside the run is refused with `unknown PR for this run`. A PR whose head moved since `pr info` is
+refused, and recorded as skipped. The wrappers call gh with an argument list, never through a shell.
 
-- **Collaborators only, by default.** A PR author is reviewed only when they have write access
-  or higher. Use `authors = "anyone"` only on repos where you accept reviews of outside contributions.
+**Allowlist.** The session runs with `--permission-mode dontAsk` and this allowlist, and nothing else
+is allowed:
 
-- **PR text is untrusted.** Titles, bodies, comments, diffs and file contents are data. The skill
-  says so and ignores instructions inside them. This reduces the risk of prompt injection, but
-  it is not a guarantee. A PR that persuades the model convincingly can still get a bad
-  review posted, which is why `posting = "comment"` is the default and dry runs exist.
+```
+Read(//<clone>/**)                     the checkout of the default branch
+Read(//<scratch>/**)                   this run's scratch directory
+Read(//<home>/.claude/skills/review-radar/**)
+Edit(//<scratch>/**)                   writes only under scratch (Write is covered by Edit rules)
+Read(//<rules file>)                   only when rules is set
+Agent                                  subagents, which inherit the same rules
+Bash(review-radar pr info:*)
+Bash(review-radar pr diff:*)
+Bash(review-radar pr threads:*)
+Bash(review-radar state set:*)
+Bash(review-radar post:*)
+mcp__gitnexus__*                       only when GitNexus is enabled
+```
 
-- **Local clones are read-only in practice.** The clone is detached and refreshed with `git fetch`
-  and `git checkout --detach`. A dirty clone stops the run. Nothing is committed or pushed.
+Absolute paths use claude's `//` prefix. There is no bare `Read`, `Grep` or `Glob`. Grep and Glob work
+only inside the session's working directories (the checkout and scratch). `WebFetch` and `WebSearch` are
+denied. Session launch uses `--setting-sources user`, so the checkout's own `.claude/` settings are not
+loaded. `--strict-mcp-config` loads only the GitNexus server, and only when enabled. `doctor` warns about
+broad allow rules and hooks in your global `~/.claude/settings.json`, because those still apply.
 
-- **Posting is visible.** Reviews appear under your GitHub account. "Run now" in the app asks for
-  confirmation when any repo uses `posting = "review"`.
+**Environment.** The session gets `PATH`, `HOME`, `USER`, `LANG`, `TMPDIR`, claude's own variables
+(`ANTHROPIC_API_KEY`, `CLAUDE_CODE_*`) and the run binding. `GH_TOKEN` and `GITHUB_TOKEN` are never
+passed. The wrappers use your own gh sign-in, as gh's own configuration and keychain provide it.
 
-- **Secrets stay out of the state.** The run file holds PR numbers, titles, authors, verdicts and
-  token counts. It does not hold tokens or transcripts. Transcripts stay in Claude Code's own folder.
+**Collaborators only, by default.** A PR author is reviewed only when they have write, maintain or admin
+access, and that permission must be readable. Without push access, the permission cannot be read, and
+those PRs are skipped with that reason. For those authors, or any others, list the logins in `authors`.
+
+**PR text is untrusted.** Titles, bodies, comments, diffs and file contents are data. The skill says so,
+and the wrappers label PR text as data in their output. This is a defence in depth, not a guarantee: a
+convincing PR can still get a poor review posted. That is why `posting = "comment"` is the default, and why
+dry runs exist.
+
+**Posting is visible.** Reviews appear under your GitHub account. "Run now" in the app asks for
+confirmation when any repo uses `posting = "review"`.
+
+**Local state.** The run file holds PR numbers, titles, authors, verdicts and token counts. It holds no
+tokens, and the session transcript stays in Claude Code's own folder.
+
+**Requirements.** Claude Code 2.1.306 or later (the flags above were checked against that version).
+A gh token with the `repo` scope, for private repos.
 
 ## Cost
 
@@ -182,11 +209,12 @@ The app is the same binary as the CLI. Launched with no arguments, or with `app`
 | `review-radar init` | Set up config, clones, skill, app link and schedule. Ends with a dry run. |
 | `review-radar run [--dry-run] [--repo owner/name]` | Run now. `--dry-run` reviews and posts nothing. |
 | `review-radar state show [--run ID]` | Print a run as JSON. Defaults to the current run. |
+| `review-radar pr info` / `pr diff` / `pr threads` / `post` | Used by the review session. Run them only inside a run; see [Security model](#security-model). |
 | `review-radar pause` / `resume` | Skip or allow scheduled runs. |
 | `review-radar doctor` | Check requirements and installed pieces. |
 | `review-radar uninstall [--purge]` | Remove the schedule, skill and app link. `--purge` also removes config and state. |
 
-`state set` is used by the skill at each stage. You do not need to run it by hand.
+`state set` and the `pr` and `post` commands are used by the review session and refuse to run outside one.
 
 ## Uninstall
 
