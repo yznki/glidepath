@@ -148,4 +148,21 @@ final class SecurityTests: XCTestCase {
         XCTAssertTrue(found.contains { $0.file.hasSuffix("settings.json") && $0.events == ["PreToolUse"] })
         XCTAssertTrue(found.contains { $0.file.hasSuffix("hooks.json") && $0.events == ["PostToolUse"] })
     }
+
+    func testStateSetFlagsAreStrict() throws {
+        let ok = try StrictFlags.parse(["--run", "r", "--repo", "a/b", "--pr", "3", "--stage", "review"],
+                                       allowed: ["--run", "--repo", "--pr", "--stage", "--reason"])
+        XCTAssertEqual(ok["--pr"], "3")
+        XCTAssertThrowsError(try StrictFlags.parse(["--author", "x"], allowed: ["--run"]))
+        XCTAssertThrowsError(try StrictFlags.parse(["--run=r"], allowed: ["--run"]))
+        XCTAssertThrowsError(try StrictFlags.parse(["--run", "a", "--run", "b"], allowed: ["--run"]))
+        XCTAssertThrowsError(try StrictFlags.parse(["stray"], allowed: ["--run"]))
+    }
+
+    func testReasonLimits() {
+        XCTAssertNil(try? StrictFlags.reason([:]))
+        XCTAssertEqual(try StrictFlags.reason(["--reason": "ok"]), "ok")
+        XCTAssertThrowsError(try StrictFlags.reason(["--reason": String(repeating: "x", count: 201)]))
+        XCTAssertThrowsError(try StrictFlags.reason(["--reason": "a\nb"]))
+    }
 }

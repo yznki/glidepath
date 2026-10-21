@@ -100,6 +100,15 @@ struct RunState: Codable, Equatable {
         _ = repoIndex(slug)
     }
 
+    /// A progress note on a PR that has no verdict yet.
+    mutating func setNote(repo slug: String, n: Int, note: String) throws {
+        guard let ri = repos.firstIndex(where: { $0.slug == slug }),
+              let pi = repos[ri].prs.firstIndex(where: { $0.n == n }) else {
+            throw StateError("unknown PR for this run: \(slug) #\(n)")
+        }
+        repos[ri].prs[pi].reason = note
+    }
+
     mutating func recordHead(repo slug: String, n: Int, head: String) throws {
         guard let ri = repos.firstIndex(where: { $0.slug == slug }),
               let pi = repos[ri].prs.firstIndex(where: { $0.n == n }) else {

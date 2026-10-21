@@ -34,8 +34,7 @@ enum CLI {
       review-radar init                      set up config, skill, schedule, app; ends with a dry run
       review-radar run [--dry-run] [--repo owner/name]
                                              run the review pipeline now
-      review-radar state set --run ID --repo owner/name --pr N [--stage gather|review|check|post]
-                             [--author LOGIN] [--title TEXT] [--verdict approve|changes|skipped] [--reason TEXT]
+      review-radar state set --run ID --repo owner/name --pr N [--stage gather|review|check] [--reason TEXT]
       review-radar state show [--run ID]     print a run as JSON (default: current)
       review-radar pause | resume            skip or allow scheduled runs
       review-radar doctor                    check requirements and installed pieces
@@ -98,33 +97,28 @@ enum StateCommand {
         do {
             switch sub {
             case "set":
-                guard let runId = a.value("--run"), let slug = a.value("--repo"),
-                      let n = a.value("--pr").flatMap(Int.init) else {
-                    eprint("state set needs --run, --repo and a numeric --pr")
-                    return 2
-                }
-                let stage = try a.value("--stage").map { text -> Stage in
-                    guard let s = Stage(rawValue: text) else { throw StateError("unknown stage \(text)") }
+                let f = try StrictFlags.parse(Array(args.dropFirst()), allowed: ["--run", "--repo", "--pr", "--stage", "--reason"])
+                guard let runId = f["--run"] else { throw StateError("state set needs --run") }
+                let slug = try StrictFlags.repo(f)
+                let n = try StrictFlags.pr(f)
+                let stage = try f["--stage"].map { text -> Stage in
+                    guard let s = Stage(rawValue: text), s != .post else {
+                        throw StateError("stage must be gather, review or check; post is set by review-radar post")
+                    }
                     return s
                 }
-                let verdict = try a.value("--verdict").map { text -> Verdict in
-                    guard let v = Verdict(rawValue: text) else { throw StateError("unknown verdict \(text)") }
-                    return v
-                }
-                // Bound to the run in the environment. Stamps belong to `review-radar post`, never here.
+                let note = try StrictFlags.reason(f)
+                // Bound to the run and repo in the environment. Stamps belong to `review-radar post`.
                 let binding = try RunBinding.current()
                 guard runId == binding.runId, slug == binding.repo else {
                     throw StateError("state set is limited to the run and repo in this session")
-                }
-                guard verdict == nil, stage != .post else {
-                    throw StateError("verdicts and the post stage are set by review-radar post")
                 }
                 try store.mutate(runId) { run in
                     guard run.repos.first(where: { $0.slug == slug })?.prs.contains(where: { $0.n == n }) == true else {
                         throw StateError("unknown PR for this run: \(slug) #\(n)")
                     }
-                    try run.setPR(repo: slug, n: n, stage: stage, author: a.value("--author"),
-                                  title: a.value("--title"), verdict: nil, reason: nil)
+                    try run.setPR(repo: slug, n: n, stage: stage, author: nil, title: nil, verdict: nil, reason: nil)
+                    if let note { try run.setNote(repo: slug, n: n, note: note) }
                 }
                 print("ok")
                 return 0

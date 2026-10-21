@@ -69,6 +69,14 @@ enum StrictFlags {
         return slug
     }
 
+    /// A one-line note, at most 200 characters. Empty or missing means none.
+    static func reason(_ f: [String: String]) throws -> String? {
+        guard let text = f["--reason"] else { return nil }
+        guard !text.contains("\n"), !text.contains("\r") else { throw CommandError("--reason must be one line") }
+        guard text.count <= 200 else { throw CommandError("--reason is \(text.count) characters; the limit is 200") }
+        return text
+    }
+
     static func pr(_ f: [String: String]) throws -> Int {
         guard let text = f["--pr"], let n = Int(text), n > 0, String(n) == text else {
             throw CommandError("--pr must be a PR number")
