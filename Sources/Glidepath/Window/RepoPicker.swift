@@ -207,7 +207,7 @@ struct RepoPicker: View {
             toggle(slug)
             return .handled
         }
-        if let key = Self.listKey(press.key), let move = ListNav.move(key, mods) {
+        if let key = ListKey(press.key), let move = ListNav.move(key, mods) {
             if let i = ListNav.move(move, from: current, count: rows.count) { cursor.slug = rows[i].slug }
             return .handled
         }
@@ -220,17 +220,6 @@ struct RepoPicker: View {
         return .ignored
     }
 
-    private static func listKey(_ key: KeyEquivalent) -> ListKey? {
-        switch key {
-        case .upArrow: return .up
-        case .downArrow: return .down
-        case .home: return .home
-        case .end: return .end
-        case .pageUp: return .pageUp
-        case .pageDown: return .pageDown
-        default: return nil
-        }
-    }
 
     /// Checks or clears every visible repo that can change. Locked rows keep their state.
     private func selectAll(_ rows: [DiscoveredRepo], on: Bool) {

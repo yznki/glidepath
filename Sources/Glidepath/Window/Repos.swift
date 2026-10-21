@@ -84,7 +84,7 @@ struct ReposView: View {
             focus = .detail
             return .handled
         }
-        if let key = ReposView.listKey(press.key), let move = ListNav.move(key, mods) {
+        if let key = ListKey(press.key), let move = ListNav.move(key, mods) {
             let current = repos.firstIndex { $0.slug == selected?.slug }
             if let i = ListNav.move(move, from: current, count: repos.count), repos.indices.contains(i) {
                 model.select(repos[i].slug)
@@ -102,17 +102,6 @@ struct ReposView: View {
         return .ignored
     }
 
-    private static func listKey(_ key: KeyEquivalent) -> ListKey? {
-        switch key {
-        case .upArrow: return .up
-        case .downArrow: return .down
-        case .home: return .home
-        case .end: return .end
-        case .pageUp: return .pageUp
-        case .pageDown: return .pageDown
-        default: return nil
-        }
-    }
 
     /// Add Repo, Find (the add sheet holds the repo search) and Review This Repo Now.
     private func takeAction() {

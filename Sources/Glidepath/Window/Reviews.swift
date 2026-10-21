@@ -53,7 +53,7 @@ struct ReviewsView: View {
             model.filter = .all
             return .handled
         }
-        if let key = Self.listKey(press.key), let move = ListNav.move(key, mods) {
+        if let key = ListKey(press.key), let move = ListNav.move(key, mods) {
             step(move)
             return .handled
         }
@@ -65,17 +65,6 @@ struct ReviewsView: View {
         return .ignored
     }
 
-    private static func listKey(_ key: KeyEquivalent) -> ListKey? {
-        switch key {
-        case .upArrow: return .up
-        case .downArrow: return .down
-        case .home: return .home
-        case .end: return .end
-        case .pageUp: return .pageUp
-        case .pageDown: return .pageDown
-        default: return nil
-        }
-    }
 
     private func step(_ move: ListMove) {
         let rows = model.visible.flatMap(\.rows)

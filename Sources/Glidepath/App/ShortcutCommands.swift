@@ -58,6 +58,21 @@ enum ShortcutAvailability {
     }
 }
 
+extension ListKey {
+    /// The list key a SwiftUI key press is, or nil for keys a list does not use.
+    init?(_ key: KeyEquivalent) {
+        switch key {
+        case .upArrow: self = .up
+        case .downArrow: self = .down
+        case .home: self = .home
+        case .end: self = .end
+        case .pageUp: self = .pageUp
+        case .pageDown: self = .pageDown
+        default: return nil
+        }
+    }
+}
+
 /// Whether a text field has focus. Plain-key shortcuts stay out of the way while it does; ⌘ combos and Esc still work.
 @MainActor
 enum TextFocus {

@@ -8,6 +8,8 @@ final class PopoverModel: ObservableObject {
     @Published var loginOn = false
     @Published var rowsHeight: CGFloat = 0
     @Published var headerHeight: CGFloat = 0
+    /// The row the keyboard is on (its strip id). Arrows move it; Return opens it.
+    @Published var keyRow: String?
 }
 
 private struct HeaderHeight: PreferenceKey {
@@ -125,6 +127,8 @@ struct PopoverView: View {
     var clock: Date?
     @StateObject private var local = PopoverModel()
     @Environment(\.colorScheme) private var scheme
+    /// Keeps keyboard focus on the popover, so its keys work as soon as it opens.
+    @FocusState private var rootFocused: Bool
 
     private var p: Palette { Palette(scheme) }
 
@@ -137,15 +141,62 @@ struct PopoverView: View {
         }
         .frame(width: Metrics.popoverWidth)
         .background(offscreen ? p.ground : Color.clear)
+        .focusable()
+        .focusEffectDisabled()
+        .focused($rootFocused)
+        .onKeyPress(phases: .down) { handleKey($0) }
         .onAppear {
             guard !offscreen else { return }
             store.popoverOpened()
             local.loginOn = store.loginItemOn
+            rootFocused = true
         }
         .onDisappear {
             guard !offscreen else { return }
+            local.keyRow = nil
             store.popoverClosed()
         }
+    }
+
+    // MARK: Keys
+
+    /// ↑ ↓ (and Home, End, Page Up, Page Down) move the row highlight; Return opens that PR on GitHub. ⌘R runs a sweep,
+    /// ⌘. stops one, ⌘O opens the window, ⌘, opens Settings, and Esc closes the popover.
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        guard !TextFocus.isEditing || press.modifiers.contains(.command) else { return .ignored }
+        let mods = ShortcutModifiers(press.modifiers)
+        let rows = groups.flatMap(\.rows)
+        if press.key == .escape, mods.isEmpty {
+            NSApp.keyWindow?.orderOut(nil)
+            return .handled
+        }
+        if press.key == .return, mods.isEmpty {
+            guard let row = rows.first(where: { $0.id == local.keyRow }),
+                  let url = URL(string: "https://github.com/\(row.strip.repo)/pull/\(row.strip.number)") else { return .ignored }
+            NSWorkspace.shared.open(url)
+            return .handled
+        }
+        if mods == [.command] {
+            switch press.characters {
+            case "r":
+                if !store.snap.running, store.snap.jobInstalled { confirmAndRun() }
+            case ".":
+                if store.snap.running { confirmAndStop() }
+            case "o":
+                WindowRouter.shared.open(nil)
+            case ",":
+                WindowRouter.shared.open(.settings)
+            default:
+                return .ignored
+            }
+            return .handled
+        }
+        if let key = ListKey(press.key), let move = ListNav.move(key, mods) {
+            let current = rows.firstIndex { $0.id == local.keyRow }
+            if let i = ListNav.move(move, from: current, count: rows.count) { local.keyRow = rows[i].id }
+            return .handled
+        }
+        return .ignored
     }
 
     // MARK: Header
@@ -242,14 +293,19 @@ struct PopoverView: View {
         } else if offscreen {
             groupsView(groups)
         } else {
-            ScrollView {
-                groupsView(groups)
-                    .background(GeometryReader { Color.clear.preference(key: RowsHeight.self, value: $0.size.height) })
+            ScrollViewReader { proxy in
+                ScrollView {
+                    groupsView(groups)
+                        .background(GeometryReader { Color.clear.preference(key: RowsHeight.self, value: $0.size.height) })
+                }
+                // Header and footer take their own height; the list gets what is left under the 640 pt cap.
+                .frame(height: min(max(local.rowsHeight, 1),
+                                   max(Metrics.popoverMaxHeight - local.headerHeight - Metrics.footerRow - 24, 1)))
+                .onPreferenceChange(RowsHeight.self) { local.rowsHeight = $0 }
+                .onChange(of: local.keyRow) { _, id in
+                    if let id { proxy.scrollTo(id) }
+                }
             }
-            // Header and footer take their own height; the list gets what is left under the 640 pt cap.
-            .frame(height: min(max(local.rowsHeight, 1),
-                               max(Metrics.popoverMaxHeight - local.headerHeight - Metrics.footerRow - 24, 1)))
-            .onPreferenceChange(RowsHeight.self) { local.rowsHeight = $0 }
         }
     }
 
@@ -283,7 +339,8 @@ struct PopoverView: View {
                 }
                 ForEach(group.rows) { row in
                     PRRow(row: row, hovered: store.hovered == row.id, store: store,
-                          dimmed: store.snap.paused, offscreen: offscreen)
+                          dimmed: store.snap.paused, offscreen: offscreen, keyboard: local.keyRow == row.id)
+                        .id(row.id)
                 }
             }
         }
@@ -527,6 +584,8 @@ struct PRRow: View {
     /// Paused: status labels and marks at 60% opacity.
     var dimmed = false
     var offscreen = false
+    /// The keyboard is on this row.
+    var keyboard = false
     @Environment(\.colorScheme) private var scheme
     @FocusState private var focused: Bool
 
@@ -566,7 +625,7 @@ struct PRRow: View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(p.doingMark, lineWidth: 2)
                 .padding(.horizontal, 8)
-                .opacity(focused ? 1 : 0)
+                .opacity(focused || keyboard ? 1 : 0)
         )
         .onHover { inside in store.setHovered(inside ? strip.id : nil) }
     }
