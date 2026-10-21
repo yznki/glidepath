@@ -8,7 +8,10 @@ import ImageIO
 enum HeroGIF {
     static let frameCount = 120
     static let delay = 0.05
-    static let scale: CGFloat = 2
+    /// 800 px wide for the README's 400 pt display; the popover is 360 pt wide.
+    static let scale: CGFloat = 800 / 360
+    /// Only the top 560 pt of the popover is kept, so tagline, install and the top of the hero fit one screen.
+    static let heightPoints: CGFloat = 560
     static let landings: [(id: String, frame: Int, verdict: Verdict)] = [
         ("lumen/api#1113", 40, .changes),
         ("lumen/web#91", 80, .approve),
@@ -48,7 +51,9 @@ enum HeroGIF {
                 .background(Palette(.dark).ground)
             let renderer = ImageRenderer(content: view)
             renderer.scale = scale
-            guard let image = renderer.cgImage else { return false }
+            guard let full = renderer.cgImage,
+                  let image = full.cropping(to: CGRect(x: 0, y: 0, width: full.width,
+                                                       height: Int(heightPoints * scale))) else { return false }
             images.append(image)
         }
         guard let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path) as CFURL,
