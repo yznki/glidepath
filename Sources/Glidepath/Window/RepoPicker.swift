@@ -61,6 +61,11 @@ final class RepoCatalog: ObservableObject {
     }
 }
 
+/// The picker's keyboard row. An object so the cursor survives the picker re-rendering.
+final class PickerCursor: ObservableObject {
+    @Published var slug: String?
+}
+
 /// The repo picker: a search field, then one checkbox row per repo, with the PR count. Onboarding and the Repos
 /// "Add a repo…" sheet both use it. `selected` rows are checked; `locked` rows are checked and cannot be changed.
 struct RepoPicker: View {
@@ -69,14 +74,22 @@ struct RepoPicker: View {
     let selected: Set<String>
     var locked: Set<String> = []
     let toggle: (String) -> Void
+    @FocusState private var searchFocused: Bool
+    @FocusState private var listFocused: Bool
+    /// The row the keyboard is on. Space toggles it.
+    @StateObject private var cursor = PickerCursor()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             TextField(catalog.repoList == .loaded ? "Search \(catalog.repos.count) repos" : "Search repos", text: $search)
                 .winField()
+                .focused($searchFocused)
             list
                 .padding(.top, WinMetrics.s8)
                 .frame(maxHeight: .infinity, alignment: .top)
+        }
+        .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
+            takeAction()
         }
     }
 
@@ -112,13 +125,21 @@ struct RepoPicker: View {
                     .font(.system(size: 13))
                     .foregroundStyle(WinTheme.faint)
             } else {
-                WinScroll {
-                    VStack(spacing: 0) {
-                        ForEach(Array(rows.enumerated()), id: \.element.slug) { index, repo in
-                            row(repo, first: index == 0)
+                ScrollViewReader { proxy in
+                    WinScroll {
+                        VStack(spacing: 0) {
+                            ForEach(Array(rows.enumerated()), id: \.element.slug) { index, repo in
+                                row(repo, first: index == 0)
+                            }
                         }
                     }
+                    .onChange(of: cursor.slug) { _, slug in
+                        if let slug { proxy.scrollTo(slug) }
+                    }
                 }
+                .focusable()
+                .focused($listFocused)
+                .onKeyPress(phases: .down) { handleKey($0, rows: rows) }
             }
         }
     }
@@ -129,6 +150,7 @@ struct RepoPicker: View {
         let isLocked = locked.contains(repo.slug)
         return Button {
             toggle(repo.slug)
+            cursor.slug = repo.slug
         } label: {
             HStack(spacing: WinMetrics.s16) {
                 RepoCheckbox(on: on)
@@ -157,9 +179,70 @@ struct RepoPicker: View {
             }
             .contentShape(Rectangle())
             .opacity(isLocked ? 0.6 : 1)
+            .background(cursor.slug == repo.slug ? WinTheme.active : Color.clear)
         }
         .buttonStyle(.plain)
+        .focusable(false)
+        .id(repo.slug)
         .disabled(isLocked)
+    }
+
+    // MARK: Keys and actions
+
+    /// Arrows, Home and End move the cursor; Space toggles its row; a letter jumps to the first repo that starts with
+    /// the letters typed. ⌘A selects every visible repo and ⇧⌘A none. Nothing plain fires while a text field has focus.
+    private func handleKey(_ press: KeyPress, rows: [DiscoveredRepo]) -> KeyPress.Result {
+        let mods = ShortcutModifiers(press.modifiers)
+        if mods == [.command], press.characters == "a" {
+            selectAll(rows, on: true)
+            return .handled
+        }
+        if mods == [.command, .shift], press.characters == "a" || press.characters == "A" {
+            selectAll(rows, on: false)
+            return .handled
+        }
+        guard !TextFocus.isEditing else { return .ignored }
+        let current = rows.firstIndex { $0.slug == cursor.slug }
+        if press.key == .space, mods.isEmpty, let slug = cursor.slug, !locked.contains(slug) {
+            toggle(slug)
+            return .handled
+        }
+        if let key = Self.listKey(press.key), let move = ListNav.move(key, mods) {
+            if let i = ListNav.move(move, from: current, count: rows.count) { cursor.slug = rows[i].slug }
+            return .handled
+        }
+        if mods.subtracting(.shift).isEmpty, press.characters.count == 1, let ch = press.characters.first,
+           ch.isLetter || ch.isNumber,
+           let i = ListNav.typeSelect(String(ch), titles: rows.map(\.slug), from: current) {
+            cursor.slug = rows[i].slug
+            return .handled
+        }
+        return .ignored
+    }
+
+    private static func listKey(_ key: KeyEquivalent) -> ListKey? {
+        switch key {
+        case .upArrow: return .up
+        case .downArrow: return .down
+        case .home: return .home
+        case .end: return .end
+        case .pageUp: return .pageUp
+        case .pageDown: return .pageDown
+        default: return nil
+        }
+    }
+
+    /// Checks or clears every visible repo that can change. Locked rows keep their state.
+    private func selectAll(_ rows: [DiscoveredRepo], on: Bool) {
+        for repo in rows where !locked.contains(repo.slug) && selected.contains(repo.slug) != on {
+            toggle(repo.slug)
+        }
+    }
+
+    /// Find (⌘F) focuses the search field; the Select menu's items reach the picker the same way.
+    private func takeAction() {
+        guard let action = WindowRouter.shared.take([.find]) else { return }
+        if action == .find { searchFocused = true }
     }
 
     /// "Go · pushed 12 minutes ago", from what the list knows.

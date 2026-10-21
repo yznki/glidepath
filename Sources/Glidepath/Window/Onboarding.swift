@@ -9,6 +9,8 @@ struct OnboardingView: View {
     @ObservedObject var store: Store
     @StateObject var model: OnboardingModel
     @Environment(\.accessibilityReduceMotion) var reduceMotion
+    /// Keeps keyboard focus on the flow, so its keys work without a click. Text fields take it when clicked.
+    @FocusState private var rootFocused: Bool
 
     /// `model` is nil in the app; snapshot rendering passes a fixture model.
     init(store: Store, model: OnboardingModel? = nil) {
@@ -29,6 +31,32 @@ struct OnboardingView: View {
             if step == .tools { model.checkTools() }
             if step == .repos { model.loadRepos() }
         }
+        .focusable()
+        .focused($rootFocused)
+        .onAppear { rootFocused = true }
+        .onKeyPress(phases: .down) { handleKey($0) }
+    }
+
+    /// Return or ⌘↩ runs the step's primary action when it is enabled (plain Return only with no text field focused).
+    /// Esc or ⌘[ goes Back; Esc never closes the window. ⌘R checks the tools again on the Tools step.
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        let mods = ShortcutModifiers(press.modifiers)
+        let editing = TextFocus.isEditing
+        if press.key == .return, mods == [.command] || (mods.isEmpty && !editing) {
+            guard model.state.canContinue(from: model.state.step) else { return .ignored }
+            model.advance()
+            return .handled
+        }
+        if press.key == .escape || (mods == [.command] && press.characters == "[") {
+            guard model.state.canGoBackFrom(model.state.step) else { return .ignored }
+            model.goBack()
+            return .handled
+        }
+        if mods == [.command], press.characters == "r", model.state.step == .tools {
+            model.checkTools()
+            return .handled
+        }
+        return .ignored
     }
 
     /// The pane: the step's body, then the footer bar pinned to the bottom. Title row at 136, 64 side insets. The body
