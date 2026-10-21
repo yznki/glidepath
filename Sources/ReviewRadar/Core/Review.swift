@@ -43,6 +43,36 @@ enum ReviewValidator {
     static let maxComments = 5
     static let maxReason = 60
 
+    /// Reviews are text. Images, iframes and links to other hosts can carry tracking pixels or
+    /// lure readers, so they are refused before anything is posted.
+    static func checkContent(_ text: String) throws {
+        let lower = text.lowercased()
+        if lower.contains("![") || lower.contains("<img") || lower.contains("<iframe") {
+            throw CommandError("remove the image or iframe (![ or <img or <iframe); reviews are plain text")
+        }
+        for host in urlHosts(in: text) where host != "github.com" {
+            throw CommandError("remove the link to \(host); only github.com links are allowed")
+        }
+    }
+
+    /// Lowercased hosts of every http or https URL in the text.
+    static func urlHosts(in text: String) -> [String] {
+        let terminators: Set<Character> = [" ", "\n", "\r", "\t", ")", "]", ">", "<", "\"", "'", "`"]
+        var hosts: [String] = []
+        for scheme in ["https://", "http://"] {
+            var search = text.startIndex..<text.endIndex
+            while let found = text.range(of: scheme, options: .caseInsensitive, range: search) {
+                var end = found.upperBound
+                while end < text.endIndex, !terminators.contains(text[end]) { end = text.index(after: end) }
+                let rest = text[found.upperBound..<end]
+                let host = rest.prefix { !"/?#:".contains($0) }
+                hosts.append(host.lowercased())
+                search = found.upperBound..<text.endIndex
+            }
+        }
+        return hosts
+    }
+
     /// Checks a draft against the PR's file list and the repo's posting mode, and builds the payload.
     /// `head` comes from run state, never from the draft.
     static func validate(_ d: Draft, files: Set<String>, posting: Posting, head: String) throws -> ReviewPayload {
@@ -55,6 +85,7 @@ enum ReviewValidator {
         }
         let body = d.body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { throw CommandError("body is empty") }
+        try checkContent(body)
         guard body.count <= maxBody else { throw CommandError("body is \(body.count) characters; limit is \(maxBody)") }
         guard d.comments.count <= maxComments else {
             throw CommandError("\(d.comments.count) comments; the limit is \(maxComments)")
@@ -70,6 +101,7 @@ enum ReviewValidator {
             guard text.count <= maxCommentBody else {
                 throw CommandError("comment on \(c.path):\(c.line) is \(text.count) characters; limit is \(maxCommentBody)")
             }
+            try checkContent(text)
             if let side = c.side, side != "RIGHT" { throw CommandError("only side RIGHT is allowed") }
             comments.append(PayloadComment(path: c.path, line: c.line, side: "RIGHT", body: text))
         }
