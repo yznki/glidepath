@@ -127,6 +127,13 @@ enum ConfigEditor {
         return out
     }
 
+    /// The "Open Glidepath with ⌥⌘G" switch: `hotkey` at the top level of the config.
+    static func setHotkey(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.hotkey = on
+        return out
+    }
+
     /// The "Check for updates automatically" switch: `check_updates` at the top level of the config.
     static func setCheckUpdates(_ config: Config, _ on: Bool) -> Config {
         var out = config

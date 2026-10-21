@@ -28,6 +28,10 @@ struct SettingsView: View {
                             model.commit("autoUpdates", store: store) { ConfigEditor.setCheckUpdates($0, !($0.checkUpdates)) }
                         }
                     }
+                    SettingRow(title: "Open Glidepath with ⌥⌘G", detail: "Opens the menu bar popover from any app.",
+                               error: model.rowErrors["hotkey"]) {
+                        WinToggle(isOn: config?.hotkey ?? true) { model.toggleHotkey(store) }
+                    }
                     SettingRow(title: "Open at login", detail: "Starts Glidepath when you log in.",
                                error: model.rowErrors["login"]) {
                         WinToggle(isOn: model.loginOn) { model.toggleLogin(store) }
@@ -243,6 +247,21 @@ final class SettingsModel: ObservableObject {
             return
         }
         runChecks(store.paths)
+    }
+
+    /// Turns the ⌥⌘G shortcut on or off. Turning it on registers the shortcut first: when the system refuses it, the
+    /// setting stays off and the row says why.
+    func toggleHotkey(_ store: Store) {
+        let on = !(store.snap.config?.hotkey ?? true)
+        if on {
+            guard GlobalHotkey.shared.register() else {
+                rowErrors["hotkey"] = "Another app already uses ⌥⌘G, so Glidepath cannot register it."
+                return
+            }
+        } else {
+            GlobalHotkey.shared.unregister()
+        }
+        commit("hotkey", store: store) { ConfigEditor.setHotkey($0, on) }
     }
 
     /// Runs `Checks.tools()` and `Checks.installed(paths)` off the main thread. Shows "Checking…" until they return.

@@ -12,6 +12,9 @@ struct GlidepathApp: App {
             exit(0)
         }
         // README hero: the running popover as a looping GIF, with injected time.
+        if args.count == 1 || args.dropFirst().first == "app" {
+            MainActor.assumeIsolated { GlobalHotkey.shared.applyConfig(Paths()) }
+        }
         if let i = args.firstIndex(of: "--hero-gif"), i + 1 < args.count {
             let path = args[i + 1]
             let ok = MainActor.assumeIsolated { HeroGIF.render(to: path) }

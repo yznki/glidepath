@@ -175,6 +175,13 @@ final class ConfigEditTests: XCTestCase {
         try assertRoundTrips(c)
     }
 
+    func testHotkeySwitchRoundTrips() throws {
+        let off = ConfigEditor.setHotkey(try base(), false)
+        XCTAssertFalse(off.hotkey)
+        try assertRoundTrips(off)
+        XCTAssertTrue(ConfigEditor.setHotkey(off, true).hotkey)
+    }
+
     func testUnknownRepoRejected() throws {
         XCTAssertThrowsError(try ConfigEditor.setPosting(base(), slug: "nope/none", .review))
     }
