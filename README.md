@@ -116,10 +116,37 @@ Edits take effect on the next run. `review-radar doctor` checks the file.
 
 ## Security model
 
-A review session can read the PR and post one review. It cannot run git, gh or arbitrary commands,
-and it cannot read or write outside the directories it needs.
+A review session can read the PR and post one review. It cannot run git, gh or other commands, and it
+cannot read or write outside the directories it needs. The layers below are independent: each one
+blocks something the others might miss.
 
-**Wrappers, not commands.** The session gets review-radar's own subcommands and no general shell:
+**1. Allowlist.** The session runs with `--permission-mode dontAsk` and this allowlist. Anything else is
+denied rather than asked about, because nobody is there to answer.
+
+```
+Read(//<clone>/**)                     the checkout of the default branch
+Read(//<scratch>/**)                   this run's scratch directory
+Edit(//<scratch>/**)                   writes only under scratch
+Read(//<rules file>)                   only when rules is set
+Agent(gatherer)  Agent(reviewer)  Agent(checker)
+Bash(review-radar pr info:*)  Bash(review-radar pr diff:*)  Bash(review-radar pr threads:*)
+Bash(review-radar state set:*)  Bash(review-radar post:*)
+mcp__gitnexus__detect_changes  ...impact  ...api_impact  ...context  ...query  ...route_map  ...shape_check
+                                       only when GitNexus is on
+```
+
+There is no bare `Read`, `Grep` or `Glob`. Grep and Glob work only inside the session's working
+directories. The skill is not a file the session reads: its text is passed as the system prompt.
+
+**2. Bash guard hook.** The session has a PreToolUse hook on `Bash` that runs `review-radar hook bash-guard`
+for every command. It denies any command that does not start with `review-radar `, and any command that
+contains `;`, `&`, `|`, `$`, a backtick, `>`, `<`, `(`, `)`, or a newline. The guard fails closed: if its
+input cannot be read, it blocks.
+
+**3. Disallowed tools.** `WebFetch`, `WebSearch`, `Skill`, and `Bash(ps:*)`, `Bash(du:*)`, `Bash(lsof:*)`,
+`Bash(which:*)` are denied even if something else allowed them.
+
+**4. Wrappers, not commands.** The review-radar subcommands the session may use:
 
 | Command | What it does |
 | --- | --- |
@@ -127,47 +154,50 @@ and it cannot read or write outside the directories it needs.
 | `review-radar pr diff --repo R --pr N [--path F]` | The diff, or one file's part of it. `F` must be a file in the PR. |
 | `review-radar pr threads --repo R --pr N` | Existing comments and reviews. Read-only. Also works in dry runs. |
 | `review-radar post --repo R --pr N` | Posts `final.json` after validation. Dry runs print the payload instead. |
-| `review-radar state set ...` | Stage progress for this run only. Cannot set verdicts. |
+| `review-radar state set ...` | Stage progress for this run only. Cannot set verdicts or the post stage. |
 
-Each wrapper takes only the flags listed above and no others. Each one checks its arguments against the
-run it is bound to. The run binding is set in the child process environment, not by the model. A repo or
-PR outside the run is refused with `unknown PR for this run`. A PR whose head moved since `pr info` is
-refused, and recorded as skipped. The wrappers call gh with an argument list, never through a shell.
+Each wrapper takes only the flags listed here and checks its arguments against the run it is bound to. The
+binding is set in the child process environment by the runner, not by the model. A repo or PR outside the
+run is refused with `unknown PR for this run`. A PR whose head has moved since `pr info` is refused and
+recorded as skipped. The wrappers call gh with an argument list, never through a shell.
 
-**Allowlist.** The session runs with `--permission-mode dontAsk` and this allowlist, and nothing else
-is allowed:
+**5. Posting checks.** Before anything is posted, `post` refuses a review that contains an image (`![`,
+`<img`), an iframe, or a link to any host other than github.com. It also enforces the length limits, at
+most 5 comments, and that each comment is on a file in the PR.
 
-```
-Read(//<clone>/**)                     the checkout of the default branch
-Read(//<scratch>/**)                   this run's scratch directory
-Read(//<home>/.claude/skills/review-radar/**)
-Edit(//<scratch>/**)                   writes only under scratch (Write is covered by Edit rules)
-Read(//<rules file>)                   only when rules is set
-Agent                                  subagents, which inherit the same rules
-Bash(review-radar pr info:*)
-Bash(review-radar pr diff:*)
-Bash(review-radar pr threads:*)
-Bash(review-radar state set:*)
-Bash(review-radar post:*)
-mcp__gitnexus__*                       only when GitNexus is enabled
-```
+**6. Subagents.** The three subagents (`gatherer` on Haiku, `reviewer` and `checker` on Sonnet) are defined
+by the session itself, in dontAsk, with the same allowlist and the same hook. Their `tools` field cannot
+limit Bash to specific commands, so for Bash the limits are the allowlist and the guard, which apply to
+subagents too.
 
-Absolute paths use claude's `//` prefix. There is no bare `Read`, `Grep` or `Glob`. Grep and Glob work
-only inside the session's working directories (the checkout and scratch). `WebFetch` and `WebSearch` are
-denied. Session launch uses `--setting-sources user`, so the checkout's own `.claude/` settings are not
-loaded. `--strict-mcp-config` loads only the GitNexus server, and only when enabled. `doctor` warns about
-broad allow rules and hooks in your global `~/.claude/settings.json`, because those still apply.
+**7. Your own hooks.** `run` refuses to start when `~/.claude/settings.json`, `~/.claude/settings.local.json`
+or any hooks file under `~/.claude/plugins` defines a `PreToolUse`, `PostToolUse` or `PermissionRequest`
+hook, because those hooks would run inside review sessions. The message names the file. `SessionStart`,
+`UserPromptSubmit` and `Stop` hooks are allowed. `doctor` reports the same. To run reviews, move the hooks
+out of those files, or stop the plugin that provides them, then run again.
+
+**8. Settings and MCP.** The session loads only the user's settings (`--setting-sources user`), never the
+clone's `.claude/` folder, and only the MCP servers the session defines (`--strict-mcp-config`). The
+session's own settings (its hook and its allowlist) come from the command line.
 
 **Environment.** The session gets `PATH`, `HOME`, `USER`, `LANG`, `TMPDIR`, claude's own variables
 (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_*`) and the run binding. `GH_TOKEN` and `GITHUB_TOKEN` are never
-passed. The wrappers use your own gh sign-in, as gh's own configuration and keychain provide it.
+passed. The wrappers use your own gh sign-in, as gh's configuration and keychain provide it.
+
+**GitNexus.** GitNexus can read the repos it has indexed, and `auto` mode turns it off whenever the
+authors are `anyone`, because those PRs come from strangers. Set `gitnexus = "on"` explicitly to override.
+Only the seven read-only GitNexus tools listed above are allowed; the tools that rename, sync groups or
+query across repos are not.
+
+**Rules file.** The rules file is visible to the reviewer and may be quoted in public comments. Never put
+secrets, tokens, internal hostnames or private data in it.
 
 **Collaborators only, by default.** A PR author is reviewed only when they have write, maintain or admin
 access, and that permission must be readable. Without push access, the permission cannot be read, and
 those PRs are skipped with that reason. For those authors, or any others, list the logins in `authors`.
 
 **PR text is untrusted.** Titles, bodies, comments, diffs and file contents are data. The skill says so,
-and the wrappers label PR text as data in their output. This is a defence in depth, not a guarantee: a
+and the wrappers label PR text as data in their output. This is defence in depth, not a guarantee: a
 convincing PR can still get a poor review posted. That is why `posting = "comment"` is the default, and why
 dry runs exist.
 

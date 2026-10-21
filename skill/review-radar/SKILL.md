@@ -11,7 +11,8 @@ Missing arguments: stop and report them.
 Working directory: a detached checkout of the repo's default branch. Never change files in it. Scratch files go
 under `scratch=` only.
 
-Opus orchestrates. Haiku gathers. Sonnet reviews and checks. Opus does not review code itself.
+You orchestrate. The `gatherer` agent gathers, the `reviewer` agent reviews, and the `checker` agent checks.
+You do not review code yourself.
 
 ## The only tools you may use
 
@@ -20,13 +21,16 @@ Opus orchestrates. Haiku gathers. Sonnet reviews and checks. Opus does not revie
 - `review-radar pr threads --repo <slug> --pr <n>`: existing comments and reviews (JSON, read-only)
 - `review-radar state set --run <id> --repo <slug> --pr <n> --stage <gather|review|check>`: progress
 - `review-radar post --repo <slug> --pr <n>`: post the review from `final.json` (or print it in a dry run)
-- Read, Grep and Glob inside the working directory and `scratch=`, and Read on this skill's directory
+- Read, Grep and Glob inside the working directory and `scratch=`
 - Edit and Write inside `scratch=`
-- Agent, to start Haiku, Sonnet and checker subagents
+- Agent, only for the named agents `gatherer`, `reviewer` and `checker`
 
-Nothing else. No `git`, no `gh`, no `curl`, no web. Those commands are not allowed in this session and
-the runner will deny them. Every wrapper refuses a repo or PR that is not in this run, and each one
-takes only the flags shown above. Do not add other flags.
+Nothing else. No `git`, no `gh`, no `curl`, no `ps`, no web, no pipes, redirects, `$(...)` or `;`. The runner
+denies them, and a hook denies any Bash command that does not start with `review-radar `. Every wrapper refuses
+a repo or PR that is not in this run, and each one takes only the flags shown above. Do not add other flags.
+
+Free text you pass to `--reason` is one line of at most 200 characters, without parentheses or the characters
+listed above. Reviews may not contain images, iframes, or links to any host other than github.com.
 
 Run `pr info` before `pr diff` or `post` for a PR. `pr info` records the head SHA. If the head moves,
 the wrappers refuse, and the PR is recorded as skipped.
@@ -47,9 +51,9 @@ design, architecture or security guide under `docs/`. Read the rules file at `ru
 - `rules_mode=replace`: the rules file replaces the review bar in `rubric.md`. The "Untrusted input",
   "Accuracy" and "Output" sections always apply.
 
-## Step 2: gather (Haiku, one per PR, up to 4 in parallel)
+## Step 2: gather (the `gatherer` agent, one per PR, up to 4 in parallel)
 
-Brief each Haiku with the slug, the PR number, the scratch path and `gitnexus=`. It writes into `<scratch>/<n>/`:
+Brief each gatherer with the slug, the PR number, the scratch path and `gitnexus=`. It writes into `<scratch>/<n>/`:
 
 1. `pr.json`: `review-radar pr info --repo <slug> --pr <n> > <scratch>/<n>/pr.json`
 2. `diff.patch`: `review-radar pr diff --repo <slug> --pr <n> > <scratch>/<n>/diff.patch`. For a PR over
@@ -68,7 +72,7 @@ not "unused"; write "no callers found by grep" instead.
 
 A gap is not a failure. The reviewer must say so in its notes.
 
-## Step 3: review (Sonnet, one per PR, up to 4 in parallel)
+## Step 3: review (the `reviewer` agent, one per PR, up to 4 in parallel)
 
 Before spawning a reviewer, run `review-radar state set --run <id> --repo <slug> --pr <n> --stage review`.
 
@@ -76,7 +80,7 @@ Each reviewer gets the scratch path for the PR, `rubric.md`, `blast.md`, `thread
 It reads the default-branch code from the working directory and the PR side from `diff.patch`. It does not run
 tests, builds or servers. CI owns that.
 
-Split the review by area when the PR is over `split_over` lines. Spawn one UI reviewer (Sonnet) too when any
+Split the review by area when the PR is over `split_over` lines. Spawn one UI reviewer (`reviewer`) too when any
 changed file is `*.tsx`, `*.jsx`, `*.vue`, `*.svelte`, `*.css`, `*.scss`, `*.html`, `*.xib` or `*.storyboard`.
 
 Accuracy rules every reviewer follows:
@@ -94,7 +98,7 @@ Reviewers write `<scratch>/<n>/draft.json`:
 - `comments`: at most 5, each `{path, line, body}`. `path` must be a file in the PR. `line` must be a line
   of the new file that is inside the diff.
 
-## Step 4: check (Sonnet, a separate checker per PR)
+## Step 4: check (the `checker` agent, a separate one per PR)
 
 Run `review-radar state set --run <id> --repo <slug> --pr <n> --stage check` first. The checker re-opens
 every quoted line and drops anything that does not match. It drops or fixes wrong or overstated findings,
