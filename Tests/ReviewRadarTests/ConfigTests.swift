@@ -2,7 +2,7 @@ import XCTest
 @testable import ReviewRadar
 
 final class ConfigTests: XCTestCase {
-    let home = "/Users/tester"
+    let home = "/fake/home"
 
     func testFullConfigParses() throws {
         let text = """
@@ -28,10 +28,10 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(c.repos.count, 1)
         let r = c.repos[0]
         XCTAssertEqual(r.slug, "acme/api")
-        XCTAssertEqual(r.clone, "/Users/tester/clones/api")
+        XCTAssertEqual(r.clone, "/fake/home/clones/api")
         XCTAssertEqual(r.posting, .review)
         XCTAssertEqual(r.authors, .logins(["alice", "bob"]))
-        XCTAssertEqual(r.rules, "/Users/tester/rules/api.md")
+        XCTAssertEqual(r.rules, "/fake/home/rules/api.md")
         XCTAssertEqual(r.rulesMode, .replace)
         XCTAssertEqual(r.gitnexus, .off)
     }
@@ -41,7 +41,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(c.schedule.map(\.text), ["07:00", "13:00", "19:00"])
         XCTAssertEqual(c.limits, Limits())
         let r = c.repos[0]
-        XCTAssertEqual(r.clone, "/Users/tester/review-radar/clones/acme-web")
+        XCTAssertEqual(r.clone, "/fake/home/review-radar/clones/acme-web")
         XCTAssertEqual(r.posting, .comment)
         XCTAssertEqual(r.authors, .collaborators)
         XCTAssertEqual(r.rules, nil)

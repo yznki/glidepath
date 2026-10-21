@@ -9,7 +9,7 @@
     <key>CFBundleDisplayName</key>
     <string>Review Radar</string>
     <key>CFBundleExecutable</key>
-    <string>ReviewRadar</string>
+    <string>review-radar</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>

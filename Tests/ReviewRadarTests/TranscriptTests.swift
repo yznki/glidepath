@@ -22,10 +22,10 @@ final class TranscriptTests: XCTestCase {
     }
 
     func testProjectDirEncodesCwd() {
-        let paths = Paths(home: "/Users/a")
-        XCTAssertEqual(Transcript.projectDir(paths: paths, cwd: "/Users/a/dev/clone"),
-                       "/Users/a/.claude/projects/-Users-a-dev-clone")
-        XCTAssertEqual(Transcript.projectDir(paths: paths, cwd: "/Users/a/dev.x/clone"),
-                       "/Users/a/.claude/projects/-Users-a-dev-x-clone")
+        let paths = Paths(home: "/fake/home")
+        XCTAssertEqual(Transcript.projectDir(paths: paths, cwd: "/fake/home/dev/clone"),
+                       "/fake/home/.claude/projects/-fake-home-dev-clone")
+        XCTAssertEqual(Transcript.projectDir(paths: paths, cwd: "/fake/home/dev.x/clone"),
+                       "/fake/home/.claude/projects/-fake-home-dev-x-clone")
     }
 }
