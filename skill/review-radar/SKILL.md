@@ -22,12 +22,16 @@ You do not review code yourself.
 - `review-radar state set --run <id> --repo <slug> --pr <n> --stage <gather|review|check>`: progress
 - `review-radar post --repo <slug> --pr <n>`: post the review from `final.json` (or print it in a dry run)
 - Read inside the working directory and `scratch=`
-- `review-radar code grep --pattern TEXT`: fixed-string search of the checkout's tracked files (line numbers, capped at 200 lines)
-- `review-radar code files`: the checkout's tracked file list
+- `review-radar code grep --pattern TEXT`: the only flag is `--pattern`. TEXT is one line of 1 to 120 characters,
+  matched as a fixed string against tracked files of the checkout. Output is `path:line:text`, capped at 200 lines.
+  No `--repo`, no `--path`, no regular expressions.
+- `review-radar code files`: no flags. Lists the tracked files of the checkout, one per line.
 - Edit and Write inside `scratch=`
 - Agent, only for the named agents `gatherer`, `reviewer` and `checker`
 
-Nothing else. No `git`, no `gh`, no `curl`, no `ps`, no web, no pipes, redirects, `$(...)` or `;`. The runner
+Nothing else. Do not run `--help` on any command: the subcommands are documented here. Do not run any shell
+command other than the review-radar subcommands listed above. No `git`, no `gh`, no `curl`, no `ps`, no web,
+no `cat`, `ls` or `find` on the checkout, no pipes, redirects, `$(...)` or `;`. The runner
 denies them, and a hook denies any Bash command that does not start with `review-radar `. Every wrapper refuses
 a repo or PR that is not in this run, and each one takes only the flags shown above. Do not add other flags.
 

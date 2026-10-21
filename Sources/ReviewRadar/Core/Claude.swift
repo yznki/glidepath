@@ -106,11 +106,11 @@ enum Claude {
         }
         return json([
             "gatherer": agent("Gathers one PR's data into its scratch folder with review-radar pr commands.",
-                              "Gather PR data only with review-radar pr info, pr diff, pr threads and the GitNexus read tools. Write only inside the scratch folder you are given. Report gaps.", "haiku"),
+                              "Gather PR data only with review-radar pr info, pr diff, pr threads, code grep, code files and the GitNexus read tools. Never run --help or any other shell command. Write only inside the scratch folder you are given. Report gaps.", "haiku"),
             "reviewer": agent("Reviews one PR against the rubric and writes draft.json.",
-                              "Review one PR against the rubric. Quote exact lines. Write draft.json only inside the scratch folder you are given.", "sonnet"),
+                              "Review one PR against the rubric. Quote exact lines. Never run --help or any shell command other than review-radar's listed subcommands. Write draft.json only inside the scratch folder you are given.", "sonnet"),
             "checker": agent("Verifies every finding in a draft against the code and writes final.json.",
-                             "Re-open every quoted line. Drop findings that do not match. Keep verified blockers. Write final.json only inside the scratch folder you are given.", "sonnet"),
+                             "Re-open every quoted line. Drop findings that do not match. Keep verified blockers. Never run --help or any shell command other than review-radar's listed subcommands. Write final.json only inside the scratch folder you are given.", "sonnet"),
         ])
     }
 
