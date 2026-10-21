@@ -178,4 +178,10 @@ final class SecurityTests: XCTestCase {
         XCTAssertThrowsError(try StrictFlags.reason(["--reason": String(repeating: "x", count: 201)]))
         XCTAssertThrowsError(try StrictFlags.reason(["--reason": "a\nb"]))
     }
+
+    func testChildPathStartsWithRunningBinaryDirectory() {
+        XCTAssertEqual(Claude.pathPrepending("/opt/rr/bin", to: "/usr/bin:/bin"), "/opt/rr/bin:/usr/bin:/bin")
+        XCTAssertEqual(Claude.pathPrepending("/opt/rr/bin", to: "/usr/bin:/opt/rr/bin"), "/opt/rr/bin:/usr/bin")
+        XCTAssertEqual(Claude.pathPrepending("/opt/rr/bin", to: nil), "/opt/rr/bin")
+    }
 }

@@ -287,7 +287,8 @@ final class Runner {
             agents: Claude.agentsJSON(),
             settings: Claude.hookSettingsJSON(binary: InitCommand.binaryPath()),
             allowlist: allowlist)
-        let childEnv = Claude.childEnvironment(parent: env, binding: binding.environment)
+        var childEnv = Claude.childEnvironment(parent: env, binding: binding.environment)
+        childEnv["PATH"] = Claude.pathPrepending(InitCommand.runningBinaryDirectory(), to: childEnv["PATH"])
 
         print("\(repo.slug): reviewing \(numbers.map { "#\($0)" }.joined(separator: " "))")
         print("allowlist: " + allowlist.joined(separator: ","))

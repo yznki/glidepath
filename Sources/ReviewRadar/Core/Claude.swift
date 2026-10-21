@@ -59,6 +59,13 @@ enum Claude {
         "/" + absolute
     }
 
+    /// PATH with `dir` first, so `review-radar` resolves to the binary that started the run.
+    /// Without this, a session can fail with "review-radar not on PATH" when the binary is not installed.
+    static func pathPrepending(_ dir: String, to path: String?) -> String {
+        let parts = (path ?? "").split(separator: ":").map(String.init)
+        return ([dir] + parts.filter { $0 != dir }).joined(separator: ":")
+    }
+
     /// Environment for the claude process. Only these pass through; GH_TOKEN and GITHUB_TOKEN never do.
     /// The review wrappers call gh with the user's own sign-in, which lives in the keychain and gh's config.
     static func childEnvironment(parent: [String: String], binding: [String: String]) -> [String: String] {

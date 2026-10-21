@@ -100,6 +100,11 @@ enum InitCommand {
         return status == 0 ? 0 : 1
     }
 
+    /// Directory of the binary that is running now, with symlinks resolved.
+    static func runningBinaryDirectory() -> String {
+        URL(fileURLWithPath: binaryPath()).resolvingSymlinksInPath().deletingLastPathComponent().path
+    }
+
     /// The path launchd should run. Prefers the installed PATH entry (stable across upgrades).
     static func binaryPath() -> String {
         let arg0 = CommandLine.arguments[0]
