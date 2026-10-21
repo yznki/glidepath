@@ -38,7 +38,13 @@ final class ReviewTextTests: XCTestCase {
 
     func testFileLivesUnderRunAndOwnerNameFolder() {
         XCTAssertEqual(ReviewText.path(paths, runId: "run-1", slug: "acme/api", n: 7),
-                       home + "/state/reviews/run-1/acme-api/7.json")
+                       home + "/state/reviews/run-1/acme/api/7.json")
+    }
+
+    /// Owner and name are separate segments, so a hyphen in one cannot collide with a slash in the other.
+    func testSlugsWithHyphensDoNotCollide() {
+        XCTAssertNotEqual(ReviewText.path(paths, runId: "run-1", slug: "a/b-c", n: 1),
+                          ReviewText.path(paths, runId: "run-1", slug: "a-b/c", n: 1))
     }
 
     func testMissingFileReadsAsNil() {
@@ -57,7 +63,7 @@ final class ReviewTextTests: XCTestCase {
         ReviewText.prune(root: root, now: now, maxAge: 90 * day)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: root + "/reviews/old-run"))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: root + "/reviews/new-run/acme-api/7.json"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root + "/reviews/new-run/acme/api/7.json"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: root + "/runs/old-run.json"), "prune leaves run files alone")
     }
 }

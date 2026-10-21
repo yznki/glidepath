@@ -587,6 +587,8 @@ final class OnboardingModel: ObservableObject {
     @Published private(set) var copied: String?
     /// Where an existing config.toml was copied before onboarding replaced it, shown on the final step.
     @Published private(set) var backupNote: String?
+    /// Bumped by each first sweep and by its end. A poll whose generation is no longer current lands nothing.
+    private var sweepGeneration = 0
     /// True once a first sweep has found no scheduled job and written one. "Post nothing yet" pauses only that job.
     private var createdJob = false
     /// PRs of the dry run, as the first sweep step shows them while it runs and after it lands.
@@ -846,10 +848,12 @@ final class OnboardingModel: ObservableObject {
         liveStrips = []
         message = nil
 
+        sweepGeneration += 1
+        let poll = sweepGeneration
         let poller = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
-                await refreshLive(since: started)
+                await refreshLive(since: started, generation: poll)
             }
         }
         Task {
@@ -863,7 +867,9 @@ final class OnboardingModel: ObservableObject {
                 }
             }.value
             poller.cancel()
-            await refreshLive(since: started)
+            // Polls still in flight belong to the old generation and land nothing; the final read is the last word.
+            sweepGeneration += 1
+            await refreshLive(since: started, generation: sweepGeneration)
             switch outcome {
             case .failure(let error):
                 state.firstSweep = .failed(error.message)
@@ -879,10 +885,12 @@ final class OnboardingModel: ObservableObject {
         }
     }
 
-    /// Reads the current sweep's run file off the main thread, then shows its PRs here.
-    private func refreshLive(since started: Date) async {
+    /// Reads the current sweep's run file off the main thread, then shows its PRs here, unless a newer sweep or the
+    /// end of this one has superseded `generation`.
+    private func refreshLive(since started: Date, generation: Int) async {
         let paths = self.paths
         let run = await Task.detached(priority: .utility) { currentSweepRun(paths: paths, since: started) }.value
+        guard generation == sweepGeneration else { return }
         liveStrips = Store.strips(from: run)
     }
 

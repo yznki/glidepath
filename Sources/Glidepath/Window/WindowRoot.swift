@@ -35,17 +35,24 @@ final class WindowRouter: ObservableObject {
         self.showOnboarding = showOnboarding ?? WindowRouter.needsSetup()
     }
 
-    /// True when there is no config file yet, or a first sweep failed and has not been retried, so the window opens
-    /// on onboarding.
-    static func needsSetup(paths: Paths = Paths()) -> Bool {
-        !FileManager.default.fileExists(atPath: paths.configFile) || OnboardingResume.failedSweep != nil
+    /// True when the window should open on onboarding: there is no config file, or (when the window is opened without
+    /// a section, from the popover's setup or at launch) a first sweep failed and has not been retried. A section
+    /// opened from elsewhere, such as Reviews, never opens onboarding for a failed sweep.
+    static func needsSetup(paths: Paths = Paths(), forSection: Bool = false) -> Bool {
+        opensOnboarding(hasConfig: FileManager.default.fileExists(atPath: paths.configFile),
+                        failedSweep: OnboardingResume.failedSweep != nil, forSection: forSection)
+    }
+
+    /// The decision behind `needsSetup`, without the disk or the failure state.
+    nonisolated static func opensOnboarding(hasConfig: Bool, failedSweep: Bool, forSection: Bool) -> Bool {
+        !hasConfig || (!forSection && failedSweep)
     }
 
     /// Selects `section` (when given), opens the main window and brings the app forward. With no config file the
     /// window opens on onboarding.
     func open(_ section: WindowSection?) {
         if let section { self.section = section }
-        if WindowRouter.needsSetup() { showOnboarding = true }
+        if WindowRouter.needsSetup(forSection: section != nil) { showOnboarding = true }
         openAction?("main")
         NSApp.activate(ignoringOtherApps: true)
     }

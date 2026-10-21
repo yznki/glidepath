@@ -105,7 +105,8 @@ struct ReviewsView: View {
     @ViewBuilder
     private var detail: some View {
         if let row = model.selected {
-            ReviewDetail(row: row, store: store)
+            // The text is read for the selected row only; the list keeps just the posted time.
+            ReviewDetail(row: row, text: store.reviewText(runId: row.runId, slug: row.repo, n: row.number), store: store)
         } else {
             Text("No review selected.")
                 .font(.system(size: 13))
@@ -121,6 +122,8 @@ struct ReviewsView: View {
 /// comments as cards, and the footer.
 struct ReviewDetail: View {
     let row: ReviewRow
+    /// What the review said, read for this row. Nil for reviews from before 1.2.
+    let text: ReviewTextRecord?
     @ObservedObject var store: Store
     @Environment(\.colorScheme) private var scheme
 
@@ -177,7 +180,7 @@ struct ReviewDetail: View {
                 }
                 bodyView
                     .padding(.top, WinMetrics.s20)
-                ForEach(Array((row.text?.comments ?? []).enumerated()), id: \.offset) { _, comment in
+                ForEach(Array((text?.comments ?? []).enumerated()), id: \.offset) { _, comment in
                     commentCard(comment)
                 }
         }
@@ -212,7 +215,7 @@ struct ReviewDetail: View {
     private var verdictWord: String {
         if row.tooLarge { return "Too large" }
         if row.verdict == .skipped { return "Skipped" }
-        if row.text?.event == "COMMENT" { return "Comment" }
+        if text?.event == "COMMENT" { return "Comment" }
         switch row.verdict {
         case .changes: return "Changes requested"
         case .approve: return "Approved"
@@ -227,7 +230,7 @@ struct ReviewDetail: View {
         return nil
     }
 
-    private var isCommentOnly: Bool { row.text?.event == "COMMENT" }
+    private var isCommentOnly: Bool { text?.event == "COMMENT" }
 
     private var barFill: Color {
         if row.tooLarge || row.verdict == .skipped || isCommentOnly { return WinTheme.surface }
@@ -296,7 +299,7 @@ struct ReviewDetail: View {
     private var bodyView: some View {
         if row.tooLarge {
             note("Too large: \((row.changedLines ?? 0).formatted()) lines, limit \(store.snap.maxChangedLines)")
-        } else if let text = row.text {
+        } else if let text {
             // Paragraphs are 8 apart (13/20 text, as the mockup's p + p).
             VStack(alignment: .leading, spacing: WinMetrics.s8) {
                 ForEach(Array(Self.paragraphs(text.body).enumerated()), id: \.offset) { _, paragraph in
@@ -444,8 +447,6 @@ enum ReviewFilter: String, CaseIterable, Hashable {
 /// One PR's result in one sweep: a verdict, a held draft, or a skip. Carried-over rows are left out, since their
 /// sweep is listed where they were decided.
 struct ReviewRow: Identifiable {
-    private static let isoFormatter = ISO8601DateFormatter()
-
     let runId: String
     let repo: String
     let number: Int
@@ -461,17 +462,13 @@ struct ReviewRow: Identifiable {
     let tokens: Int
     /// The sweep's length, from its start to its finish. nil while it runs.
     let duration: TimeInterval?
-    /// The text as it was sent or held. nil for reviews from before 1.2.
-    let text: ReviewTextRecord?
+    /// When the review was posted, from its text record. nil while it is a draft, and for reviews from before 1.2.
+    let postedAt: Date?
 
     var id: String { "\(runId)|\(repo)#\(number)" }
     /// The key the store uses for a PR's draft actions.
     var stripID: String { "\(repo)#\(number)" }
     var tooLarge: Bool { skipReason == "size" }
-
-    var postedAt: Date? {
-        text?.posted.flatMap { Self.isoFormatter.date(from: $0) }
-    }
 
     var status: WinStatus.Kind? {
         if tooLarge { return .tooLarge }
@@ -508,8 +505,9 @@ struct ReviewSweep: Identifiable {
     let duration: TimeInterval?
     var rows: [ReviewRow]
 
-    /// `text` looks up the review text for a PR in this run: the text store in the app, the fixture in snapshots.
-    init(run: RunState, text: (_ slug: String, _ n: Int) -> ReviewTextRecord?) {
+    /// `posted` gives when a PR's review was posted, from its text record: the text store in the app, the fixture in
+    /// snapshots. The text itself is not kept here.
+    init(run: RunState, posted: (_ slug: String, _ n: Int) -> Date?) {
         let length = run.finished.map { $0.timeIntervalSince(run.started) }
         id = run.id
         started = run.started
@@ -525,7 +523,7 @@ struct ReviewSweep: Identifiable {
                     reason: pr.reason, verdict: pr.verdict, draft: pr.draft == true, skipReason: pr.skipReason,
                     changedLines: pr.changedLines, head: pr.head, flagged: pr.flagged == true, tokens: pr.tokens,
                     duration: length,
-                    text: text(repo.slug, pr.n))
+                    postedAt: posted(repo.slug, pr.n))
             }
         }
     }
@@ -560,18 +558,43 @@ struct ReviewSweep: Identifiable {
 /// Loads the last 50 sweeps from disk and holds the list's filter and selection.
 @MainActor
 final class ReviewsModel: ObservableObject {
-    static let sweepLimit = 50
+    nonisolated static let sweepLimit = 50
 
     @Published var filter: ReviewFilter = .all
     @Published var selectedID: String?
     @Published private(set) var sweeps: [ReviewSweep] = []
+    private var loadTask: Task<Void, Never>?
 
-    /// Reads every run file and keeps the newest 50 sweeps.
-    /// ponytail: decodes every run file on each state change; index the runs if the folder grows large.
+    /// Keeps the newest 50 sweeps. Live, the run files are read off the main actor, after a 300 ms pause: a burst of
+    /// store changes costs one read, and a read still waiting when the next change lands is cancelled. Fixtures load at
+    /// once, since snapshot rendering reads them synchronously.
+    /// ponytail: decodes every run file on each load; index the runs if the folder grows large.
     func load(_ store: Store) {
-        let runs = store.allRuns().sorted { $0.started > $1.started }.prefix(Self.sweepLimit)
-        sweeps = runs.map { run in
-            ReviewSweep(run: run) { slug, n in store.reviewText(runId: run.id, slug: slug, n: n) }
+        loadTask?.cancel()
+        if store.isFixture {
+            sweeps = Self.sweeps(from: store.allRuns()) { runId, slug, n in
+                store.reviewText(runId: runId, slug: slug, n: n)?.postedDate
+            }
+            return
+        }
+        let paths = store.paths
+        loadTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+            let loaded = await Task.detached(priority: .utility) { () -> [ReviewSweep] in
+                Self.sweeps(from: RunStore(paths: paths).loadAll()) { runId, slug, n in
+                    ReviewText.read(paths, runId: runId, slug: slug, n: n)?.postedDate
+                }
+            }.value
+            guard !Task.isCancelled else { return }
+            self?.sweeps = loaded
+        }
+    }
+
+    /// The newest `sweepLimit` runs as sweeps.
+    nonisolated static func sweeps(from runs: [RunState], posted: (_ runId: String, _ slug: String, _ n: Int) -> Date?) -> [ReviewSweep] {
+        runs.sorted { $0.started > $1.started }.prefix(sweepLimit).map { run in
+            ReviewSweep(run: run) { slug, n in posted(run.id, slug, n) }
         }
     }
 

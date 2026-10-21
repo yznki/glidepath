@@ -1,6 +1,6 @@
 import Foundation
 
-/// What a review said, as it was sent (or held as a draft): `<stateDir>/reviews/<runId>/<owner-name>/<n>.json`.
+/// What a review said, as it was sent (or held as a draft): `<stateDir>/reviews/<runId>/<owner>/<name>/<n>.json`.
 /// `event`, `body` and `comments` are the validated payload GitHub received, so the window shows that text.
 /// `posted` is an ISO-8601 time once the review is posted, and null while it is a draft.
 struct ReviewTextRecord: Codable, Equatable {
@@ -11,6 +11,11 @@ struct ReviewTextRecord: Codable, Equatable {
     var posted: String?
 
     enum CodingKeys: String, CodingKey { case event, body, comments, head, posted }
+
+    /// `posted` as a date, or nil while it is a draft.
+    var postedDate: Date? {
+        posted.flatMap { ISO8601DateFormatter().date(from: $0) }
+    }
 
     /// Writes `posted` as null rather than leaving the key out, as the file format promises.
     func encode(to encoder: Encoder) throws {
@@ -27,8 +32,9 @@ struct ReviewTextRecord: Codable, Equatable {
 enum ReviewText {
     static let maxAge: TimeInterval = 90 * 24 * 3600
 
+    /// The owner and the name are two path segments, so "a/b-c" and "a-b/c" never share a folder.
     static func folder(_ paths: Paths, runId: String, slug: String) -> String {
-        paths.stateDir + "/reviews/" + runId + "/" + slug.replacingOccurrences(of: "/", with: "-")
+        paths.stateDir + "/reviews/" + runId + "/" + slug
     }
 
     static func path(_ paths: Paths, runId: String, slug: String, n: Int) -> String {
