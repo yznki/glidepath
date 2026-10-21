@@ -1,8 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300">
-  <g transform="translate(40 42)">
-    <line x1="20" y1="30" x2="150" y2="150" stroke="#2A6BB0" stroke-width="26" stroke-linecap="round"/>
-    <rect x="96" y="186" width="124" height="22" rx="11" fill="#0E2236"/>
-    <circle cx="178" cy="150" r="30" fill="#FFB020"/>
-  </g>
-  <text x="300" y="214" font-family="-apple-system,'SF Pro Display',system-ui" font-weight="650" font-size="168" letter-spacing="-7" fill="#0E2236">glidepath</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300"><g>
+ <defs>
+  <linearGradient id="capw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#46474C"/><stop offset="1" stop-color="#2A2B2F"/></linearGradient>
+  <filter id="shw" x="-25%" y="-25%" width="150%" height="160%"><feDropShadow dx="0" dy="6.315789473684211" stdDeviation="6.315789473684211" flood-color="#000" flood-opacity="0.35"/></filter>
+  <radialGradient id="glw" r="0.5"><stop offset="0" stop-color="#FFC24D" stop-opacity="0.55"/><stop offset="1" stop-color="#FFC24D" stop-opacity="0"/></radialGradient>
+ </defs>
+ <g filter="url(#shw)">
+  <rect x="30" y="38.21052631578947" width="240" height="231.78947368421052" rx="52" fill="#1B1C1F"/>
+  <rect x="30" y="30" width="240" height="231.78947368421052" rx="52" fill="url(#capw)"/>
+ </g>
+ <rect x="32" y="32" width="236" height="227.78947368421052" rx="50" fill="none" stroke="#fff" stroke-opacity="0.10" stroke-width="1.5"/>
+ <g stroke="#F5F5F7" stroke-width="20.210526315789473" stroke-linecap="round" fill="none">
+  <line x1="83.05263157894737" y1="73.57894736842104" x2="165.1578947368421" y2="146.21052631578948"/>
+  <line x1="136.73684210526315" y1="174.6315789473684" x2="228.3157894736842" y2="174.6315789473684"/>
+ </g>
+ <circle cx="179.68421052631578" cy="158.8421052631579" r="28.421052631578945" fill="url(#glw)"/>
+ <circle cx="179.68421052631578" cy="158.8421052631579" r="12.631578947368421" fill="#FFB020"/>
+ 
+</g><text x="310" y="212" font-family="-apple-system,'SF Pro Display',system-ui" font-weight="650" font-size="168" letter-spacing="-7" fill="#1D1D1F">glidepath</text></svg>

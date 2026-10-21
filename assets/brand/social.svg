@@ -1,46 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640">
-  <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1B4468"/><stop offset="0.55" stop-color="#0D2337"/><stop offset="1" stop-color="#050E18"/>
-    </linearGradient>
-    <radialGradient id="hz" r="0.5"><stop offset="0" stop-color="#FFB020" stop-opacity="0.32"/><stop offset="1" stop-color="#FFB020" stop-opacity="0"/></radialGradient>
-    <radialGradient id="glow" r="0.5"><stop offset="0" stop-color="#FFC24D" stop-opacity="0.8"/><stop offset="1" stop-color="#FFC24D" stop-opacity="0"/></radialGradient>
-  </defs>
-  <style>
-    .h{font-family:-apple-system,"SF Pro Display",system-ui;font-weight:700;font-size:64px;letter-spacing:-2.2px;fill:#F6F7F9}
-    .s{font-family:-apple-system,"SF Pro Text",system-ui;font-weight:400;font-size:26px;fill:#B9C6D4}
-    .m{font-family:-apple-system,"SF Pro Display",system-ui;font-weight:650;font-size:34px;letter-spacing:-1px;fill:#F6F7F9}
-    .c{font-family:ui-monospace,"SF Mono",monospace;font-size:21px;fill:#E9EEF4}
-  </style>
-  <rect width="1280" height="640" fill="url(#sky)"/>
-  <ellipse cx="960" cy="300" rx="520" ry="110" fill="url(#hz)"/>
-  <!-- runway to the horizon on the right -->
-  <polygon points="944,312 976,312 1240,640 680,640" fill="#15304A"/>
-  <g fill="#E9EEF4">
-    <rect x="958.5" y="330" width="3" height="12" rx="1.5"/><rect x="957.5" y="362" width="5" height="20" rx="2.5"/>
-    <rect x="956" y="410" width="8" height="32" rx="4"/><rect x="953" y="482" width="14" height="52" rx="7"/>
-    <rect x="949" y="586" width="22" height="80" rx="11"/>
-  </g>
-  <g fill="#F6F1E4">
-    <circle cx="938" cy="326" r="2.5"/><circle cx="982" cy="326" r="2.5"/>
-    <circle cx="924" cy="350" r="3.5"/><circle cx="996" cy="350" r="3.5"/>
-    <circle cx="900" cy="390" r="4.5"/><circle cx="1020" cy="390" r="4.5"/>
-    <circle cx="864" cy="450" r="6"/><circle cx="1056" cy="450" r="6"/>
-    <circle cx="806" cy="540" r="8"/><circle cx="1114" cy="540" r="8"/>
-  </g>
-  <g><circle cx="712" cy="470" r="8" fill="#F6F1E4"/><circle cx="734" cy="470" r="8" fill="#F6F1E4"/><circle cx="756" cy="470" r="8" fill="#FF5A4E"/><circle cx="778" cy="470" r="8" fill="#FF5A4E"/></g>
-  <circle cx="960" cy="306" r="60" fill="url(#glow)"/><circle cx="960" cy="306" r="12" fill="#FFB020"/>
-
-  <!-- lockup -->
-  <g transform="translate(72 82) scale(0.24)"><line x1="20" y1="30" x2="150" y2="150" stroke="#4DA3FF" stroke-width="26" stroke-linecap="round"/>
-    <rect x="96" y="186" width="124" height="22" rx="11" fill="#E9EEF4"/>
-    <circle cx="178" cy="150" r="30" fill="#FFB020"/></g>
-  <text class="m" x="140" y="132">glidepath</text>
-
-  <text class="h" x="72" y="300">PRs reviewed</text>
-  <text class="h" x="72" y="374">before you're back.</text>
-  <text class="s" x="72" y="438">Scheduled Claude Code reviews for GitHub,</text>
-  <text class="s" x="72" y="474">landing in your Mac's menu bar.</text>
-  <rect x="72" y="526" width="470" height="50" rx="10" fill="#0A1A2A" stroke="#2A4A68"/>
-  <text class="c" x="94" y="558">brew install yznki/tap/glidepath</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640"><defs><linearGradient id="bgg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1C1D21"/><stop offset="1" stop-color="#0B0B0D"/></linearGradient></defs><rect width="1280" height="640" fill="url(#bgg)"/><g>
+ <defs>
+  <linearGradient id="capx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#46474C"/><stop offset="1" stop-color="#2A2B2F"/></linearGradient>
+  <filter id="shx" x="-25%" y="-25%" width="150%" height="160%"><feDropShadow dx="0" dy="10.0" stdDeviation="10.0" flood-color="#000" flood-opacity="0.35"/></filter>
+  <radialGradient id="glx" r="0.5"><stop offset="0" stop-color="#FFC24D" stop-opacity="0.55"/><stop offset="1" stop-color="#FFC24D" stop-opacity="0"/></radialGradient>
+ </defs>
+ <g filter="url(#shx)">
+  <rect x="780" y="143.0" width="380" height="367.0" rx="80" fill="#1B1C1F"/>
+  <rect x="780" y="130" width="380" height="367.0" rx="80" fill="url(#capx)"/>
+ </g>
+ <rect x="782" y="132" width="376" height="363.0" rx="78" fill="none" stroke="#fff" stroke-opacity="0.10" stroke-width="1.5"/>
+ <g stroke="#F5F5F7" stroke-width="20.0" stroke-linecap="round" fill="none">
+  <line x1="864.0" y1="199.0" x2="994.0" y2="314.0"/>
+  <line x1="949.0" y1="359.0" x2="1094.0" y2="359.0"/>
+ </g>
+ <circle cx="1017.0" cy="334.0" r="45.0" fill="url(#glx)"/>
+ <circle cx="1017.0" cy="334.0" r="20.0" fill="#FFB020"/>
+ <text x="839.0" y="449.0" font-family="-apple-system,'SF Pro Text',system-ui" font-size="38.0" font-weight="500" fill="#A1A1A6">land</text>
+</g><g>
+ <defs>
+  <linearGradient id="capy" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#46474C"/><stop offset="1" stop-color="#2A2B2F"/></linearGradient>
+  <filter id="shy" x="-25%" y="-25%" width="150%" height="160%"><feDropShadow dx="0" dy="1.6842105263157894" stdDeviation="1.6842105263157894" flood-color="#000" flood-opacity="0.35"/></filter>
+  <radialGradient id="gly" r="0.5"><stop offset="0" stop-color="#FFC24D" stop-opacity="0.55"/><stop offset="1" stop-color="#FFC24D" stop-opacity="0"/></radialGradient>
+ </defs>
+ <g filter="url(#shy)">
+  <rect x="72" y="84.18947368421053" width="64" height="61.810526315789474" rx="14" fill="#1B1C1F"/>
+  <rect x="72" y="82" width="64" height="61.810526315789474" rx="14" fill="url(#capy)"/>
+ </g>
+ <rect x="74" y="84" width="60" height="57.810526315789474" rx="12" fill="none" stroke="#fff" stroke-opacity="0.10" stroke-width="1.5"/>
+ <g stroke="#F5F5F7" stroke-width="5.389473684210526" stroke-linecap="round" fill="none">
+  <line x1="86.14736842105263" y1="93.62105263157895" x2="108.0421052631579" y2="112.98947368421052"/>
+  <line x1="100.46315789473684" y1="120.56842105263158" x2="124.8842105263158" y2="120.56842105263158"/>
+ </g>
+ <circle cx="111.91578947368421" cy="116.3578947368421" r="7.578947368421052" fill="url(#gly)"/>
+ <circle cx="111.91578947368421" cy="116.3578947368421" r="3.3684210526315788" fill="#FFB020"/>
+ 
+</g>
+<text x="150" y="128" font-family="-apple-system,'SF Pro Display',system-ui" font-weight="650" font-size="34" letter-spacing="-1" fill="#F5F5F7">glidepath</text>
+<text x="72" y="300" font-family="-apple-system,'SF Pro Display',system-ui" font-weight="700" font-size="64" letter-spacing="-2.2" fill="#F5F5F7">PRs reviewed</text>
+<text x="72" y="374" font-family="-apple-system,'SF Pro Display',system-ui" font-weight="700" font-size="64" letter-spacing="-2.2" fill="#F5F5F7">before you're back.</text>
+<text x="72" y="438" font-family="-apple-system,'SF Pro Text',system-ui" font-size="26" fill="#A1A1A6">Scheduled Claude Code reviews for GitHub,</text>
+<text x="72" y="474" font-family="-apple-system,'SF Pro Text',system-ui" font-size="26" fill="#A1A1A6">landing in your Mac's menu bar.</text>
+<rect x="72" y="526" width="470" height="50" rx="10" fill="#18191C" stroke="#3A3B40"/>
+<text x="94" y="558" font-family="ui-monospace,'SF Mono',monospace" font-size="21" fill="#F5F5F7">brew install yznki/tap/glidepath</text></svg>
