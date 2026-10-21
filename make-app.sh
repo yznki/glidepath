@@ -11,6 +11,8 @@ fi
 BIN=".build/release/glidepath"
 APP="build/Glidepath.app"
 ICONSET="build/AppIcon.iconset"
+FULL="assets/brand/icon.png"          # 1024 px, for 128 pt and up
+SMALL="assets/brand/icon-small.png"   # 1024 px simplified artwork, for 16 and 32 pt
 
 rm -rf "$APP" "$ICONSET"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$ICONSET"
@@ -18,19 +20,14 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$ICONSET"
 cp "$BIN" "$APP/Contents/MacOS/glidepath"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
-# App icon. The binary draws the icon at any size: 64 px and below use the simplified drawing (slope and amber
-# light, no runway), larger sizes the full one. sips resizes the 1024 master for the sizes the binary does not draw.
-"$BIN" --render-icon build/icon-1024.png 1024
-for px in 16 32 64; do
-    "$BIN" --render-icon "build/icon-${px}.png" "$px"
-done
-cp build/icon-16.png "$ICONSET/icon_16x16.png"
-cp build/icon-32.png "$ICONSET/icon_16x16@2x.png"
-cp build/icon-32.png "$ICONSET/icon_32x32.png"
-cp build/icon-64.png "$ICONSET/icon_32x32@2x.png"
+# App icon: the iconset comes from the brand PNGs with sips; iconutil packs the .icns.
+sips -z 16 16 "$SMALL" --out "$ICONSET/icon_16x16.png" >/dev/null
+sips -z 32 32 "$SMALL" --out "$ICONSET/icon_16x16@2x.png" >/dev/null
+sips -z 32 32 "$SMALL" --out "$ICONSET/icon_32x32.png" >/dev/null
+sips -z 64 64 "$SMALL" --out "$ICONSET/icon_32x32@2x.png" >/dev/null
 for s in 128 256 512; do
-    sips -z "$s" "$s" build/icon-1024.png --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
-    sips -z "$((s * 2))" "$((s * 2))" build/icon-1024.png --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+    sips -z "$s" "$s" "$FULL" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+    sips -z "$((s * 2))" "$((s * 2))" "$FULL" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 

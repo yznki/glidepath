@@ -50,7 +50,6 @@ enum Snapshotter {
             }
         }
         writeMenuBar(to: dir.appendingPathComponent("menubar.png"))
-        writeIcon(to: dir.appendingPathComponent("icon.png"))
     }
 
     static func write<V: View>(_ view: V, dark: Bool, to url: URL, scale: CGFloat) {
@@ -126,49 +125,6 @@ enum Snapshotter {
         .background(ground)
     }
 
-    /// icon.png: the full icon at 512, and the simplified icon at 32 and 16, each at real size and at 4x.
-    static func writeIcon(to url: URL) {
-        let width = 840, height = 592
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
-                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
-              let context = NSGraphicsContext(bitmapImageRep: rep) else {
-            print("render failed: icon")
-            return
-        }
-        NSGraphicsContext.current = context
-        NSColor(hex: "F5F5F5").setFill()
-        NSRect(x: 0, y: 0, width: width, height: height).fill()
-        AppIcon.draw(in: NSRect(x: 40, y: 40, width: 512, height: 512))
-        AppIcon.draw(in: NSRect(x: 620, y: 472, width: 32, height: 32), simplified: true)
-        AppIcon.draw(in: NSRect(x: 680, y: 400, width: 128, height: 128), simplified: true)
-        AppIcon.draw(in: NSRect(x: 620, y: 300, width: 16, height: 16), simplified: true)
-        AppIcon.draw(in: NSRect(x: 680, y: 236, width: 64, height: 64), simplified: true)
-        NSGraphicsContext.current = nil
-        guard let png = rep.representation(using: .png, properties: [:]) else {
-            print("render failed: icon")
-            return
-        }
-        try? png.write(to: url)
-        print("wrote \(url.path)")
-    }
-}
-
-/// `glidepath --render-icon FILE PIXELS`: writes the app icon as a PNG. make-app.sh builds the icon set from it.
-enum IconCommand {
-    static func run(_ args: [String]) -> Int32 {
-        guard args.count == 2, let pixels = Int(args[1]), pixels > 0, let data = AppIcon.png(pixels: pixels) else {
-            eprint("usage: glidepath --render-icon FILE PIXELS")
-            return 2
-        }
-        do {
-            try data.write(to: URL(fileURLWithPath: args[0]))
-            return 0
-        } catch {
-            eprint("\(error)")
-            return 1
-        }
-    }
 }
 
 /// Fixtures for the design states. Repos are lumen/api and lumen/web; authors use first names.
