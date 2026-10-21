@@ -49,10 +49,22 @@ final class ReviewValidatorTests: XCTestCase {
         refused(draft(comments: [DraftComment(path: "a.swift", line: 1, side: "LEFT", body: "x")]), "LEFT side")
         refused(draft(body: "see ![chart](https://github.com/a/b/x.png)"), "image")
         refused(draft(body: "<img src=x>"), "img tag")
+        refused(draft(body: "see <a href=x>this</a>"), "anchor tag")
+        refused(draft(body: "close </div> here"), "closing tag")
+        refused(draft(body: "see www.example.com"), "www autolink")
+        refused(draft(body: "mail ftp://files.example"), "ftp scheme")
+        refused(draft(body: "mailto:someone@example.com"), "mailto scheme")
+        refused(draft(body: "[x](javascript:alert(1))"), "javascript scheme")
+        refused(draft(body: "data:text/html,hi"), "data scheme")
         refused(draft(body: "<iframe src=x>"), "iframe tag")
         refused(draft(body: "read https://evil.example/x"), "non-github link")
         refused(draft(comments: [comment(body: "see http://pastebin.com/abc")]), "non-github link in comment")
         refused(draft(body: "x https://GitHub.com.evil.net/x"), "lookalike host")
+    }
+
+    func testPlainTextThatResemblesMarkupIsAllowed() {
+        XCTAssertNoThrow(try ReviewValidator.validate(draft(body: "metadata: fine, a < b, and x<=y is not a tag"),
+                                                      files: files, posting: .comment, head: "h"))
     }
 
     func testGitHubLinksAndFiveCommentsAllowed() {

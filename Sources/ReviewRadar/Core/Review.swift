@@ -47,8 +47,17 @@ enum ReviewValidator {
     /// lure readers, so they are refused before anything is posted.
     static func checkContent(_ text: String) throws {
         let lower = text.lowercased()
-        if lower.contains("![") || lower.contains("<img") || lower.contains("<iframe") {
-            throw CommandError("remove the image or iframe (![ or <img or <iframe); reviews are plain text")
+        if lower.contains("![") {
+            throw CommandError("remove the image (![); reviews are plain text")
+        }
+        if text.range(of: #"<[A-Za-z/]"#, options: .regularExpression) != nil {
+            throw CommandError("remove the HTML (a < followed by a letter or /); reviews are plain text")
+        }
+        if lower.contains("www.") {
+            throw CommandError("remove the www. link; write full github.com links only")
+        }
+        if let scheme = text.range(of: #"(?i)(?<![A-Za-z])(ftp|mailto|javascript|data):"#, options: .regularExpression) {
+            throw CommandError("remove the \(text[scheme].dropLast()): link; only github.com links are allowed")
         }
         for host in urlHosts(in: text) where host != "github.com" {
             throw CommandError("remove the link to \(host); only github.com links are allowed")
