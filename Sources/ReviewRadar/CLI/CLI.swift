@@ -53,6 +53,7 @@ enum CLI {
         case "run": return RunCommand.main(rest)
         case "init": return InitCommand.main(rest)
         case "state": return StateCommand.main(rest)
+        case "hook": return HookCommand.main(rest)
         case "pr": return PRCommands.main(rest)
         case "post": return PRCommands.post(rest)
         case "pause": return setPaused(true)
@@ -288,5 +289,19 @@ enum Uninstall {
         } catch {
             eprint("could not remove \(label) at \(path): \(error.localizedDescription)")
         }
+    }
+}
+
+/// `review-radar hook bash-guard`: the PreToolUse hook that review sessions run for every Bash call.
+enum HookCommand {
+    static func main(_ args: [String]) -> Int32 {
+        guard args == ["bash-guard"] else {
+            eprint("usage: review-radar hook bash-guard")
+            return 2
+        }
+        let input = FileHandle.standardInput.readDataToEndOfFile()
+        let decision = BashGuard.evaluate(stdin: input)
+        if let message = decision.message { eprint(message) }
+        return decision.code
     }
 }

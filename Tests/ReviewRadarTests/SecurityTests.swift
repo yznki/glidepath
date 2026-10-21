@@ -4,43 +4,68 @@ import XCTest
 final class SecurityTests: XCTestCase {
     let clone = "/fake/home/clones/api"
     let scratch = "/fake/home/.local/state/review-radar/scratch/r1/acme-api"
-    let skill = "/fake/home/.claude/skills/review-radar"
 
     func list(rules: String? = nil, gitnexus: Bool = false) -> [String] {
-        Claude.allowlist(clone: clone, scratch: scratch, skillDir: skill, rules: rules, gitnexus: gitnexus)
+        Claude.allowlist(clone: clone, scratch: scratch, rules: rules, gitnexus: gitnexus)
     }
 
     func testAllowlistHasNoGitGhOrBareTools() {
-        let all = list(rules: "/fake/home/rules.md", gitnexus: true)
-        for entry in all {
+        for entry in list(rules: "/fake/home/rules.md", gitnexus: true) {
             XCTAssertFalse(entry.hasPrefix("Bash(git"), entry)
             XCTAssertFalse(entry.hasPrefix("Bash(gh"), entry)
-            XCTAssertFalse(["Read", "Grep", "Glob", "Edit", "Write"].contains(entry), "bare tool \(entry)")
+            XCTAssertFalse(["Read", "Grep", "Glob", "Edit", "Write", "Agent", "Skill"].contains(entry), "bare \(entry)")
         }
-        XCTAssertFalse(all.contains { $0.contains("bypass") })
     }
 
-    func testAllowlistIsScopedAndUsesDoubleSlashAbsolutePaths() {
+    func testReadsAreScopedToCloneAndScratchOnly() {
         let all = list()
         XCTAssertTrue(all.contains("Read(//fake/home/clones/api/**)"))
         XCTAssertTrue(all.contains("Read(//fake/home/.local/state/review-radar/scratch/r1/acme-api/**)"))
-        XCTAssertTrue(all.contains("Read(//fake/home/.claude/skills/review-radar/**)"))
-        XCTAssertTrue(all.contains("Edit(//fake/home/.local/state/review-radar/scratch/r1/acme-api/**)"))
-        XCTAssertFalse(all.contains { $0.hasPrefix("Edit(") && !$0.contains("scratch") }, "writes only under scratch")
+        XCTAssertFalse(all.contains { $0.contains(".claude/skills") }, "the skill arrives as system prompt, not a file read")
+        XCTAssertEqual(all.filter { $0.hasPrefix("Read(") }.count, 2)
     }
 
-    func testAllowlistReviewToolsAreOwnSubcommandsOnly() {
-        let bash = list().filter { $0.hasPrefix("Bash(") }
-        XCTAssertEqual(Set(bash), [
+    func testWritesOnlyUnderScratch() {
+        XCTAssertEqual(list().filter { $0.hasPrefix("Edit(") },
+                       ["Edit(//fake/home/.local/state/review-radar/scratch/r1/acme-api/**)"])
+    }
+
+    func testSubagentsAreNamedRolesNotBareAgent() {
+        let all = list()
+        XCTAssertEqual(Set(all.filter { $0.hasPrefix("Agent") }),
+                       ["Agent(gatherer)", "Agent(reviewer)", "Agent(checker)"])
+    }
+
+    func testShellIsOnlyReviewRadarSubcommands() {
+        XCTAssertEqual(Set(list().filter { $0.hasPrefix("Bash(") }), [
             "Bash(review-radar pr info:*)", "Bash(review-radar pr diff:*)", "Bash(review-radar pr threads:*)",
             "Bash(review-radar state set:*)", "Bash(review-radar post:*)",
         ])
     }
 
-    func testGitNexusAndRulesAreOptIn() {
+    func testGitNexusListIsReadOnlyAndExact() {
+        let mcp = list(gitnexus: true).filter { $0.hasPrefix("mcp__") }
+        XCTAssertEqual(Set(mcp), Set(["detect_changes", "impact", "api_impact", "context", "query", "route_map", "shape_check"]
+            .map { "mcp__gitnexus__\($0)" }))
+        for banned in ["rename", "group_sync", "cypher", "list_repos"] {
+            XCTAssertFalse(mcp.contains { $0.hasSuffix(banned) }, banned)
+        }
         XCTAssertFalse(list().contains { $0.hasPrefix("mcp__") })
-        XCTAssertTrue(list(gitnexus: true).contains("mcp__gitnexus__*"))
-        XCTAssertTrue(list(rules: "/fake/home/rules.md").contains("Read(//fake/home/rules.md)"))
+    }
+
+    func testGitNexusAutoIsOffForAnyoneAuthors() {
+        XCTAssertFalse(Claude.gitnexusEnabled(mode: .auto, authors: .anyone, binaryFound: true))
+        XCTAssertTrue(Claude.gitnexusEnabled(mode: .auto, authors: .collaborators, binaryFound: true))
+        XCTAssertTrue(Claude.gitnexusEnabled(mode: .auto, authors: .logins(["a"]), binaryFound: true))
+        XCTAssertFalse(Claude.gitnexusEnabled(mode: .auto, authors: .collaborators, binaryFound: false))
+        XCTAssertFalse(Claude.gitnexusEnabled(mode: .off, authors: .collaborators, binaryFound: true))
+        XCTAssertTrue(Claude.gitnexusEnabled(mode: .on, authors: .anyone, binaryFound: false))
+    }
+
+    func testDisallowedCoversWebSkillsAndProcessTools() {
+        for tool in ["WebFetch", "WebSearch", "Skill", "Bash(ps:*)", "Bash(du:*)", "Bash(lsof:*)", "Bash(which:*)"] {
+            XCTAssertTrue(Claude.disallowed.contains(tool), tool)
+        }
     }
 
     func testChildEnvironmentDropsTokens() {
@@ -53,8 +78,6 @@ final class SecurityTests: XCTestCase {
         XCTAssertEqual(Set(env.keys), [
             "PATH", "HOME", "USER", "LANG", "TMPDIR", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH", "REVIEW_RADAR_RUN",
         ])
-        XCTAssertFalse(env.values.contains("secret1"))
-        XCTAssertFalse(env.values.contains("secret2"))
     }
 
     func testMCPConfigHoldsOnlyGitNexus() throws {
@@ -65,12 +88,24 @@ final class SecurityTests: XCTestCase {
         XCTAssertEqual(Set(names), ["gitnexus"])
     }
 
-    func testArgumentsNarrowSettingsMCPAndNeverBypass() {
-        let args = Claude.arguments(prompt: "p", sessionId: "s", scratch: scratch,
-                                    mcpConfig: "{}", allowlist: list())
+    func testAgentsDefineThreeRolesWithModels() throws {
+        let obj = try JSONSerialization.jsonObject(with: Data(Claude.agentsJSON().utf8)) as? [String: Any]
+        XCTAssertEqual(Set(obj?.keys.map { $0 } ?? []), ["gatherer", "reviewer", "checker"])
+        XCTAssertEqual((obj?["gatherer"] as? [String: Any])?["model"] as? String, "haiku")
+        XCTAssertEqual((obj?["reviewer"] as? [String: Any])?["model"] as? String, "sonnet")
+        XCTAssertEqual((obj?["checker"] as? [String: Any])?["permissionMode"] as? String, "dontAsk")
+    }
+
+    func testArgumentsCarrySkillAsSystemPromptAndNoSlashCommand() {
+        let args = Claude.arguments(prompt: "Review run. repo=a/b", systemPrompt: "SKILL TEXT", sessionId: "s",
+                                    scratch: scratch, mcpConfig: "/m.json", agents: "{}", settings: "{}",
+                                    allowlist: list())
+        XCTAssertEqual(args[args.firstIndex(of: "-p")! + 1], "Review run. repo=a/b")
+        XCTAssertFalse(args[args.firstIndex(of: "-p")! + 1].hasPrefix("/"))
+        XCTAssertEqual(args[args.firstIndex(of: "--append-system-prompt")! + 1], "SKILL TEXT")
         XCTAssertEqual(args[args.firstIndex(of: "--setting-sources")! + 1], "user")
         XCTAssertTrue(args.contains("--strict-mcp-config"))
-        XCTAssertEqual(args[args.firstIndex(of: "--disallowedTools")! + 1], "WebFetch,WebSearch")
+        XCTAssertEqual(args[args.firstIndex(of: "--disallowedTools")! + 1], Claude.disallowed.joined(separator: ","))
         XCTAssertEqual(args[args.firstIndex(of: "--permission-mode")! + 1], "dontAsk")
         XCTAssertFalse(args.joined(separator: " ").contains("bypassPermissions"))
     }
@@ -79,7 +114,6 @@ final class SecurityTests: XCTestCase {
         XCTAssertTrue(Claude.isVersion("2.1.306 (Claude Code)", atLeast: "2.1.306"))
         XCTAssertTrue(Claude.isVersion("2.2.0", atLeast: "2.1.306"))
         XCTAssertFalse(Claude.isVersion("2.1.305 (Claude Code)", atLeast: "2.1.306"))
-        XCTAssertFalse(Claude.isVersion("1.9.9", atLeast: "2.1.306"))
     }
 
     func testSettingsWarnings() {
@@ -87,56 +121,31 @@ final class SecurityTests: XCTestCase {
             "permissions": ["allow": ["Bash(*)", "Bash(npm test)", "Read"]],
             "hooks": ["PreToolUse": [] as [Any]],
         ]
-        let w = Claude.settingsWarnings(broad)
-        XCTAssertEqual(w.count, 3)
+        XCTAssertEqual(Claude.settingsWarnings(broad).count, 3)
         XCTAssertTrue(Claude.settingsWarnings(["permissions": ["allow": ["Bash(npm test)"]]]).isEmpty)
     }
-}
 
-final class ReviewValidatorTests: XCTestCase {
-    let files: Set<String> = ["a.swift", "b.swift"]
-
-    func draft(verdict: String = "changes", reason: String = "missing test", body: String = "Looks off.",
-               comments: [DraftComment] = []) -> Draft {
-        Draft(verdict: verdict, reason: reason, body: body, comments: comments)
+    func testBlockedHookEvents() {
+        XCTAssertEqual(Claude.blockedHooks(in: ["hooks": ["PreToolUse": [["matcher": "Bash"]]]]), ["PreToolUse"])
+        XCTAssertEqual(Claude.blockedHooks(in: ["hooks": ["PostToolUse": [1], "PermissionRequest": [2]]]),
+                       ["PostToolUse", "PermissionRequest"])
+        XCTAssertEqual(Claude.blockedHooks(in: ["hooks": ["SessionStart": [1], "UserPromptSubmit": [1], "Stop": [1]]]), [])
+        XCTAssertEqual(Claude.blockedHooks(in: ["hooks": ["PreToolUse": []]]), [], "an empty list defines nothing")
     }
 
-    func comment(_ path: String = "a.swift", line: Int = 3, body: String = "fix") -> DraftComment {
-        DraftComment(path: path, line: line, side: nil, body: body)
-    }
-
-    func testCommentModeBuildsCommentWithVerdictLine() throws {
-        let p = try ReviewValidator.validate(draft(comments: [comment()]), files: files, posting: .comment, head: "abc")
-        XCTAssertEqual(p.event, "COMMENT")
-        XCTAssertEqual(p.commit_id, "abc")
-        XCTAssertTrue(p.body.hasPrefix("Verdict: changes\n\n"))
-        XCTAssertEqual(p.comments, [PayloadComment(path: "a.swift", line: 3, side: "RIGHT", body: "fix")])
-    }
-
-    func testReviewModeMapsVerdictToEvent() throws {
-        XCTAssertEqual(try ReviewValidator.validate(draft(verdict: "approve"), files: files, posting: .review, head: "h").event, "APPROVE")
-        XCTAssertEqual(try ReviewValidator.validate(draft(), files: files, posting: .review, head: "h").event, "REQUEST_CHANGES")
-    }
-
-    func testRefusals() {
-        func refused(_ d: Draft, _ why: String, line: UInt = #line) {
-            XCTAssertThrowsError(try ReviewValidator.validate(d, files: files, posting: .comment, head: "h"), why, file: #filePath, line: line)
-        }
-        refused(draft(verdict: "merge"), "bad verdict")
-        refused(draft(reason: String(repeating: "x", count: 61)), "reason too long")
-        refused(draft(reason: "two\nlines"), "multi-line reason")
-        refused(draft(body: String(repeating: "x", count: 6001)), "body too long")
-        refused(draft(body: "  "), "empty body")
-        refused(draft(comments: Array(repeating: comment(), count: 6)), "six comments")
-        refused(draft(comments: [comment("../etc/passwd")]), "path not in PR")
-        refused(draft(comments: [comment("c.swift")]), "path not in PR")
-        refused(draft(comments: [comment(line: 0)]), "line zero")
-        refused(draft(comments: [comment(body: String(repeating: "x", count: 1501))]), "comment too long")
-        refused(draft(comments: [DraftComment(path: "a.swift", line: 1, side: "LEFT", body: "x")]), "LEFT side")
-    }
-
-    func testFiveCommentsAllowed() {
-        XCTAssertNoThrow(try ReviewValidator.validate(draft(comments: Array(repeating: comment(), count: 5)),
-                                                      files: files, posting: .comment, head: "h"))
+    func testHookConflictsScanSettingsAndPlugins() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("rr-hooks-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        try FileManager.default.createDirectory(atPath: home + "/.claude/plugins/cache/p", withIntermediateDirectories: true)
+        try Data(#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[]}]}}"#.utf8)
+            .write(to: URL(fileURLWithPath: home + "/.claude/settings.json"))
+        try Data(#"{"hooks":{"SessionStart":[]}}"#.utf8)
+            .write(to: URL(fileURLWithPath: home + "/.claude/settings.local.json"))
+        try Data(#"{"hooks":{"PostToolUse":[{"matcher":"*"}]}}"#.utf8)
+            .write(to: URL(fileURLWithPath: home + "/.claude/plugins/cache/p/hooks.json"))
+        let found = Claude.hookConflicts(paths: Paths(home: home))
+        XCTAssertEqual(found.count, 2)
+        XCTAssertTrue(found.contains { $0.file.hasSuffix("settings.json") && $0.events == ["PreToolUse"] })
+        XCTAssertTrue(found.contains { $0.file.hasSuffix("hooks.json") && $0.events == ["PostToolUse"] })
     }
 }

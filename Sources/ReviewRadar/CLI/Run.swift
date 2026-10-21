@@ -79,6 +79,10 @@ enum RunCommand {
             print("paused; scheduled run skipped")
             return 0
         }
+        if let message = HookRefusal.message(paths: paths) {
+            eprint(message)
+            return 1
+        }
         let config: Config
         do {
             config = try Config.load(paths)
@@ -111,6 +115,36 @@ enum RunCommand {
         }
         let runner = Runner(paths: paths, config: config, dryRun: a.has("--dry-run"))
         return withExtendedLifetime(lock) { runner.execute(repos: repos) }
+    }
+}
+
+/// Refuses to start when the user's own hooks would run inside a review session.
+enum HookRefusal {
+    static func message(paths: Paths) -> String? {
+        let conflicts = Claude.hookConflicts(paths: paths)
+        guard !conflicts.isEmpty else { return nil }
+        let lines = conflicts.map { "  \($0.file): \($0.events.joined(separator: ", "))" }
+        return ("refusing to run: these files define hooks that would run inside review sessions:\n"
+            + lines.joined(separator: "\n")
+            + "\nMove those hooks out of the file, or scope them to a project that review sessions do not use,"
+            + "\nthen run again. SessionStart, UserPromptSubmit and Stop hooks are allowed.")
+    }
+}
+
+/// The skill and rubric, read from the installed share folder, and the repo's rules file if any.
+enum SkillText {
+    static func load(paths: Paths, rules: String?, rulesMode: RulesMode) throws -> String {
+        guard let dir = InitCommand.findInstalledDir(relative: "share/review-radar", fallback: "skill/review-radar",
+                                                     requiredFile: "SKILL.md", from: InitCommand.binaryPath()) else {
+            throw RunError("skill files not found; reinstall review-radar")
+        }
+        var text = try String(contentsOfFile: dir + "/SKILL.md", encoding: .utf8)
+        text += "\n\n# Review rubric\n\n" + (try String(contentsOfFile: dir + "/rubric.md", encoding: .utf8))
+        if let rules {
+            let body = try String(contentsOfFile: rules, encoding: .utf8)
+            text += "\n\n# Repo rules (\(rulesMode.rawValue))\n\n" + body
+        }
+        return text
     }
 }
 
@@ -236,21 +270,28 @@ final class Runner {
         let mcpPath = scratch + "/mcp.json"
         try Claude.mcpConfig(gitnexus: gitnexus).write(toFile: mcpPath, atomically: true, encoding: .utf8)
 
-        let allowlist = Claude.allowlist(clone: repo.clone, scratch: scratch, skillDir: paths.skillDir,
-                                         rules: repo.rules, gitnexus: gitnexus)
+        // The skill and its rubric are read here and passed as the system prompt. No slash command is used,
+        // so nothing can be resolved to another skill.
+        let skill = try SkillText.load(paths: paths, rules: repo.rules, rulesMode: repo.rulesMode)
+        let allowlist = Claude.allowlist(clone: repo.clone, scratch: scratch, rules: repo.rules, gitnexus: gitnexus)
         let prompt = [
-            "/review-radar", repo.slug, numbers.map(String.init).joined(separator: ","),
+            "Review run.",
+            "repo=\(repo.slug)", "prs=\(numbers.map(String.init).joined(separator: ","))",
             "run=\(id)", "scratch=\(scratch)", "gitnexus=\(gitnexus ? "on" : "off")",
-            "rules=\(repo.rules ?? "none")", "rules_mode=\(repo.rulesMode.rawValue)",
-            "split_over=\(config.limits.splitOverLines)", "dry_run=\(dryRun)",
+            "rules_mode=\(repo.rulesMode.rawValue)", "split_over=\(config.limits.splitOverLines)",
+            "dry_run=\(dryRun)",
         ].joined(separator: " ")
         let binding = RunBinding(runId: id, repo: repo.slug, scratch: scratch, dryRun: dryRun)
-        let args = Claude.arguments(prompt: prompt, sessionId: session, scratch: scratch,
-                                    mcpConfig: mcpPath, allowlist: allowlist)
+        let args = Claude.arguments(
+            prompt: prompt, systemPrompt: skill, sessionId: session, scratch: scratch, mcpConfig: mcpPath,
+            agents: Claude.agentsJSON(),
+            settings: Claude.hookSettingsJSON(binary: InitCommand.binaryPath()),
+            allowlist: allowlist)
         let childEnv = Claude.childEnvironment(parent: env, binding: binding.environment)
 
         print("\(repo.slug): reviewing \(numbers.map { "#\($0)" }.joined(separator: " "))")
         print("allowlist: " + allowlist.joined(separator: ","))
+        print("disallowed: " + Claude.disallowed.joined(separator: ","))
         let result = Shell.run("claude", args, cwd: repo.clone, env: childEnv, timeout: 3600)
         let logPath = scratch + "/claude.log"
         try? (result.stdout + result.stderr).write(toFile: logPath, atomically: true, encoding: .utf8)
@@ -282,11 +323,8 @@ final class Runner {
     }
 
     private func gitnexusEnabled(_ repo: RepoConfig) -> Bool {
-        switch repo.gitnexus {
-        case .on: return true
-        case .off: return false
-        case .auto: return Shell.find("gitnexus", path: env["PATH"]) != nil
-        }
+        Claude.gitnexusEnabled(mode: repo.gitnexus, authors: repo.authors,
+                               binaryFound: Shell.find("gitnexus", path: env["PATH"]) != nil)
     }
 
     // MARK: GitHub and git
