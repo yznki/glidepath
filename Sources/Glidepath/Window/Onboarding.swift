@@ -27,7 +27,7 @@ struct OnboardingView: View {
         .onChange(of: model.state.step) { _, step in
             // The steps that read the machine run their work when they open, off the main thread.
             if step == .tools { model.checkTools() }
-            if step == .repos, model.repoList == .idle || model.repoList.failedMessage != nil { model.loadRepos() }
+            if step == .repos { model.loadRepos() }
         }
     }
 
@@ -241,11 +241,9 @@ struct OnboardingView: View {
                 heading("Which repos?")
                 lead("From your GitHub account and orgs. You can add more later.")
                     .padding(.top, WinMetrics.s8)
-                TextField(model.repoList == .loaded ? "Search \(model.allRows.count) repos" : "Search repos", text: $model.search)
-                    .winField()
+                RepoPicker(catalog: RepoCatalog.shared, search: $model.search,
+                           selected: Set(model.state.repos), toggle: model.toggleRepo)
                     .padding(.top, WinMetrics.s32)
-                repoList
-                    .padding(.top, WinMetrics.s8)
                     .frame(maxHeight: .infinity, alignment: .top)
             }
         }, footer: {
@@ -259,72 +257,6 @@ struct OnboardingView: View {
         })
     }
 
-    @ViewBuilder
-    private var repoList: some View {
-        switch model.repoList {
-        case .idle, .loading:
-            Text("Loading your repos from GitHub…")
-                .font(.system(size: 13))
-                .foregroundStyle(WinTheme.faint)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        case .failed(let text):
-            Text(text)
-                .font(.system(size: 12))
-                .foregroundStyle(WinTheme.amberInk)
-                .fixedSize(horizontal: false, vertical: true)
-        case .loaded:
-            let rows = model.filteredRows
-            if rows.isEmpty {
-                Text("No repos match \"\(model.search)\".")
-                    .font(.system(size: 13))
-                    .foregroundStyle(WinTheme.faint)
-            } else {
-                WinScroll {
-                    VStack(spacing: 0) {
-                        ForEach(Array(rows.enumerated()), id: \.element.slug) { index, repo in
-                            repoRow(repo, first: index == 0)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// A 56 pt row: checkbox, slug over language and last push, and the open PR count. Its rule sits inside the row.
-    private func repoRow(_ repo: DiscoveredRepo, first: Bool) -> some View {
-        let on = model.state.repos.contains(repo.slug)
-        return Button {
-            model.toggleRepo(repo.slug)
-        } label: {
-            HStack(spacing: WinMetrics.s16) {
-                RepoCheckbox(on: on)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(repo.slug)
-                        .font(.system(size: 14))
-                        .foregroundStyle(WinTheme.text)
-                        .lineLimit(1)
-                    Text(model.meta(for: repo))
-                        .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.faint)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: WinMetrics.s8)
-                if let open = repo.openPRs {
-                    Text("\(open) open PR\(open == 1 ? "" : "s")")
-                        .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.muted)
-                        .monospacedDigit()
-                }
-            }
-            .frame(height: 56)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .overlay(alignment: .top) {
-                if !first { Rectangle().fill(WinTheme.line).frame(height: 1) }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 /// The 18 pt checkbox (radius 5, 1.5 pt control stroke). Checked: text fill with a black check.
@@ -577,8 +509,6 @@ final class OnboardingModel: ObservableObject {
     @Published var state: OnboardingState
     @Published private(set) var toolRows: [ToolRow] = []
     @Published private(set) var checkingTools = false
-    @Published private(set) var repos: [DiscoveredRepo] = []
-    @Published private(set) var repoList: RepoListState = .idle
     @Published var search = ""
     @Published var loginText = ""
     /// The amber message under the step's lead.
@@ -627,8 +557,7 @@ final class OnboardingModel: ObservableObject {
         base = nil
         state = fixture
         toolRows = tools
-        self.repos = repos
-        self.repoList = repoList
+        RepoCatalog.shared.preset(repos, repoList)
         self.liveStrips = liveStrips
         self.backupNote = backupNote
     }
@@ -678,74 +607,9 @@ final class OnboardingModel: ObservableObject {
 
     // MARK: Repos
 
-    /// The last complete repo list, open PR counts included. Reused for 10 minutes, so reopening the step or the window is instant.
-    private static var repoCache: (at: Date, repos: [DiscoveredRepo])?
-    private static let repoCacheTTL: TimeInterval = 600
-
-    /// Lists the user's repos and orgs' repos, then fills in the open PR counts. Each phase runs off the main thread;
-    /// the list shows as soon as the first one lands. A failed list shows in place of the list.
+    /// Lists the repos on the first visit, or reuses the list kept for 10 minutes. See `RepoCatalog`.
     func loadRepos() {
-        guard repoList != .loading else { return }
-        if let cache = Self.repoCache, Date().timeIntervalSince(cache.at) < Self.repoCacheTTL {
-            repos = cache.repos
-            repoList = .loaded
-            return
-        }
-        repoList = .loading
-        let env = Runner.environment(paths)
-        Task {
-            let listed = await Task.detached(priority: .userInitiated) { () -> Result<RepoDiscovery.Listing, ConfigError> in
-                do {
-                    return .success(try RepoDiscovery.loadRepos(env: env))
-                } catch let error as ConfigError {
-                    return .failure(error)
-                } catch {
-                    return .failure(ConfigError(message: "\(error)"))
-                }
-            }.value
-            let listing: RepoDiscovery.Listing
-            switch listed {
-            case .success(let found):
-                listing = found
-            case .failure(let error):
-                repoList = .failed(error.message)
-                return
-            }
-            repos = listing.repos
-            repoList = .loaded
-            let counts = await Task.detached(priority: .userInitiated) {
-                RepoDiscovery.loadOpenCounts(owners: listing.owners, env: env)
-            }.value
-            repos = RepoDiscovery.applyOpenCounts(counts.counts, searched: counts.searched, to: repos)
-            Self.repoCache = (Date(), repos)
-        }
-    }
-
-    /// Every row the list shows: the discovered repos, then any selected slug the list does not have.
-    var allRows: [DiscoveredRepo] {
-        let known = Set(repos.map(\.slug))
-        let extra = state.repos.filter { !known.contains($0) }.map {
-            DiscoveredRepo(slug: $0, language: nil, pushedAt: nil, openPRs: nil)
-        }
-        return repos + extra
-    }
-
-    /// The rows after the search, which matches the name.
-    var filteredRows: [DiscoveredRepo] {
-        let query = search.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return allRows }
-        return allRows.filter { $0.slug.lowercased().contains(query) }
-    }
-
-    /// "Go · pushed 12 minutes ago", from what the list knows.
-    func meta(for repo: DiscoveredRepo) -> String {
-        var parts: [String] = []
-        if let language = repo.language { parts.append(language) }
-        if let pushed = repo.pushedAt {
-            let relative = RelativeDateTimeFormatter().localizedString(for: pushed, relativeTo: Date())
-            parts.append("pushed \(relative)")
-        }
-        return parts.isEmpty ? "No details" : parts.joined(separator: " · ")
+        RepoCatalog.shared.load(paths: paths)
     }
 
     func toggleRepo(_ slug: String) {

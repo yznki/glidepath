@@ -236,7 +236,8 @@ final class Store: ObservableObject {
 
     var glyph: GlyphState {
         if !snap.jobInstalled { return .failed }
-        if snap.running || snap.dryRunning { return .running(active: strips.filter(\.active).count) }
+        if snap.running { return .running(active: strips.filter(\.active).count) }
+        if snap.dryRunning { return .running(active: 0) }
         if snap.paused { return .paused }
         if let run = snap.run, run.finished != nil, Presentation.failureMessage(run) != nil { return .failed }
         if changesWaiting {

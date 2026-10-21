@@ -32,7 +32,8 @@ enum MenuGlyph {
     static func image(_ state: GlyphState, progress: Double, ink: NSColor, template: Bool, update: Bool = false) -> NSImage {
         let count: Int? = {
             switch state {
-            case .running(let n), .changesWaiting(let n): return n
+            case .running(let n) where n > 0: return n
+            case .changesWaiting(let n) where n > 0: return n
             default: return nil
             }
         }()

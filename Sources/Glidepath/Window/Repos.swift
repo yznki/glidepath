@@ -502,43 +502,76 @@ struct RepoDetail: View {
 struct AddRepoSheet: View {
     @ObservedObject var store: Store
     @ObservedObject var model: ReposModel
+    @ObservedObject private var catalog = RepoCatalog.shared
+
+    /// Repos already in the config: checked and locked.
+    private var configured: Set<String> { Set(store.snap.config?.repos.map(\.slug) ?? []) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: WinMetrics.s16) {
-            Text("Add a repo")
+            Text("Add repos")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(WinTheme.text)
-            Text("Enter owner/name, as it appears on GitHub.")
-                .font(.system(size: 12))
-                .foregroundStyle(WinTheme.faint)
-            TextField("owner/name", text: $model.addText)
-                .winField()
-                .onSubmit(add)
+            RepoPicker(catalog: catalog, search: $model.pickerSearch, selected: configured.union(model.picked),
+                       locked: configured, toggle: toggle)
+                .frame(height: 300)
             if let error = model.rowErrors["add"] {
                 Text(error)
                     .font(.system(size: 12))
                     .foregroundStyle(WinTheme.amberInk)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            VStack(alignment: .leading, spacing: WinMetrics.s8) {
+                Text("Or type owner/name")
+                    .font(.system(size: 12))
+                    .foregroundStyle(WinTheme.faint)
+                HStack(spacing: WinMetrics.s8) {
+                    TextField("owner/name", text: $model.addText)
+                        .winField()
+                        .onSubmit(addTyped)
+                    WinButton(title: "Add", style: .outline, small: true, action: addTyped)
+                }
+            }
             HStack(spacing: WinMetrics.s12) {
                 Spacer(minLength: 0)
                 WinButton(title: "Cancel", style: .link) { model.addingRepo = false }
-                WinButton(title: "Add", style: .primary, small: true, action: add)
+                WinButton(title: model.picked.count == 1 ? "Add 1 repo" : "Add \(model.picked.count) repos", style: .primary, small: true,
+                          action: addPicked)
+                    .disabled(model.picked.isEmpty)
             }
         }
         .padding(WinMetrics.s24)
-        .frame(width: 420)
+        .frame(width: 520)
         .background(WinTheme.ground)
+        .onAppear { catalog.load(paths: store.paths) }
     }
 
-    private func add() {
-        let slug = model.addText.trimmingCharacters(in: .whitespaces)
-        let repo = RepoConfig(slug: slug, clone: ConfigEditor.defaultClone(slug: slug, home: store.paths.home))
+    private func toggle(_ slug: String) {
+        guard !configured.contains(slug) else { return }
+        model.picked = model.picked.symmetricDifference([slug])
+    }
+
+    private func addPicked() {
+        add(model.picked.sorted())
+    }
+
+    private func addTyped() {
+        add([model.addText.trimmingCharacters(in: .whitespaces)])
+    }
+
+    /// Adds the repos with the onboarding defaults: comments, and reviews from collaborators.
+    private func add(_ slugs: [String]) {
+        let home = store.paths.home
         model.commit("add", store: store, then: { [model] ok in
             guard ok else { return }
             model.addingRepo = false
-            model.select(slug)
-        }) { try ConfigEditor.addRepo($0, repo) }
+            if let first = slugs.first { model.select(first) }
+        }) { config in
+            try slugs.reduce(config) { config, slug in
+                try ConfigEditor.addRepo(config, RepoConfig(slug: slug, clone: ConfigEditor.defaultClone(slug: slug, home: home),
+                                                            posting: .comment, authors: .collaborators))
+            }
+        }
     }
 }
 
@@ -552,6 +585,9 @@ final class ReposModel: ObservableObject {
     /// True for 2 s after a successful save.
     let saved = SavedFlash()
     @Published var addingRepo = false
+    /// Repos picked in the Add sheet and not yet added.
+    @Published var picked: Set<String> = []
+    @Published var pickerSearch = ""
     @Published var addText = ""
     @Published var confirmRemove = false
     @Published var editingLogins = false
@@ -574,6 +610,8 @@ final class ReposModel: ObservableObject {
 
     func openAddRepo() {
         addText = ""
+        picked = []
+        pickerSearch = ""
         rowErrors["add"] = nil
         addingRepo = true
     }
