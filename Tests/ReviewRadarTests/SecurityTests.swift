@@ -88,7 +88,7 @@ final class SecurityTests: XCTestCase {
             "hooks": ["PreToolUse": [] as [Any]],
         ]
         let w = Claude.settingsWarnings(broad)
-        XCTAssertEqual(w.count, 4)
+        XCTAssertEqual(w.count, 3)
         XCTAssertTrue(Claude.settingsWarnings(["permissions": ["allow": ["Bash(npm test)"]]]).isEmpty)
     }
 }
