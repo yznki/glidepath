@@ -45,7 +45,7 @@ struct PopoverView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
             }
@@ -131,10 +131,13 @@ struct PopoverView: View {
             let h = mins / 60, m = mins % 60
             small = h > 0 ? "in \(h) h \(m) min" : "in \(m) min"
         }
+        if let tokens = snap.run?.tokens, tokens > 0 {
+            small = [small, "\(compactTokens(tokens)) tokens last run"].compactMap { $0 }.joined(separator: " · ")
+        }
         return HeaderCopy(title: "All quiet", big: big, small: small)
     }
 
-    /// "Last sweep 10:04 · 1 approved · 4 changes · 3 skipped · 84k tokens", zero counts omitted.
+    /// "Last sweep 10:04 · 1 approved · 4 changes · 3 skipped", zero counts omitted.
     private var lastSweepLine: String? {
         guard store.snap.jobInstalled, !store.snap.running, let run = store.snap.run else { return nil }
         var parts = ["Last sweep \(Self.clock.string(from: run.started))"]
@@ -145,7 +148,6 @@ struct PopoverView: View {
         if approved > 0 { parts.append("\(approved) approved") }
         if changes > 0 { parts.append("\(changes) changes") }
         if skipped > 0 { parts.append("\(skipped) skipped") }
-        if run.tokens > 0 { parts.append("\(compactTokens(run.tokens)) tokens") }
         return parts.joined(separator: " · ")
     }
 

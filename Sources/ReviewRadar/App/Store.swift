@@ -94,6 +94,7 @@ final class Store: ObservableObject {
             s.lastError = "could not read the last run: \(error)"
         }
         // A run is live only while its lock is held, so a crashed run never shows as running.
+        s.lastError = s.lastError ?? s.run?.error
         s.running = (s.run.map { $0.finished == nil } ?? false) && RunLock.isHeld(paths.lockFile)
         s.paused = Pause.isPaused(paths)
         s.jobInstalled = FileManager.default.fileExists(atPath: paths.plistFile)
