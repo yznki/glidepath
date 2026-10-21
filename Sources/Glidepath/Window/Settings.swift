@@ -272,21 +272,21 @@ final class SettingsModel: ObservableObject {
 
     /// Applies one switch to the saved config and writes it. On success the store reloads and the Saved stamp shows.
     /// On failure the message goes to `row` and nothing is written.
-    func commit(_ row: String, store: Store, _ change: (Config) throws -> Config) {
-        guard let config = store.snap.config else {
-            rowErrors[row] = "No config yet. Run glidepath init."
-            return
-        }
-        do {
-            let next = try change(config)
-            try ConfigEditor.save(next, paths: store.paths)
-            rowErrors[row] = nil
-            saved.flash()
+    /// The change is applied to config.toml as it is on disk now (ConfigWriter), so a hand edit since the window
+    /// loaded the file is kept, and the write runs off the main actor.
+    func commit(_ row: String, store: Store, _ change: @escaping @Sendable (Config) throws -> Config) {
+        let paths = store.paths
+        Task {
+            do {
+                try await ConfigWriter.shared.apply(paths: paths, change: change) { try ConfigEditor.save($0, paths: paths) }
+                rowErrors[row] = nil
+                saved.flash()
+            } catch let error as ConfigError {
+                rowErrors[row] = error.message
+            } catch {
+                rowErrors[row] = "Could not save: \(error.localizedDescription)"
+            }
             store.reload()
-        } catch let error as ConfigError {
-            rowErrors[row] = error.message
-        } catch {
-            rowErrors[row] = "Could not save: \(error.localizedDescription)"
         }
     }
 
