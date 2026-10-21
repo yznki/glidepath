@@ -30,6 +30,13 @@ enum Pause {
         FileManager.default.fileExists(atPath: paths.pausedFile)
     }
 
+    /// When the pause started, read from the marker file. nil when not paused or unreadable.
+    static func since(_ paths: Paths) -> Date? {
+        guard let text = try? String(contentsOfFile: paths.pausedFile, encoding: .utf8) else { return nil }
+        let stamp = text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "paused ", with: "")
+        return ISO8601DateFormatter().date(from: stamp)
+    }
+
     static func set(_ paused: Bool, _ paths: Paths) throws {
         let fm = FileManager.default
         if paused {

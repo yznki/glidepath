@@ -2,17 +2,16 @@ import SwiftUI
 import ServiceManagement
 import AppKit
 
-private let stateSpring = Animation.spring(response: 0.45, dampingFraction: 0.86)
-private let stageWords = ["starting", "gathering", "reviewing", "checking", "posting"]
-private let rowMaxVisible: CGFloat = 6 * 64
-
-/// View-local state. SwiftUI's state wrapper is a macro, and Command Line Tools cannot load its
-/// plugin, so views keep their few mutable values in this object instead.
-final class LocalState: ObservableObject {
+/// View-local state. SwiftUI's state wrappers are macros in the SDK and Command Line Tools cannot load
+/// their plugins, so views keep their few mutable values in observable objects instead.
+final class PopoverModel: ObservableObject {
     @Published var loginOn = false
     @Published var rowsHeight: CGFloat = 0
-    @Published var hovering = false
-    @Published var scale: CGFloat = 1.3
+}
+
+final class SettleModel: ObservableObject {
+    @Published var scale: CGFloat = 1
+    @Published var angle: Double = 0
 }
 
 private struct RowsHeight: PreferenceKey {
@@ -20,7 +19,7 @@ private struct RowsHeight: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
-/// "1.2k", "84k", "3.1M". Token counts in the header and strips.
+/// "1.2k", "84k", "3.1M". Token counts in the header.
 func compactTokens(_ n: Int) -> String {
     switch n {
     case 1_000_000...: return String(format: "%.1fM", Double(n) / 1_000_000)
@@ -31,35 +30,30 @@ func compactTokens(_ n: Int) -> String {
 
 struct PopoverView: View {
     @ObservedObject var store: Store
-    /// True only for `--snapshot` rendering: ImageRenderer draws ScrollView and AppKit-backed buttons blank.
+    /// True only for snapshot rendering: ImageRenderer draws ScrollView and AppKit-backed controls blank.
     var offscreen = false
-    @StateObject private var local = LocalState()
+    @StateObject private var local = PopoverModel()
+    @Environment(\.colorScheme) private var scheme
+
+    private var p: Palette { Palette(scheme) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-                .padding(16)
-            Divider()
-            if let line = lastSweepLine {
-                Text(line)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .lineLimit(2)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 10)
-            }
-            strips
-            Divider()
+            Rectangle().fill(p.line).frame(height: 1)
+            list
             footer
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
         }
-        .frame(width: 360)
+        .frame(width: Metrics.popoverWidth)
+        .background(offscreen ? p.ground : Color.clear)
         .onAppear {
             guard !offscreen else { return }
-            store.reload()
+            store.popoverOpened()
             local.loginOn = store.loginItemOn
+        }
+        .onDisappear {
+            guard !offscreen else { return }
+            store.popoverClosed()
         }
     }
 
@@ -67,188 +61,193 @@ struct PopoverView: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 14) {
-            RadarView(strips: store.strips, running: store.snap.running, size: 84)
-                .frame(width: 84, height: 84)
-            // Relative times ("in 2 h", "21 min") refresh every 30 s without a poll on the state.
+            RadarView(blips: blips, mode: radarMode, hovered: store.hovered, motion: store.motion,
+                      onHover: { store.setHovered($0) })
+                .frame(width: Metrics.radar, height: Metrics.radar)
             TimelineView(.periodic(from: .now, by: 30)) { context in
-                VStack(alignment: .leading, spacing: 2) {
-                    let copy = headerCopy(now: context.date)
-                    Text(copy.title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(copy.amber ? Color.changes : .secondary)
-                    if let big = copy.big {
-                        Text(big)
-                            .font(.system(size: 26, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.6)
-                    }
-                    if let small = copy.small {
-                        Text(small)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                    }
+                let kind = Presentation.headerKind(store.snap, now: context.date)
+                headerText(kind, now: context.date)
+            }
+        }
+        .padding(.horizontal, Metrics.gutter)
+        .padding(.vertical, 16)
+    }
+
+    private func headerText(_ kind: HeaderKind, now: Date) -> some View {
+        let copy = HeaderCopy.make(kind, now: now, palette: p)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(copy.headline)
+                .font(.system(size: 17, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            if let sub = copy.sub {
+                Text(sub)
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            if copy.openLog {
+                if offscreen {
+                    Text("Open log").font(.system(size: 12)).foregroundStyle(p.doing)
+                } else {
+                    Button("Open log") { store.openLog() }
+                        .buttonStyle(.link)
+                        .font(.system(size: 12))
                 }
             }
-            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, minHeight: Metrics.radar, alignment: .leading)
+    }
+
+    private var radarMode: RadarMode {
+        if store.snap.running { return .running }
+        if store.snap.paused { return .paused }
+        return .idle
+    }
+
+    private var groups: [RepoGroup] {
+        Presentation.rows(from: store.strips, running: store.snap.running, repos: store.snap.run?.repos ?? [])
+    }
+
+    /// Blips in display order: the radar's slot for a PR is its place in the list.
+    private var blips: [Blip] {
+        groups.flatMap(\.rows).map { row in
+            Blip(id: row.id, progress: Presentation.progress(row.strip), verdict: row.strip.verdict,
+                 active: row.strip.active && row.strip.verdict == nil)
         }
     }
 
-    private struct HeaderCopy {
-        var title: String
-        var big: String?
-        var small: String?
-        var amber = false
-    }
-
-    private func headerCopy(now: Date) -> HeaderCopy {
-        let snap = store.snap
-        if !snap.jobInstalled {
-            return HeaderCopy(title: "Schedule not installed", amber: true)
-        }
-        if snap.running {
-            var small: String?
-            if let started = snap.run?.started {
-                let mins = max(0, Int(now.timeIntervalSince(started) / 60))
-                small = "started \(Self.clock.string(from: started)) · \(mins) min"
-                if let tokens = snap.run?.tokens, tokens > 0 { small? += " · \(compactTokens(tokens)) tokens" }
-            }
-            return HeaderCopy(title: "Reviewing", big: "\(store.done) of \(store.strips.count) done", small: small)
-        }
-        if snap.paused {
-            return HeaderCopy(title: "Paused", big: nil, small: "scheduled runs skipped until resume")
-        }
-        guard snap.run != nil else {
-            return HeaderCopy(title: "No sweeps yet")
-        }
-        var big: String?
-        var small: String?
-        if let next = snap.nextRun {
-            big = "Next sweep \(Self.clock.string(from: next))"
-            let mins = max(0, Int(next.timeIntervalSince(now) / 60))
-            let h = mins / 60, m = mins % 60
-            small = h > 0 ? "in \(h) h \(m) min" : "in \(m) min"
-        }
-        if let tokens = snap.run?.tokens, tokens > 0 {
-            small = [small, "\(compactTokens(tokens)) tokens last run"].compactMap { $0 }.joined(separator: " · ")
-        }
-        return HeaderCopy(title: "All quiet", big: big, small: small)
-    }
-
-    /// "Last sweep 10:04 · 1 approved · 4 changes · 3 skipped", zero counts omitted.
-    private var lastSweepLine: String? {
-        guard store.snap.jobInstalled, !store.snap.running, let run = store.snap.run else { return nil }
-        var parts = ["Last sweep \(Self.clock.string(from: run.started))"]
-        let strips = store.strips
-        let approved = strips.filter { $0.verdict == .approve }.count
-        let changes = strips.filter { $0.verdict == .changes }.count
-        let skipped = strips.filter { $0.verdict == .skipped }.count
-        if approved > 0 { parts.append("\(approved) approved") }
-        if changes > 0 { parts.append("\(changes) changes") }
-        if skipped > 0 { parts.append("\(skipped) skipped") }
-        return parts.joined(separator: " · ")
-    }
-
-    // MARK: Strips
+    // MARK: List
 
     @ViewBuilder
-    private var strips: some View {
-        if !store.snap.jobInstalled {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("The scheduled job is not installed. Run:")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("review-radar init")
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else if store.snap.run == nil {
-            Text("No PRs in the last sweep")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    private var list: some View {
+        let groups = self.groups
+        let rows = groups.flatMap(\.rows)
+        if !store.snap.jobInstalled || (store.snap.run == nil && !store.snap.running) {
+            Text(store.snap.jobInstalled ? "Nothing has run yet." : "Run review-radar init to set up the schedule.")
+                .font(.system(size: 12))
+                .foregroundStyle(p.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
+                .padding(.horizontal, Metrics.gutter)
+                .frame(height: 52, alignment: .center)
+        } else if rows.isEmpty {
+            Text(groups.map(\.repo).joined(separator: ", ") + ": no open PRs")
+                .font(.system(size: 12))
+                .foregroundStyle(p.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Metrics.gutter)
+                .frame(height: 52, alignment: .center)
         } else if offscreen {
-            rows
+            groupsView(groups)
         } else {
-            // Height follows the measured rows, capped at about six visible rows.
             ScrollView {
-                rows
+                groupsView(groups)
                     .background(GeometryReader { Color.clear.preference(key: RowsHeight.self, value: $0.size.height) })
             }
-            .frame(height: min(max(local.rowsHeight, 1), rowMaxVisible))
+            .frame(height: min(max(local.rowsHeight, 1), CGFloat(Metrics.maxVisibleRows) * Metrics.rowPitch + 40))
             .onPreferenceChange(RowsHeight.self) { local.rowsHeight = $0 }
         }
     }
 
-    /// Strips grouped under their repo, in config order.
-    private var rows: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(store.snap.run?.repos ?? [], id: \.slug) { repo in
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(repo.slug)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.top, 4)
-                    if let error = repo.error {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(Color.changes)
-                            .lineLimit(2)
-                            .padding(.horizontal, 10)
+    private func groupsView(_ groups: [RepoGroup]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(groups) { group in
+                VStack(alignment: .leading, spacing: 0) {
+                    if groups.count > 1 {
+                        Text(group.repo)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(p.secondary)
+                            .padding(.horizontal, Metrics.gutter)
+                            .padding(.top, 14)
+                            .padding(.bottom, 6)
                     }
-                    let group = store.strips
-                        .filter { $0.repo == repo.slug }
-                        .sorted { ($0.active ? 0 : 1, -$0.number) < ($1.active ? 0 : 1, -$1.number) }
-                    ForEach(group) { strip in
-                        StripRow(strip: strip, runOver: !store.snap.running)
+                    if let error = group.error {
+                        Text(error)
+                            .font(.system(size: 12))
+                            .foregroundStyle(p.error)
+                            .lineLimit(2)
+                            .padding(.horizontal, Metrics.gutter)
+                            .padding(.bottom, 4)
+                    }
+                    ForEach(group.rows) { row in
+                        PRRow(row: row, hovered: store.hovered == row.id, store: store, offscreen: offscreen)
                     }
                 }
+                .padding(.bottom, groups.count > 1 ? 4 : 0)
             }
         }
-        .padding(6)
+        .padding(.vertical, 4)
     }
 
     // MARK: Footer
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let error = store.errorText {
-                Text(error)
-                    .font(.caption2)
-                    .foregroundStyle(Color.changes)
-                    .lineLimit(3)
-                    .textSelection(.enabled)
-            }
-            styled(HStack(spacing: 12) {
-                Button(store.snap.running ? "Running" : "Run now") { confirmAndRun() }
-                    .disabled(store.snap.running || !store.snap.jobInstalled)
+        HStack(spacing: 8) {
+            footerButton
+            Spacer(minLength: 0)
+            if offscreen {
+                // ImageRenderer draws AppKit menus as a prohibition sign; the symbol stands in for the menu.
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 15))
+                    .foregroundStyle(p.ink)
+            } else {
+            Menu {
                 Button(store.snap.paused ? "Resume" : "Pause") { store.togglePause() }
-                Button("Log") { NSWorkspace.shared.open(URL(fileURLWithPath: store.paths.logFile)) }
-                if offscreen {
-                    // ImageRenderer draws AppKit checkboxes as a prohibition sign; text stands in.
-                    Text((store.loginItemOn ? "[x] " : "[ ] ") + "Open at login")
-                } else {
-                    Toggle("Open at login", isOn: Binding(
-                        get: { local.loginOn },
-                        set: { on in
-                            store.setLoginItem(on)
-                            local.loginOn = store.loginItemOn
-                        }
-                    ))
-                    .toggleStyle(.checkbox)
-                }
-                Spacer(minLength: 0)
-                Button("Quit") { NSApp.terminate(nil) }
+                Button("Open log") { store.openLog() }
+                Toggle("Open at login", isOn: Binding(
+                    get: { local.loginOn },
+                    set: { on in
+                        store.setLoginItem(on)
+                        local.loginOn = store.loginItemOn
+                    }
+                ))
+                Divider()
+                Button("Quit Review Radar") { NSApp.terminate(nil) }
                     .keyboardShortcut("q")
-            })
-            .controlSize(.small)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 15))
+                    .foregroundStyle(p.ink)
+                    .accessibilityLabel("More")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            }
+        }
+        .padding(.horizontal, Metrics.gutter)
+        .frame(height: Metrics.footer)
+    }
+
+    /// The bordered button, drawn in SwiftUI when rendering offscreen. Same size and outline.
+    private func standIn(_ label: String, enabled: Bool = true) -> some View {
+        Text(label)
+            .font(.system(size: 13))
+            .foregroundStyle(p.ink.opacity(enabled ? 1 : 0.4))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).stroke(p.ink.opacity(0.22), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var footerButton: some View {
+        if offscreen {
+            standIn(store.snap.running ? "Running…" : (store.snap.paused ? "Resume" : "Run now"),
+                    enabled: !store.snap.running)
+        } else if store.snap.running {
+            Button("Running…") {}
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(true)
+        } else if store.snap.paused {
+            Button("Resume") { store.togglePause() }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+        } else {
+            Button("Run now") { confirmAndRun() }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!store.snap.jobInstalled)
         }
     }
 
@@ -264,24 +263,82 @@ struct PopoverView: View {
         }
         store.runNow()
     }
+}
 
-    @ViewBuilder
-    private func styled<V: View>(_ view: V) -> some View {
-        if offscreen { view.buttonStyle(.plain) } else { view.buttonStyle(.borderless) }
+/// Header copy for each HeaderKind (docs/design.md, header table).
+struct HeaderCopy {
+    var headline: AttributedString
+    var sub: String?
+    var openLog = false
+
+    static func make(_ kind: HeaderKind, now: Date, palette p: Palette) -> HeaderCopy {
+        switch kind {
+        case .notScheduled:
+            return HeaderCopy(headline: text("Not scheduled", p.changesText),
+                              sub: "Run `review-radar init` to set it up")
+        case .paused(let since):
+            return HeaderCopy(headline: text("Paused", p.ink),
+                              sub: since.map { "Since \(clock($0)) · scheduled sweeps are skipped" }
+                                ?? "Scheduled sweeps are skipped")
+        case .running(let changes, let reviewing, let total, let landed, let started, let tokens):
+            let headline = changes > 0
+                ? text("\(changes) need changes\u{00A0}·", p.changesText) + text(" \(reviewing) reviewing", p.ink)
+                : text("Reviewing \(total) PR\(total == 1 ? "" : "s")", p.ink)
+            var parts = ["\(landed) of \(total) landed"]
+            if let started { parts.append("started \(clock(started))") }
+            if tokens > 0 { parts.append("\(compactTokens(tokens)) tokens") }
+            return HeaderCopy(headline: headline, sub: parts.joined(separator: " · "))
+        case .failed(let message):
+            return HeaderCopy(headline: text("Last sweep failed", p.error), sub: message, openLog: true)
+        case .emptyRun(let repos, let checkedAt, let next):
+            var sub = "Checked \(repos) repo\(repos == 1 ? "" : "s") at \(clock(checkedAt))"
+            if let next { sub += " · next \(clock(next))" }
+            return HeaderCopy(headline: text("No PRs to review", p.ink), sub: sub)
+        case .idle(let changes, let next):
+            let headline = changes > 0
+                ? text("\(changes) need changes", p.changesText)
+                : text("All clear", p.ink)
+            return HeaderCopy(headline: headline, sub: next.map { "Next sweep \(clock($0)) · in \(untilText($0, now))" }
+                              ?? "No sweep scheduled")
+        case .noSweeps(let next):
+            return HeaderCopy(headline: text("No sweeps yet", p.ink),
+                              sub: next.map { "First sweep \(clock($0)) · in \(untilText($0, now))" }
+                                ?? "No schedule set")
+        }
     }
 
-    static let clock: DateFormatter = {
+    static func text(_ s: String, _ colour: Color) -> AttributedString {
+        var a = AttributedString(s)
+        a.foregroundColor = colour
+        return a
+    }
+
+    static let clockFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "HH:mm"
         return f
     }()
+
+    static func clock(_ d: Date) -> String { clockFormatter.string(from: d) }
+
+    static func untilText(_ next: Date, _ now: Date) -> String {
+        let mins = max(0, Int(next.timeIntervalSince(now) / 60))
+        let h = mins / 60, m = mins % 60
+        return h > 0 ? "\(h) h \(m) min" : "\(m) min"
+    }
 }
 
-struct StripRow: View {
-    let strip: Strip
-    let runOver: Bool
-    @StateObject private var local = LocalState()
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+/// One PR row: 52 pt pitch, title and meta on the left, a fixed 72 pt right column.
+struct PRRow: View {
+    let row: RowModel
+    let hovered: Bool
+    let store: Store
+    var offscreen = false
+    @Environment(\.colorScheme) private var scheme
+    @FocusState private var focused: Bool
+
+    private var p: Palette { Palette(scheme) }
+    private var strip: Strip { row.strip }
 
     var body: some View {
         Button {
@@ -289,165 +346,129 @@ struct StripRow: View {
                 NSWorkspace.shared.open(url)
             }
         } label: {
-            HStack(spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: "#\(strip.number)")
-                        .font(.system(.body, design: .monospaced).weight(.semibold))
-                    if !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
+                    Text(strip.title ?? "Untitled PR")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(p.ink)
+                        .lineLimit(1)
+                    meta
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // Fixed-width columns keep the rail at the same x on every row.
-                Rail(stage: strip.stage, active: strip.active && strip.verdict == nil,
-                     verdict: strip.verdict, reduceMotion: reduceMotion)
-                    .frame(width: 64, height: 6)
-                ZStack(alignment: .trailing) {
-                    status
-                }
-                .frame(width: 96, alignment: .trailing)
+                rightColumn
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11))
+                    .foregroundStyle(p.secondary)
+                    .opacity(hovered ? 1 : 0)
+                    .frame(width: 11)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+            .padding(.horizontal, Metrics.gutter)
+            .frame(height: Metrics.rowPitch)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.primary.opacity(local.hovering ? 0.05 : 0))
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(p.ink.opacity(hovered ? 0.05 : 0))
+                    .padding(.horizontal, 8)
             )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .onHover { local.hovering = $0 }
-        .animation(stateSpring, value: local.hovering)
+        .focused($focused)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(p.doing, lineWidth: 2)
+                .padding(.horizontal, 8)
+                .opacity(focused ? 1 : 0)
+        )
+        .help(strip.reason ?? "")
+        .onHover { inside in store.setHovered(inside ? strip.id : nil) }
     }
 
-    private var subtitle: String {
-        var parts = [strip.author, strip.reason].compactMap { $0 }.filter { !$0.isEmpty }
-        if strip.tokens > 0 { parts.append("\(compactTokens(strip.tokens)) tok") }
-        return parts.joined(separator: " · ")
+    private var meta: some View {
+        var line = AttributedString("#\(strip.number)")
+        line.font = .system(size: 12, design: .monospaced)
+        line.foregroundColor = p.secondary
+        var rest = AttributedString(" · \(strip.author ?? "unknown")" + (strip.reason.map { " · \($0)" } ?? ""))
+        rest.font = .system(size: 12)
+        rest.foregroundColor = p.secondary
+        return Text(line + rest).lineLimit(1)
     }
 
-    @ViewBuilder
-    private var status: some View {
-        if let verdict = strip.verdict {
-            Stamp(verdict: verdict, key: "\(strip.id)-\(verdict.rawValue)", reduceMotion: reduceMotion)
-        } else if strip.active {
-            Text(stageWords[min(max(strip.stage, 0), 4)])
-                .font(.caption.weight(.medium))
-                .foregroundStyle(Color.scan)
-                .lineLimit(1)
-        } else if runOver {
-            Text("dropped")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+    private var rightColumn: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            if let verdict = strip.verdict {
+                Stamp(verdict: verdict, settle: store.justLanded.contains(strip.id), offscreen: offscreen)
+            } else if let phase = row.phase {
+                Text(phase)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(p.doing)
+            }
+            if let rail = row.rail {
+                RailView(segments: rail, palette: p)
+            }
         }
+        .frame(width: Metrics.rightColumn, alignment: .trailing)
     }
 }
 
-struct Rail: View {
-    let stage: Int
-    let active: Bool
-    let verdict: Verdict?
-    let reduceMotion: Bool
+/// The four-part rail: done segments ink at 60%, the current segment in the doing colour, future at 12%.
+struct RailView: View {
+    let segments: [RailSegment]
+    let palette: Palette
 
     var body: some View {
-        let s = min(max(stage, 0), 4)
         HStack(spacing: 3) {
-            if let verdict {
-                // Stamped: every capsule takes the verdict color.
-                ForEach(0..<4, id: \.self) { _ in
-                    Capsule().fill(Self.color(verdict))
-                }
-            } else {
-                // Active stage is the one in progress: stage 1 = segment 0. Done segments fill.
-                let filledCount = active ? max(s - 1, 0) : s
-                let activeIndex = active && s >= 1 ? s - 1 : -1
-                ForEach(0..<4, id: \.self) { i in
-                    if i == activeIndex {
-                        ActiveSegment(reduceMotion: reduceMotion)
-                    } else {
-                        Capsule()
-                            .fill(Color.primary.opacity(i < filledCount ? 0.35 : 0.1))
-                    }
-                }
-            }
-        }
-    }
-
-    static func color(_ verdict: Verdict) -> Color {
-        switch verdict {
-        case .approve: return Color.approve.opacity(0.55)
-        case .changes: return Color.changes.opacity(0.55)
-        case .skipped: return Color.secondary.opacity(0.25)
-        }
-    }
-}
-
-struct ActiveSegment: View {
-    let reduceMotion: Bool
-
-    var body: some View {
-        if reduceMotion {
-            Capsule().fill(Color.scan)
-        } else {
-            TimelineView(.animation) { context in
-                let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
+            ForEach(0..<segments.count, id: \.self) { i in
                 Capsule()
-                    .fill(Color.scan.opacity(0.35))
-                    .overlay {
-                        GeometryReader { g in
-                            Capsule()
-                                .fill(LinearGradient(
-                                    colors: [.clear, Color.scan, .clear],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ))
-                                .frame(width: g.size.width * 0.5)
-                                .offset(x: g.size.width * 1.5 * phase - g.size.width * 0.5)
-                        }
-                        .clipShape(Capsule())
-                    }
+                    .fill(colour(segments[i]))
+                    .frame(width: (Metrics.railWidth - 9) / 4, height: 3)
             }
+        }
+        .frame(width: Metrics.railWidth, height: 3)
+    }
+
+    private func colour(_ s: RailSegment) -> Color {
+        switch s {
+        case .done: return palette.ink.opacity(0.6)
+        case .current: return palette.doing
+        case .future: return palette.ink.opacity(0.12)
         }
     }
 }
 
+/// A verdict stamp: upright at rest, 72 pt wide. It settles into place once when it lands on an open popover.
 struct Stamp: View {
     let verdict: Verdict
-    let key: String
-    let reduceMotion: Bool
-
-    @StateObject private var local = LocalState()
+    let settle: Bool
+    var offscreen = false
+    @StateObject private var model = SettleModel()
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let (word, color): (String, Color) = {
+        let p = Palette(scheme)
+        let word: String = {
             switch verdict {
-            case .approve: return ("APPROVED", .approve)
-            case .changes: return ("CHANGES", .changes)
-            case .skipped: return ("SKIPPED", .secondary)
+            case .approve: return "APPROVED"
+            case .changes: return "CHANGES"
+            case .skipped: return "SKIPPED"
             }
         }()
         Text(word)
-            .font(.system(size: 10, weight: .bold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .stroke(color, lineWidth: 1.5)
-            )
-            .rotationEffect(.degrees(-4))
-            .scaleEffect(reduceMotion ? 1 : local.scale)
-            .id(key)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(p.verdictText(verdict))
+            .frame(width: Metrics.rightColumn)
+            .padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(p.verdictFill(verdict).opacity(0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).stroke(p.verdictText(verdict), lineWidth: 1.5))
+            .scaleEffect(model.scale)
+            .rotationEffect(.degrees(model.angle))
             .onAppear {
-                if reduceMotion {
-                    local.scale = 1
-                } else {
-                    withAnimation(stateSpring) { local.scale = 1 }
+                guard settle, !offscreen, !reduceMotion else { return }
+                model.scale = 1.15
+                model.angle = -3
+                withAnimation(.easeOut(duration: 0.14)) {
+                    model.scale = 1
+                    model.angle = 0
                 }
             }
     }
