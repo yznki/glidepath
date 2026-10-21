@@ -233,9 +233,11 @@ final class Runner {
             try? update { $0.error = "\(error)" }
         }
 
+        let earlier = failed ? store.loadAll() : []
         try? update { run in
             run.finish(at: Date(), error: run.error)
             run.tokens = totalTokens
+            if failed { run.carryOver(from: earlier) }
         }
         printSummary()
         return failed ? 1 : 0

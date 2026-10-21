@@ -129,6 +129,27 @@ struct RunState: Codable, Equatable {
         repos[ri].prs[pi].tokens += tokens
     }
 
+    /// After a failed sweep, a PR with no verdict in this run takes the verdict of the newest earlier run that
+    /// had one. It carries that run's start, or the start it was carried from, so the row says when it was decided.
+    /// ponytail: scans every earlier run in memory; index the runs if the folder ever grows large.
+    mutating func carryOver(from earlier: [RunState]) {
+        let newest = earlier.filter { $0.id != id }.sorted { $0.started > $1.started }
+        for ri in repos.indices {
+            let slug = repos[ri].slug
+            for pi in repos[ri].prs.indices where repos[ri].prs[pi].verdict == nil {
+                let n = repos[ri].prs[pi].n
+                for run in newest {
+                    guard let old = run.repos.first(where: { $0.slug == slug })?.prs.first(where: { $0.n == n }),
+                          let verdict = old.verdict else { continue }
+                    repos[ri].prs[pi].verdict = verdict
+                    repos[ri].prs[pi].reason = old.reason
+                    repos[ri].prs[pi].carriedFrom = old.carriedFrom ?? run.started
+                    break
+                }
+            }
+        }
+    }
+
     mutating func finish(at now: Date, error: String?) {
         finished = now
         self.error = error
@@ -180,6 +201,12 @@ struct RunStore {
         var run = try load(id)
         try body(&run)
         try save(run)
+    }
+
+    /// Every readable run on disk. Unreadable files are skipped.
+    func loadAll() -> [RunState] {
+        let files = (try? FileManager.default.contentsOfDirectory(atPath: paths.runsDir)) ?? []
+        return files.filter { $0.hasSuffix(".json") }.compactMap { try? load(String($0.dropLast(5))) }
     }
 
     func load(_ id: String) throws -> RunState {

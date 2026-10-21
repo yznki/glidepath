@@ -14,6 +14,33 @@ final class StateTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: home)
     }
 
+    func testFailedSweepCarriesLastVerdictWithItsRunStart() throws {
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        var older = RunState.new(id: "older", now: t0.addingTimeInterval(-3600))
+        try older.setPR(repo: "acme/api", n: 5, stage: nil, author: nil, title: nil, verdict: .approve, reason: nil)
+        older.finish(at: t0, error: nil)
+        var old = RunState.new(id: "old", now: t0)
+        try old.setPR(repo: "acme/api", n: 5, stage: nil, author: "ines", title: "T", verdict: .changes, reason: "missing test")
+        old.finish(at: t0, error: nil)
+        var now = RunState.new(id: "now", now: t0.addingTimeInterval(60))
+        try now.setPR(repo: "acme/api", n: 5, stage: nil, author: "ines", title: "T", verdict: nil, reason: nil)
+        try now.setPR(repo: "acme/api", n: 6, stage: nil, author: "tom", title: "U", verdict: nil, reason: nil)
+        now.carryOver(from: [older, old])
+
+        let carried = try XCTUnwrap(now.repos[0].prs.first { $0.n == 5 })
+        XCTAssertEqual(carried.verdict, .changes, "the newest earlier verdict wins")
+        XCTAssertEqual(carried.reason, "missing test")
+        XCTAssertEqual(carried.carriedFrom, t0, "the row shows the start of the run that decided it")
+        let fresh = try XCTUnwrap(now.repos[0].prs.first { $0.n == 6 })
+        XCTAssertNil(fresh.verdict, "a PR with no earlier verdict stays without one")
+        XCTAssertNil(fresh.carriedFrom)
+
+        var later = RunState.new(id: "later", now: t0.addingTimeInterval(120))
+        try later.setPR(repo: "acme/api", n: 5, stage: nil, author: nil, title: nil, verdict: nil, reason: nil)
+        later.carryOver(from: [now, old])
+        XCTAssertEqual(later.repos[0].prs[0].carriedFrom, t0, "carrying again keeps the original start")
+    }
+
     func testStagesMoveForwardOnly() throws {
         var run = RunState.new(id: "r1", now: Date())
         try run.setPR(repo: "a/b", n: 7, stage: .gather, author: "x", title: "t", verdict: nil, reason: nil)
