@@ -539,19 +539,6 @@ final class Store: ObservableObject {
         }
     }
 
-    /// First run: opens the config in the default editor. Creates it from the commented template when missing.
-    func editRepos() {
-        let path = paths.configFile
-        if !FileManager.default.fileExists(atPath: path) {
-            let empty = Config(schedule: Config.defaultSchedule.compactMap(ScheduleTime.init), limits: Limits(), repos: [])
-            let template = "# Glidepath config. Add one [[repo]] table per repository to review.\n" + empty.render()
-            try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
-                                                     withIntermediateDirectories: true)
-            try? template.write(toFile: path, atomically: true, encoding: .utf8)
-        }
-        NSWorkspace.shared.open(URL(fileURLWithPath: path))
-    }
-
     func openLog() {
         NSWorkspace.shared.open(URL(fileURLWithPath: paths.logFile))
     }

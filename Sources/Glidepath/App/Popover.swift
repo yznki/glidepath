@@ -367,6 +367,8 @@ struct PopoverView: View {
                     .foregroundStyle(p.ink)
             } else {
                 Menu {
+                    Button("Open Glidepath") { WindowRouter.shared.open(.overview) }
+                    Divider()
                     if let update = store.availableUpdate {
                         Button("Update to \(update.latest)…") { confirmAndUpdate(update) }
                             .disabled(store.snap.updatePhase == .updating)
@@ -377,7 +379,7 @@ struct PopoverView: View {
                     Divider()
                     Button(store.snap.paused ? "Resume" : "Pause") { store.togglePause() }
                     Button("Open log") { store.openLog() }
-                    Button("Open dashboard") { store.openDashboard() }
+                    Button("Reviews") { WindowRouter.shared.open(.reviews) }
                     Button("Check for updates…") { store.checkForUpdates(manual: true) }
                         .disabled(store.snap.updateChecking)
                     if let tokens = store.snap.run?.tokens, tokens > 0 {
@@ -434,7 +436,7 @@ struct PopoverView: View {
         if offscreen {
             if store.snap.running { standIn("Stop") }
             else if store.snap.paused { standIn("Resume", prominent: true) }
-            else if firstRun { standIn("Edit repos…", prominent: true) }
+            else if firstRun { standIn("Set up Glidepath…", prominent: true) }
             else { standIn("Run now") }
         } else if store.snap.running {
             Button("Stop") { confirmAndStop() }
@@ -445,7 +447,7 @@ struct PopoverView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
         } else if firstRun {
-            Button("Edit repos…") { store.editRepos() }
+            Button("Set up Glidepath…") { WindowRouter.shared.open(.overview) }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
         } else {

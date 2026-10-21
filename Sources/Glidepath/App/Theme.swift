@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 extension Color {
     init(hex: String) {
@@ -68,4 +69,63 @@ enum Metrics {
     static let footerRow: CGFloat = 44
     /// The popover never grows past this. Past it, the list scrolls.
     static let popoverMaxHeight: CGFloat = 640
+}
+
+/// Window colour tokens from docs/design/v1.2 (base.css `:root` dark, `:root[data-theme="light"]` light).
+/// Each token is dynamic: the app follows the system appearance.
+enum WinTheme {
+    static let ground = token(0xFBFBFC, dark: 0x0A0A0B)
+    static let surface = token(0xF1F1F3, dark: 0x141416)
+    static let raised = token(0xE8E8EC, dark: 0x1D1D20)
+    static let active = token(0xE4E4E8, dark: 0x232326)
+    static let line = token(0xE6E6EA, dark: 0x1F1F22)
+    static let control = token(0xC9C9CF, dark: 0x3A3A3E)
+    static let text = token(0x111113, dark: 0xF5F5F7)
+    static let muted = token(0x55555C, dark: 0xB4B4B8)
+    static let faint = token(0x6B6B72, dark: 0x8E8E93)
+    static let amber = token(0xE59A00, dark: 0xFFB020)
+    static let amberInk = token(0x8A5300, dark: 0xFFC966)
+    static let amberBg = token(0xFFF2D6, dark: 0x2B210C)
+    static let green = token(0x1B7A47, dark: 0x3DD68C)
+    static let greenBg = token(0xDDF3E5, dark: 0x12301F)
+    static let blue = token(0x0062D1, dark: 0x4DA3FF)
+
+    /// A colour that resolves to `light` or `dark` hex (0xRRGGBB) by the effective appearance.
+    private static func token(_ light: UInt32, dark: UInt32) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let hex = isDark ? dark : light
+            return NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+                           green: CGFloat((hex >> 8) & 0xFF) / 255,
+                           blue: CGFloat(hex & 0xFF) / 255,
+                           alpha: 1)
+        })
+    }
+}
+
+/// Window layout measurements from docs/design/v1.2/base.css, in points. Spacing scale: 4 8 12 16 20 24 32 48.
+enum WinMetrics {
+    static let s4: CGFloat = 4
+    static let s8: CGFloat = 8
+    static let s12: CGFloat = 12
+    static let s16: CGFloat = 16
+    static let s20: CGFloat = 20
+    static let s24: CGFloat = 24
+    static let s32: CGFloat = 32
+    static let s48: CGFloat = 48
+
+    static let windowWidth: CGFloat = 1100
+    static let windowHeight: CGFloat = 720
+    static let minWidth: CGFloat = 960
+    static let minHeight: CGFloat = 640
+    /// Titlebar zone: every title row starts at this y, level with the sidebar's brand row.
+    static let titlebarZone: CGFloat = 52
+    static let sidebarWidth: CGFloat = 220
+    static let sidebarInset: CGFloat = 12
+    static let navRow: CGFloat = 32
+    static let navGap: CGFloat = 4
+    static let canvasLeft: CGFloat = 32
+    static let canvasRight: CGFloat = 32
+    static let canvasTop: CGFloat = 52
+    static let canvasBottom: CGFloat = 32
 }

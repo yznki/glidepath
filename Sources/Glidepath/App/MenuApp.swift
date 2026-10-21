@@ -23,10 +23,18 @@ struct GlidepathApp: App {
     var body: some Scene {
         MenuBarExtra {
             PopoverView(store: Store.shared)
+                .background(OpenWindowBridge())
         } label: {
             MenuBarLabel(store: Store.shared)
+                .background(OpenWindowBridge())
         }
         .menuBarExtraStyle(.window)
+        Window("Glidepath", id: "main") {
+            MainWindowView()
+        }
+        .defaultSize(width: WinMetrics.windowWidth, height: WinMetrics.windowHeight)
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
     }
 }
 
