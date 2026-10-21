@@ -19,6 +19,7 @@ struct ScheduleView: View {
 
     @ObservedObject var store: Store
     @StateObject private var model = ScheduleModel()
+    @FocusState private var stripFocused: Bool
 
     private var config: Config? { store.snap.config }
 
@@ -42,6 +43,46 @@ struct ScheduleView: View {
         .sheet(isPresented: $model.addingTime) { addTimeSheet }
         .onAppear { model.refreshWeek(store) }
     }
+
+    // MARK: Keys
+
+    /// On the day strip: ← → select the previous or next pin; ↑ ↓ move it 15 min later or earlier, ⇧ or ⌥ for the
+    /// hour and the quarter hour as noted; ⌫ deletes it; ⌘Z undoes this session's schedule changes.
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        let mods = ShortcutModifiers(press.modifiers)
+        if mods == [.command], press.characters == "z" {
+            guard !TextFocus.isEditing else { return .ignored }
+            model.undo(store)
+            return .handled
+        }
+        guard !TextFocus.isEditing else { return .ignored }
+        switch press.key {
+        case .leftArrow where mods.isEmpty:
+            model.select(-1, times: displayed)
+        case .rightArrow where mods.isEmpty:
+            model.select(1, times: displayed)
+        case .leftArrow where mods == [.option]:
+            model.nudge(store, by: -PinNudge.quarter)
+        case .rightArrow where mods == [.option]:
+            model.nudge(store, by: PinNudge.quarter)
+        case .upArrow where mods.isEmpty:
+            model.nudge(store, by: PinNudge.quarter)
+        case .downArrow where mods.isEmpty:
+            model.nudge(store, by: -PinNudge.quarter)
+        case .upArrow where mods == [.shift]:
+            model.nudge(store, by: 60)
+        case .downArrow where mods == [.shift]:
+            model.nudge(store, by: -60)
+        case .delete where mods.isEmpty:
+            model.deletePin(store)
+        default:
+            return .ignored
+        }
+        return .handled
+    }
+
+    /// The pins as the strip shows them, with a pin mid-nudge already at its new time.
+    private var displayed: [ScheduleTime] { model.displayedTimes(config) }
 
     // MARK: Title row
 
@@ -97,11 +138,15 @@ struct ScheduleView: View {
 
     private var dayStrip: some View {
         DayStrip(
-            times: config?.schedule ?? [],
+            times: displayed,
             now: store.snap.now,
             onAdd: { minute in model.addTime(store, hour: minute / 60, minute: minute % 60) },
-            onMove: { time, minute in model.movePin(store, time, hour: minute / 60, minute: minute % 60) }
+            onMove: { time, minute in model.movePin(store, time, hour: minute / 60, minute: minute % 60) },
+            selected: model.selectedPin
         )
+        .focusable()
+        .focused($stripFocused)
+        .onKeyPress(phases: .down) { handleKey($0) }
     }
 
     // MARK: Sections
@@ -283,6 +328,13 @@ struct ScheduleView: View {
 @MainActor
 final class ScheduleModel: ObservableObject {
     @Published var addingTime = false
+    /// The pin the keyboard has selected.
+    @Published var selectedPin: ScheduleTime?
+    /// A pin being nudged: its time on disk, and where it is now. Saved once the keys go quiet.
+    @Published private(set) var draft: (from: ScheduleTime, to: ScheduleTime)?
+    /// The schedules before this session's changes, newest last. ⌘Z pops one.
+    private var history: [[ScheduleTime]] = []
+    private var saveTask: Task<Void, Never>?
     @Published var newTime = Date()
     @Published var rowErrors: [String: String] = [:]
     @Published var week = WeekStats()
@@ -308,6 +360,64 @@ final class ScheduleModel: ObservableObject {
 
     func removeTime(_ store: Store, _ time: ScheduleTime) {
         commit("time", store) { try ScheduleEditor.removeTime($0, time) }
+    }
+
+    /// The sweep times as the strip shows them: the saved times, with a pin mid-nudge at its new time.
+    func displayedTimes(_ config: Config?) -> [ScheduleTime] {
+        let saved = config?.schedule ?? []
+        guard let draft else { return saved }
+        return saved.map { $0 == draft.from ? draft.to : $0 }
+    }
+
+    /// Moves the selected pin by `minutes`. Each press moves the pin on screen at once; the save waits 500 ms for the
+    /// keys to go quiet, so a burst of presses is one write, and ⌘Z undoes the whole burst.
+    func nudge(_ store: Store, by minutes: Int) {
+        guard let config = store.snap.config, let current = draft?.to ?? selectedPin else { return }
+        let origin = draft?.from ?? current
+        guard let target = PinNudge.target(from: current, by: minutes, among: displayedTimes(config)) else { return }
+        if draft == nil { history.append(config.schedule) }
+        draft = (from: origin, to: target)
+        selectedPin = target
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled, let self, let d = self.draft else { return }
+            self.commit("time", store, then: { [weak self] ok in
+                self?.draft = nil
+                if !ok { self?.history.removeLast() }
+            }) {
+                try ScheduleEditor.moveTime($0, from: d.from, hour: d.to.hour, minute: d.to.minute)
+            }
+        }
+    }
+
+    /// Selects the pin `step` places along from the selection. With none, → takes the first and ← the last.
+    func select(_ step: Int, times: [ScheduleTime]) {
+        let sorted = times.sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
+        guard !sorted.isEmpty else { return }
+        guard let current = selectedPin, let index = sorted.firstIndex(of: current) else {
+            selectedPin = step > 0 ? sorted.first : sorted.last
+            return
+        }
+        selectedPin = sorted[min(max(index + step, 0), sorted.count - 1)]
+    }
+
+    /// Deletes the selected pin. The selection moves to its neighbour. ⌘Z brings it back.
+    func deletePin(_ store: Store) {
+        guard let config = store.snap.config, let pin = selectedPin, config.schedule.contains(pin) else { return }
+        let sorted = config.schedule.sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
+        let index = sorted.firstIndex(of: pin) ?? 0
+        let neighbour = index + 1 < sorted.count ? sorted[index + 1] : (index > 0 ? sorted[index - 1] : nil)
+        history.append(config.schedule)
+        commit("time", store, then: { [weak self] ok in
+            if ok { self?.selectedPin = neighbour } else { self?.history.removeLast() }
+        }) { try ScheduleEditor.removeTime($0, pin) }
+    }
+
+    /// Restores the schedule from before the last change this session.
+    func undo(_ store: Store) {
+        guard let previous = history.popLast() else { return }
+        commit("time", store) { try ScheduleEditor.setSchedule($0, previous) }
     }
 
     func movePin(_ store: Store, _ time: ScheduleTime, hour: Int, minute: Int) {

@@ -26,6 +26,8 @@ struct DayStrip: View {
     let onAdd: (Int) -> Void
     /// A pin dragged to a new minute of the day.
     let onMove: (ScheduleTime, Int) -> Void
+    /// The pin the keyboard has selected. It gets a ring. Nil when none is.
+    var selected: ScheduleTime?
 
     @StateObject private var drag = DayStripDrag()
 
@@ -112,6 +114,11 @@ struct DayStrip: View {
                 .frame(width: 80, height: 18)
             Rectangle().fill(WinTheme.amber).frame(width: 2, height: 24).padding(.top, 4)
             Circle().fill(WinTheme.amber).frame(width: 12, height: 12)
+                .overlay {
+                    if selected == time {
+                        Circle().strokeBorder(WinTheme.blue, lineWidth: 2).frame(width: 20, height: 20)
+                    }
+                }
         }
         .frame(width: 80, height: 58, alignment: .top)
         .overlay(alignment: .top) {

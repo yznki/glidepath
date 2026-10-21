@@ -13,6 +13,39 @@ enum ScheduleSave {
     }
 }
 
+/// Keyboard nudges for a sweep pin, as pure functions. Times are minutes of the day; a pin stays between 00:00 and 23:45.
+enum PinNudge {
+    static let firstMinute = 0
+    static let lastMinute = 23 * 60 + 45
+    static let quarter = 15
+
+    /// The time a pin moves to by `minutes` (15, 60, or their negatives). It is clamped to the day, and a move that
+    /// lands on a listed time skips past it, one quarter hour at a time, in the same direction. Nil when the pin cannot
+    /// move: it is already at the day's edge, or every step that way is taken.
+    static func target(from time: ScheduleTime, by minutes: Int, among times: [ScheduleTime]) -> ScheduleTime? {
+        let start = minute(of: time)
+        let step = minutes < 0 ? -quarter : quarter
+        var m = min(max(start + minutes, firstMinute), lastMinute)
+        guard m != start else { return nil }
+        let taken = Set(times.map(minute(of:)))
+        while taken.contains(m) {
+            m += step
+            guard (firstMinute...lastMinute).contains(m) else { return nil }
+        }
+        return ScheduleTime(minuteOfDay: m)
+    }
+
+    static func minute(of time: ScheduleTime) -> Int { time.hour * 60 + time.minute }
+}
+
+extension ScheduleTime {
+    /// The time for a minute of the day, 0 to 1439.
+    init?(minuteOfDay minute: Int) {
+        guard (0..<1440).contains(minute) else { return nil }
+        self.init(String(format: "%02d:%02d", minute / 60, minute % 60))
+    }
+}
+
 /// Edits to the schedule and the per-sweep limits, made from the Schedule section. Each function is pure and returns a
 /// new `Config`, or throws `ConfigError`. `save` is the only one that writes, and it reinstalls the launchd job.
 enum ScheduleEditor {
@@ -45,6 +78,14 @@ enum ScheduleEditor {
         guard config.schedule.contains(time), !config.schedule.contains(target) else { return config }
         var out = config
         out.schedule = sorted(config.schedule.filter { $0 != time } + [target])
+        return out
+    }
+
+    /// Replaces the whole list of sweep times, sorted and without duplicates. Used to undo a schedule change.
+    static func setSchedule(_ config: Config, _ times: [ScheduleTime]) throws -> Config {
+        guard !times.isEmpty else { throw ConfigError(message: "Keep at least one sweep time.") }
+        var out = config
+        out.schedule = sorted(times)
         return out
     }
 

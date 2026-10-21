@@ -23,7 +23,7 @@ enum ShortcutAction: String, CaseIterable {
     // Repos detail
     case editRules, removeRepo
     // Schedule
-    case nudgeEarlier, nudgeLater, nudgeEarlierHour, nudgeLaterHour, deletePin, addTime
+    case nudgeEarlier, nudgeLater, nudgeEarlierHour, nudgeLaterHour, deletePin, undo
     // Onboarding
     case primary, back, toggleRow, selectAllRows, selectNoRows, checkAgain
     // Popover
@@ -194,14 +194,14 @@ enum Shortcuts {
         // Views: these are handled by the view and appear only in the sheet.
         Shortcut(action: .editRules, title: "Edit rules file", key: .character("e"), modifiers: .command, scope: .repos),
         Shortcut(action: .removeRepo, title: "Remove repo", key: .delete, modifiers: .command, scope: .repos),
-        Shortcut(action: .nudgeEarlier, title: "Move pin 15 min earlier", key: .upArrow, scope: .schedule),
-        Shortcut(action: .nudgeLater, title: "Move pin 15 min later", key: .downArrow, scope: .schedule),
-        Shortcut(action: .nudgeEarlierHour, title: "Move pin 1 h earlier", key: .upArrow, modifiers: .shift,
+        Shortcut(action: .nudgeLater, title: "Move pin 15 min later", key: .upArrow, scope: .schedule),
+        Shortcut(action: .nudgeEarlier, title: "Move pin 15 min earlier", key: .downArrow, scope: .schedule),
+        Shortcut(action: .nudgeLaterHour, title: "Move pin 1 h later", key: .upArrow, modifiers: .shift, scope: .schedule),
+        Shortcut(action: .nudgeEarlierHour, title: "Move pin 1 h earlier", key: .downArrow, modifiers: .shift,
                  scope: .schedule),
-        Shortcut(action: .nudgeLaterHour, title: "Move pin 1 h later", key: .downArrow, modifiers: .shift,
+        Shortcut(action: .undo, title: "Undo a schedule change", key: .character("z"), modifiers: .command,
                  scope: .schedule),
         Shortcut(action: .deletePin, title: "Delete pin (⌘Z restores)", key: .delete, scope: .schedule),
-        Shortcut(action: .addTime, title: "Add a sweep time", key: .character("n"), modifiers: .command, scope: .schedule),
         Shortcut(action: .primary, title: "Primary step button", key: .returnKey, modifiers: .command, scope: .onboarding),
         Shortcut(action: .back, title: "Back", key: .character("["), modifiers: .command, scope: .onboarding),
         Shortcut(action: .toggleRow, title: "Toggle the selected row", key: .space, scope: .onboarding),
