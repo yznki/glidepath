@@ -1,15 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1B4468"/><stop offset="1" stop-color="#071423"/>
-    </linearGradient>
-    <clipPath id="tile"><rect x="100" y="100" width="824" height="824" rx="185"/></clipPath>
-  </defs>
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1B4468"/><stop offset="1" stop-color="#071423"/></linearGradient></defs>
   <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sky)"/>
-  <g clip-path="url(#tile)">
-    <polygon points="470,430 554,430 800,924 224,924" fill="#2A5278"/>
-    <rect x="490" y="560" width="44" height="90" rx="22" fill="#E9EEF4"/>
-    <rect x="482" y="740" width="60" height="200" rx="30" fill="#E9EEF4"/>
-    <circle cx="512" cy="400" r="78" fill="#FFB020"/>
+  <g transform="translate(232 250) scale(2.3)">
+    <line x1="20" y1="30" x2="150" y2="150" stroke="#4DA3FF" stroke-width="26" stroke-linecap="round"/>
+    <rect x="96" y="186" width="124" height="22" rx="11" fill="#E9EEF4"/>
+    <circle cx="178" cy="150" r="30" fill="#FFB020"/>
   </g>
 </svg>

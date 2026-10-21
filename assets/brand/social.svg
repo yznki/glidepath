@@ -32,15 +32,12 @@
   <circle cx="960" cy="306" r="60" fill="url(#glow)"/><circle cx="960" cy="306" r="12" fill="#FFB020"/>
 
   <!-- lockup -->
-  <g transform="translate(72 74) scale(0.26)">
-    <polygon points="92,40 128,40 214,220 6,220" fill="#2A5278"/>
-    <rect x="102" y="92" width="16" height="34" rx="8" fill="#E9EEF4"/>
-    <rect x="99" y="156" width="22" height="58" rx="11" fill="#E9EEF4"/>
-    <circle cx="110" cy="30" r="30" fill="#FFB020"/>
-  </g>
+  <g transform="translate(72 82) scale(0.24)"><line x1="20" y1="30" x2="150" y2="150" stroke="#4DA3FF" stroke-width="26" stroke-linecap="round"/>
+    <rect x="96" y="186" width="124" height="22" rx="11" fill="#E9EEF4"/>
+    <circle cx="178" cy="150" r="30" fill="#FFB020"/></g>
   <text class="m" x="140" y="132">glidepath</text>
 
-  <text class="h" x="72" y="300">Every PR reviewed</text>
+  <text class="h" x="72" y="300">PRs reviewed</text>
   <text class="h" x="72" y="374">before you're back.</text>
   <text class="s" x="72" y="438">Scheduled Claude Code reviews for GitHub,</text>
   <text class="s" x="72" y="474">landing in your Mac's menu bar.</text>
