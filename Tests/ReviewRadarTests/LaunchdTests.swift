@@ -22,4 +22,19 @@ final class LaunchdTests: XCTestCase {
         XCTAssertEqual(p.appLink, "/tmp/fakehome/Applications/Review Radar.app")
         XCTAssertEqual(p.skillDir, "/tmp/fakehome/.claude/skills/review-radar")
     }
+
+    func testXDGOverridesMoveOnlyReviewRadarFolders() {
+        let env = ["XDG_CONFIG_HOME": "/x/cfg", "XDG_STATE_HOME": "/x/state"]
+        let p = Paths(home: "/fake/home", env: env)
+        XCTAssertEqual(p.configFile, "/x/cfg/review-radar/config.toml")
+        XCTAssertEqual(p.stateDir, "/x/state/review-radar")
+        XCTAssertEqual(p.claudeProjectsDir, "/fake/home/.claude/projects", "HOME is unchanged for claude")
+        XCTAssertEqual(p.plistFile, "/fake/home/Library/LaunchAgents/dev.reviewradar.run.plist")
+    }
+
+    func testRelativeOrEmptyXDGValuesAreIgnored() {
+        let p = Paths(home: "/fake/home", env: ["XDG_CONFIG_HOME": "relative/cfg", "XDG_STATE_HOME": ""])
+        XCTAssertEqual(p.configFile, "/fake/home/.config/review-radar/config.toml")
+        XCTAssertEqual(p.stateDir, "/fake/home/.local/state/review-radar")
+    }
 }

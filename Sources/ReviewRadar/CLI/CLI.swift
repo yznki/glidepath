@@ -252,7 +252,7 @@ enum Uninstall {
         remove(paths.appLink, "app link")
 
         if a.has("--purge") {
-            let configDir = paths.home + "/.config/review-radar"
+            let configDir = paths.configDir
             let rules = configDir + "/rules"
             var keepRules = false
             if fm.fileExists(atPath: rules) {

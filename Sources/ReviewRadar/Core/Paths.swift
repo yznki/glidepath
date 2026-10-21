@@ -4,12 +4,27 @@ import Foundation
 struct Paths {
     let home: String
 
-    init(home: String? = nil) {
-        self.home = home ?? ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
+    /// XDG_CONFIG_HOME and XDG_STATE_HOME move review-radar's own folders (for tests and side-by-side
+    /// installs). HOME stays as it is: claude and gh find their sign-in through it.
+    let configBase: String
+    let stateBase: String
+
+    init(home: String? = nil, env: [String: String] = ProcessInfo.processInfo.environment) {
+        let h = home ?? env["HOME"] ?? NSHomeDirectory()
+        self.home = h
+        self.configBase = Paths.absoluteEnv(env["XDG_CONFIG_HOME"]) ?? h + "/.config"
+        self.stateBase = Paths.absoluteEnv(env["XDG_STATE_HOME"]) ?? h + "/.local/state"
     }
 
-    var configFile: String { home + "/.config/review-radar/config.toml" }
-    var stateDir: String { home + "/.local/state/review-radar" }
+    /// An XDG value counts only when it is an absolute path; the XDG spec says to ignore anything else.
+    static func absoluteEnv(_ value: String?) -> String? {
+        guard let v = value, v.hasPrefix("/") else { return nil }
+        return v
+    }
+
+    var configDir: String { configBase + "/review-radar" }
+    var configFile: String { configDir + "/config.toml" }
+    var stateDir: String { stateBase + "/review-radar" }
     var runsDir: String { stateDir + "/runs" }
     var currentLink: String { stateDir + "/current" }
     var pausedFile: String { stateDir + "/paused" }
