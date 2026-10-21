@@ -143,8 +143,21 @@ final class SecurityTests: XCTestCase {
             .write(to: URL(fileURLWithPath: home + "/.claude/settings.local.json"))
         try Data(#"{"hooks":{"PostToolUse":[{"matcher":"*"}]}}"#.utf8)
             .write(to: URL(fileURLWithPath: home + "/.claude/plugins/cache/p/hooks.json"))
+        try FileManager.default.createDirectory(atPath: home + "/.claude/plugins/cache/off", withIntermediateDirectories: true)
+        try Data(#"{"hooks":{"PreToolUse":[{"matcher":"*"}]}}"#.utf8)
+            .write(to: URL(fileURLWithPath: home + "/.claude/plugins/cache/off/hooks.json"))
+        // A manifest that points at another file, and an inline manifest hook, both count for enabled plugins.
+        try FileManager.default.createDirectory(atPath: home + "/.claude/plugins/cache/p/.claude-plugin", withIntermediateDirectories: true)
+        try Data(#"{"hooks":"./hooks/other.json"}"#.utf8).write(to: URL(fileURLWithPath: home + "/.claude/plugins/cache/p/.claude-plugin/plugin.json"))
+        try FileManager.default.createDirectory(atPath: home + "/.claude/plugins/cache/p/hooks", withIntermediateDirectories: true)
+        try Data(#"{"hooks":{"PreToolUse":[{"matcher":"*"}]}}"#.utf8).write(to: URL(fileURLWithPath: home + "/.claude/plugins/cache/p/hooks/other.json"))
+        // Only "p" is enabled, so the hooks of plugin "off" do not count.
+        try Data(#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[]}]},"enabledPlugins":{"p@market":true,"off@market":false}}"#.utf8)
+            .write(to: URL(fileURLWithPath: home + "/.claude/settings.json"))
         let found = Claude.hookConflicts(paths: Paths(home: home))
-        XCTAssertEqual(found.count, 2)
+        XCTAssertEqual(found.count, 3)
+        XCTAssertTrue(found.contains { $0.file.hasSuffix("p/hooks/other.json") })
+        XCTAssertFalse(found.contains { $0.file.contains("/off/") })
         XCTAssertTrue(found.contains { $0.file.hasSuffix("settings.json") && $0.events == ["PreToolUse"] })
         XCTAssertTrue(found.contains { $0.file.hasSuffix("hooks.json") && $0.events == ["PostToolUse"] })
     }

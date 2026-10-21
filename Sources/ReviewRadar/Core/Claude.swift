@@ -187,27 +187,63 @@ enum Claude {
     }
 
     /// Settings and plugin files that define a blocking hook. Each entry names the file and the events.
-    /// Checks the user settings, the local settings, and any hooks.json shipped by installed plugins.
+    /// Checks the user and local settings, and the hooks.json of plugins that the user's settings enable.
+    /// A plugin counts when one of its path components is the enabled plugin's name. If the settings do not
+    /// list enabledPlugins at all, every plugin hooks.json counts (fails closed).
     static func hookConflicts(paths: Paths) -> [(file: String, events: [String])] {
         var out: [(String, [String])] = []
         let fm = FileManager.default
+        var enabledNames: Set<String>? = nil
         for file in [paths.home + "/.claude/settings.json", paths.home + "/.claude/settings.local.json"] {
             guard let data = fm.contents(atPath: file),
                   let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
             let events = blockedHooks(in: root)
             if !events.isEmpty { out.append((file, events)) }
+            if file.hasSuffix("settings.json"), let plugins = root["enabledPlugins"] as? [String: Any] {
+                enabledNames = Set(plugins.compactMap { key, value in
+                    (value as? Bool) == true ? String(key.split(separator: "@").first ?? "") : nil
+                })
+            }
         }
         let pluginRoot = paths.home + "/.claude/plugins"
+        func enabled(_ rel: String) -> Bool {
+            guard let names = enabledNames else { return true }
+            return !names.isDisjoint(with: Set(rel.split(separator: "/").map(String.init)))
+        }
         if let walker = fm.enumerator(atPath: pluginRoot) {
-            for case let rel as String in walker where rel.hasSuffix("hooks.json") {
+            for case let rel as String in walker where enabled(rel) {
                 let file = pluginRoot + "/" + rel
-                guard let data = fm.contents(atPath: file),
-                      let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { continue }
-                let events = blockedHooks(in: root)
-                if !events.isEmpty { out.append((file, events)) }
+                // Exact file name: qoder-hooks.json and similar names are not the Claude plugin hooks file.
+                if rel == "hooks.json" || rel.hasSuffix("/hooks.json") {
+                    if let root = readObject(file) {
+                        let events = blockedHooks(in: root)
+                        if !events.isEmpty { out.append((file, events)) }
+                    }
+                }
+                // A plugin manifest may point its hooks at another file, or declare them inline.
+                if rel == ".claude-plugin/plugin.json" || rel.hasSuffix("/.claude-plugin/plugin.json"),
+                   let manifest = readObject(file) {
+                    let pluginDir = (file as NSString).deletingLastPathComponent
+                        .replacingOccurrences(of: "/.claude-plugin", with: "")
+                    if let hooksPath = manifest["hooks"] as? String {
+                        let target = pluginDir + "/" + (hooksPath.hasPrefix("./") ? String(hooksPath.dropFirst(2)) : hooksPath)
+                        if let root = readObject(target) {
+                            let events = blockedHooks(in: root)
+                            if !events.isEmpty { out.append((target, events)) }
+                        }
+                    } else if let inline = manifest["hooks"] as? [String: Any] {
+                        let events = blockedHooks(in: ["hooks": inline])
+                        if !events.isEmpty { out.append((file, events)) }
+                    }
+                }
             }
         }
         return out
+    }
+
+    private static func readObject(_ path: String) -> [String: Any]? {
+        guard let data = FileManager.default.contents(atPath: path) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
 
     static func json(_ value: Any) -> String {
