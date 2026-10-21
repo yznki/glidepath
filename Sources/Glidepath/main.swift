@@ -8,7 +8,7 @@ if argv == ["--unregister-login"] {
     try? SMAppService.mainApp.unregister()
     exit(0)
 }
-if argv.isEmpty || argv == ["app"] || argv.first == "--snapshot" {
+if argv.isEmpty || argv == ["app"] || argv.first == "--snapshot" || argv.first == "--hero-gif" {
     GlidepathApp.main()
 }
 exit(CLI.main(argv))

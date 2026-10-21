@@ -177,6 +177,7 @@ struct ApproachProfile: View {
     let hovered: String?
     let justLanded: Set<String>
     let motion: ProfileMotion
+    var clock: Date?
     var onHover: (String?) -> Void = { _ in }
 
     @Environment(\.colorScheme) private var scheme
@@ -189,7 +190,7 @@ struct ApproachProfile: View {
         let height = mode == .running ? Profile.runningHeight : Profile.quietHeight
         TimelineView(.animation(minimumInterval: reduceMotion ? 1 : nil)) { context in
             Canvas { gc, _ in
-                draw(&gc, now: context.date)
+                draw(&gc, now: clock ?? context.date)
             }
         }
         .frame(width: Profile.width, height: height)

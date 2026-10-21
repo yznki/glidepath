@@ -11,6 +11,13 @@ struct GlidepathApp: App {
             MainActor.assumeIsolated { Snapshotter.run(outDir: outDir) }
             exit(0)
         }
+        // README hero: the running popover as a looping GIF, with injected time.
+        if let i = args.firstIndex(of: "--hero-gif"), i + 1 < args.count {
+            let path = args[i + 1]
+            let ok = MainActor.assumeIsolated { HeroGIF.render(to: path) }
+            print(ok ? "wrote \(path)" : "hero gif failed: \(path)")
+            exit(ok ? 0 : 1)
+        }
     }
 
     var body: some Scene {

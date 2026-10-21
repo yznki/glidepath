@@ -105,6 +105,8 @@ struct PopoverView: View {
     @ObservedObject var store: Store
     /// True only for snapshot rendering: ImageRenderer draws ScrollView and AppKit-backed controls blank.
     var offscreen = false
+    /// Snapshot time for the profile's motion. nil uses the live clock.
+    var clock: Date?
     @StateObject private var local = PopoverModel()
     @Environment(\.colorScheme) private var scheme
 
@@ -134,7 +136,7 @@ struct PopoverView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 12) {
             ApproachProfile(marks: marks, mode: profileMode, hovered: store.hovered,
-                            justLanded: store.justLanded, motion: store.profileMotion,
+                            justLanded: store.justLanded, motion: store.profileMotion, clock: clock,
                             onHover: { store.setHovered($0) })
             TimelineView(.periodic(from: .now, by: 30)) { context in
                 headerText(HeaderCopy.make(Presentation.headerKind(store.snap, now: context.date), now: context.date))

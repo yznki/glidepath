@@ -87,17 +87,21 @@ final class Store: ObservableObject {
     @Published var hovered: String?
 
     let paths = Paths()
-    let profileMotion = ProfileMotion()
+    let profileMotion: ProfileMotion
     var popoverOpen = false
     private var watcher: DirectoryWatcher?
     private var acknowledgedRunID: String?
 
     /// `snapshot == nil` is the live app: registers at login and watches the state folders.
     /// A non-nil snapshot is fixed state for snapshot rendering.
-    init(snapshot: Snapshot? = nil) {
+    /// Fixtures pass a snapshot, and may pass the PRs that just landed and a shared motion (the hero GIF renders
+    /// frames one after another with one motion, so landings animate across frames).
+    init(snapshot: Snapshot? = nil, justLanded: Set<String> = [], motion: ProfileMotion = ProfileMotion()) {
+        profileMotion = motion
         if let snapshot {
             snap = snapshot
             hovered = snapshot.hovered
+            self.justLanded = justLanded
             return
         }
         snap = Snapshot()
