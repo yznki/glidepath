@@ -31,42 +31,50 @@ final class PresentationTests: XCTestCase {
 
         snap.running = false
         snap.paused = true
-        XCTAssertEqual(Presentation.headerKind(snap, now: now), .paused(since: nil))
+        XCTAssertEqual(Presentation.headerKind(snap, now: now), .paused(since: nil, lastStarted: now))
 
         snap.paused = false
         snap.run = run([], finished: true)
-        XCTAssertEqual(Presentation.headerKind(snap, now: now), .emptyRun(repos: 1, next: nil))
+        XCTAssertEqual(Presentation.headerKind(snap, now: now), .emptyRun(repos: 1, next: nil, lastStarted: now))
 
         snap.run = run([pr(1, verdict: .changes)], finished: true)
         XCTAssertEqual(Presentation.headerKind(snap, now: now),
                        .idle(changes: 1, next: nil, lastStarted: now, total: 1))
 
         snap.run = run([pr(1, verdict: .approve)], finished: true, error: "claude exited 1\nsee log")
-        XCTAssertEqual(Presentation.headerKind(snap, now: now), .failed(message: "claude exited 1", started: now))
+        XCTAssertEqual(Presentation.headerKind(snap, now: now),
+                       .failed(reason: "The review agent stopped early (exit 1)", started: now, next: nil))
 
         snap.run = nil
-        XCTAssertEqual(Presentation.headerKind(snap, now: now), .noSweeps(next: nil, schedule: []))
+        snap.repoCount = 2
+        XCTAssertEqual(Presentation.headerKind(snap, now: now), .noSweeps(next: nil, repos: 2))
 
         snap.jobInstalled = false
         XCTAssertEqual(Presentation.headerKind(snap, now: now), .notScheduled)
     }
 
     func testHeaderCopyForEachState() {
-        XCTAssertEqual(HeaderCopy.make(.idle(changes: 2, next: nil, lastStarted: now, total: 7), now: now).headline,
-                       .dot("2 need changes"))
-        XCTAssertEqual(HeaderCopy.make(.idle(changes: 0, next: nil, lastStarted: now, total: 1), now: now).headline,
-                       .ink("All clear"))
-        XCTAssertEqual(HeaderCopy.make(.running(changes: 0, reviewing: 3, total: 3, landed: 0, started: now), now: now).headline,
-                       .ink("Reviewing 3 PRs"))
-        let failed = HeaderCopy.make(.failed(message: "x", started: now), now: now)
-        XCTAssertEqual(failed.headline, .error("Last sweep failed"))
+        let idle = HeaderCopy.make(.idle(changes: 2, next: nil, lastStarted: now, total: 7), now: now)
+        XCTAssertEqual(idle.headline, "2 need changes", "no dot before a headline")
+        XCTAssertEqual(idle.line2?.hasSuffix("7 PRs"), true)
+        XCTAssertEqual(HeaderCopy.make(.idle(changes: 0, next: nil, lastStarted: now, total: 1), now: now).headline, "All clear")
+        let running = HeaderCopy.make(.running(changes: 2, reviewing: 3, total: 7, landed: 4, started: now), now: now)
+        XCTAssertEqual(running.headline, "Reviewing 3 of 7")
+        XCTAssertEqual(running.line2, "2 need changes")
+        XCTAssertEqual(running.line2Tone, .changes)
+        XCTAssertEqual(HeaderCopy.make(.running(changes: 0, reviewing: 3, total: 7, landed: 4, started: now), now: now).line2, "4 landed")
+        let failed = HeaderCopy.make(.failed(reason: "x", started: now, next: nil), now: now)
+        XCTAssertEqual(failed.headline, "Last sweep failed")
+        XCTAssertEqual(failed.headlineTone, .error)
         XCTAssertTrue(failed.openLog)
-        XCTAssertFalse(HeaderCopy.make(.paused(since: nil), now: now).openLog)
-        XCTAssertEqual(HeaderCopy.make(.noSweeps(next: nil, schedule: [ScheduleTime("07:00")!, ScheduleTime("13:00")!,
-                                                                        ScheduleTime("19:00")!]), now: now).line2,
-                       "Sweeps run at 07:00, 13:00 and 19:00")
-        let idleLine2 = HeaderCopy.make(.idle(changes: 1, next: nil, lastStarted: now, total: 7), now: now).line2
-        XCTAssertEqual(idleLine2?.hasSuffix("7 PRs"), true, "line 2 names the last sweep and the PR count")
+        XCTAssertFalse(HeaderCopy.make(.paused(since: nil, lastStarted: nil), now: now).openLog)
+        XCTAssertEqual(HeaderCopy.make(.noSweeps(next: nil, repos: 2), now: now).line2, "Reviews every open PR in 2 repos")
+        XCTAssertFalse(HeaderCopy.make(.noSweeps(next: nil, repos: 2), now: now).line2!.lowercased().contains("nothing"))
+    }
+
+    func testRowFactsUsePassThreeLabels() {
+        XCTAssertEqual(Presentation.phaseWords, ["Gathering", "Reviewing", "Checking", "Landing"])
+        XCTAssertEqual(ApproachRowText.skipped("draft"), "Draft, skipped")
     }
 
     func testRowOrderIsChangesActiveApprovedSkippedNoResult() {
@@ -83,7 +91,7 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(Presentation.status(strip(1, verdict: .changes), running: true), .changes)
         XCTAssertEqual(Presentation.status(strip(1, verdict: .approve), running: true), .approved)
         XCTAssertEqual(Presentation.status(strip(1, verdict: .skipped, reason: "draft"), running: true), .skipped(reason: "draft"))
-        XCTAssertEqual(Presentation.status(strip(1, stage: 2, active: true), running: true), .active(phase: "reviewing"))
+        XCTAssertEqual(Presentation.status(strip(1, stage: 2, active: true), running: true), .active(phase: "Reviewing"))
         XCTAssertEqual(Presentation.status(strip(1), running: true), .queued)
         XCTAssertEqual(Presentation.status(strip(1), running: false), .noResult)
         XCTAssertEqual(ApproachRowText.skipped("draft"), "Draft, skipped")
@@ -112,9 +120,9 @@ final class PresentationTests: XCTestCase {
         XCTAssertLessThan(a.centre.x, b.centre.x, "later stages sit further right")
         XCTAssertGreaterThanOrEqual(b.centre.x, Profile.runwayX - 40, "stage 4 is near the runway")
         let c = placed.first { $0.id == "c" }!, d = placed.first { $0.id == "d" }!
-        XCTAssertEqual(c.centre.y, Profile.runwayY - c.side / 2, accuracy: 0.01, "squares sit on the runway")
+        XCTAssertEqual(c.centre.y, Profile.runwayY(compact: false) - c.side / 2, accuracy: 0.01, "squares sit on the runway")
         XCTAssertLessThan(c.centre.x, d.centre.x, "landed squares pack left to right in list order")
-        XCTAssertEqual(c.side, 8)
+        XCTAssertEqual(c.side, Profile.landedSide)
     }
 
     func testSameStageCirclesSpreadApart() {

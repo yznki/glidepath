@@ -12,9 +12,8 @@ extension Color {
     }
 }
 
-/// Colour tokens from docs/design.md. Light and dark values come from the colour scheme passed in, so the
-/// live popover and the snapshot renderer use identical values. Text is at least 4.5:1 and marks 3:1 on
-/// the grounds the snapshots use.
+/// Colour tokens from docs/design.md (design pass 3 wins). Light and dark values come from the colour
+/// scheme passed in, so the live popover and the snapshot renderer use identical values.
 struct Palette {
     let dark: Bool
 
@@ -27,40 +26,43 @@ struct Palette {
     }
 
     var ink: Color { pick("111111", "F2F2F2") }
-    var secondary: Color { pick("6B6B6B", "9A9A9A") }
-    /// Meta, labels and rules: ink at a low opacity.
+    var secondary: Color { pick("5C5C5C", "A8A8A8") }
+    var tertiary: Color { pick("6B6B6B", "8E8E8E") }
+    /// Rules: ink at a low opacity.
     var rule: Color { ink.opacity(dark ? 0.10 : 0.08) }
+    /// Slope line of the approach profile.
+    var slope: Color { pick("3A3A3C", "D0D0D0") }
+    /// The runway, in ink at 25%.
     var runway: Color { ink.opacity(0.25) }
     /// In-progress text, and the stage word on an active row.
     var doingText: Color { pick("0060CC", "4DA3FF") }
     /// In-progress marks: the system blue.
     var doingMark: Color { .accentColor }
-    var error: Color { pick("B42318", "F97066") }
-    var amber: Color { Color(hex: "E5A000") }
-    var approveMark: Color { Color(hex: "30A46C") }
-    var greyMark: Color { pick("767676", "8A8A8A") }
-    var changesChipText: Color { pick("7A4B00", "FFC966") }
-    var changesChipFill: Color { pick("FBEBC8", "3A2A0C") }
-    var approveChipText: Color { pick("1B6B3F", "7EE0A6") }
-    var approveChipFill: Color { pick("DDF3E4", "12301F") }
-    var noResultText: Color { pick("555555", "BBBBBB") }
-    var noResultFill: Color { pick("EBEBEB", "333333") }
-    var meterFuture: Color { pick("C4C4C4", "555555") }
+    var error: Color { pick("C4242A", "FF6B6B") }
+    var changesText: Color { pick("8A5300", "FFC966") }
+    var changesMark: Color { pick("B86E00", "FFB020") }
+    var approveText: Color { pick("1B6B3F", "7EE0A6") }
+    var approveMark: Color { pick("1F8A52", "3DD68C") }
+    var skipMark: Color { pick("6B6B6B", "9A9A9A") }
+    /// The four-dash meter: done 35%, future 12%; the current dash is the system blue.
+    var meterDone: Color { ink.opacity(0.35) }
+    var meterFuture: Color { ink.opacity(0.12) }
     /// The grounds the snapshots are drawn on.
     var ground: Color { pick("F5F5F5", "222222") }
-    /// Count text in the menu bar glyph when changes are waiting.
-    var glyphCount: Color { pick("C77700", "FFB000") }
 }
 
-/// Layout measurements from docs/design.md, in points. Every element lives between x = 16 and x = 344.
+/// Layout measurements from docs/design.md, in points. Every element lives inside a 16 pt inset.
 enum Metrics {
     static let popoverWidth: CGFloat = 360
-    static let gutter: CGFloat = 16
+    static let inset: CGFloat = 16
     static let contentWidth: CGFloat = 328
-    static let rowMinHeight: CGFloat = 52
-    static let statusTrailing: CGFloat = 344
-    static let chipHeight: CGFloat = 20
-    static let profileHeight: CGFloat = 64
-    static let footer: CGFloat = 44
+    static let statusColumnWidth: CGFloat = 84
+    /// The chevron sits in the last 14 pt of the status column, so labels never move on hover.
+    static let chevronReserve: CGFloat = 12
+    static let rowOneLine: CGFloat = 44
+    static let rowThreeLines: CGFloat = 60
+    static let profileFull: CGFloat = 64
+    static let profileCompact: CGFloat = 32
+    static let footerRow: CGFloat = 44
     static let maxVisibleHeight: CGFloat = 380
 }

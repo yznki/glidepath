@@ -3,22 +3,22 @@ import Foundation
 /// Which header copy to show (docs/design.md, section 2). Chosen from the snapshot alone, so it is testable.
 enum HeaderKind: Equatable {
     case notScheduled
-    case paused(since: Date?)
+    case paused(since: Date?, lastStarted: Date?)
     case running(changes: Int, reviewing: Int, total: Int, landed: Int, started: Date?)
-    case failed(message: String, started: Date?)
-    case emptyRun(repos: Int, next: Date?)
+    case failed(reason: String, started: Date?, next: Date?)
+    case emptyRun(repos: Int, next: Date?, lastStarted: Date?)
     case idle(changes: Int, next: Date?, lastStarted: Date?, total: Int)
-    case noSweeps(next: Date?, schedule: [ScheduleTime])
+    case noSweeps(next: Date?, repos: Int)
 }
 
-/// The status column of a row: one mark per row.
+/// The status idiom of a row (docs/design.md, section 3): a shape and a label, one per row.
 enum RowStatus: Equatable {
-    case changes                       // amber chip "Changes"
-    case approved                      // green chip "Approved"
-    case skipped(reason: String?)      // plain secondary text
-    case noResult                      // grey chip "No result"
-    case active(phase: String)         // stage word in the doing colour, with a meter under it
-    case queued                        // plain secondary text while the run is going
+    case changes                       // triangle, "Changes"
+    case approved                      // circle, "Approved"
+    case skipped(reason: String?)      // dash, "Skipped"
+    case noResult                      // hollow circle, "No result"
+    case active(phase: String)         // hollow blue circle, the stage word, and a meter
+    case queued                        // hollow grey circle, "Queued"
 }
 
 /// One segment of the four-dash meter.
@@ -42,7 +42,8 @@ struct RepoGroup: Equatable, Identifiable {
 }
 
 enum Presentation {
-    static let phaseWords = ["gathering", "reviewing", "checking", "landing"]
+    /// Stage words in the status idiom, capitalised, and as the profile's stage labels.
+    static let phaseWords = ["Gathering", "Reviewing", "Checking", "Landing"]
 
     static func headerKind(_ snap: Snapshot, now: Date) -> HeaderKind {
         if !snap.jobInstalled { return .notScheduled }
@@ -53,13 +54,19 @@ enum Presentation {
                             total: strips.count, landed: strips.filter { $0.verdict != nil }.count,
                             started: run.started)
         }
-        if snap.paused { return .paused(since: snap.pausedSince) }
+        if snap.paused {
+            return .paused(since: snap.pausedSince, lastStarted: snap.run?.started)
+        }
         if let run = snap.run, run.finished != nil {
-            if let message = failureMessage(run) { return .failed(message: message, started: run.started) }
-            if strips.isEmpty { return .emptyRun(repos: run.repos.count, next: snap.nextRun) }
+            if let message = failureMessage(run) {
+                return .failed(reason: plainFailure(message), started: run.started, next: snap.nextRun)
+            }
+            if strips.isEmpty {
+                return .emptyRun(repos: run.repos.count, next: snap.nextRun, lastStarted: run.started)
+            }
             return .idle(changes: changes, next: snap.nextRun, lastStarted: run.started, total: strips.count)
         }
-        if snap.run == nil { return .noSweeps(next: snap.nextRun, schedule: snap.schedule) }
+        if snap.run == nil { return .noSweeps(next: snap.nextRun, repos: snap.repoCount) }
         return .idle(changes: changes, next: snap.nextRun, lastStarted: snap.run?.started, total: strips.count)
     }
 
@@ -67,6 +74,15 @@ enum Presentation {
     static func failureMessage(_ run: RunState) -> String? {
         let message = run.error ?? run.repos.compactMap(\.error).first
         return message?.split(separator: "\n").first.map(String.init)
+    }
+
+    /// The run error in plain words for the header. "claude exited 1: ..." becomes a sentence about the agent.
+    static func plainFailure(_ message: String) -> String {
+        if let range = message.range(of: #"claude exited (\d+)"#, options: .regularExpression) {
+            let code = message[range].replacingOccurrences(of: "claude exited ", with: "")
+            return "The review agent stopped early (exit \(code))"
+        }
+        return message
     }
 
     /// Sort order: needs changes, then in progress (and queued while running), then approved, then skipped,
@@ -107,15 +123,15 @@ enum Presentation {
         }
     }
 
-    /// The four dashes: done segments before the current stage, the current one in the doing colour.
-    /// Only active rows have a meter.
+    /// The four dashes: done segments before the current stage, the current one in the system blue. Only
+    /// active rows have a meter.
     static func meter(_ s: Strip) -> [MeterSegment]? {
         guard s.active, s.verdict == nil else { return nil }
         let current = min(max(s.stage, 1), 4) - 1
         return (0..<4).map { $0 < current ? .done : ($0 == current ? .current : .future) }
     }
 
-    /// Distance from the slope start along the slope is set by stage; this is the stage-based placement key.
+    /// Profile marks in display order. Each in-flight mark is labelled with its PR number.
     static func marks(_ groups: [RepoGroup], running: Bool) -> [ProfileMark] {
         groups.flatMap(\.rows).map { row in
             let s = row.strip
@@ -129,7 +145,7 @@ enum Presentation {
             } else {
                 kind = .dropped
             }
-            return ProfileMark(id: s.id, kind: kind)
+            return ProfileMark(id: s.id, kind: kind, label: "#\(s.number)")
         }
     }
 }

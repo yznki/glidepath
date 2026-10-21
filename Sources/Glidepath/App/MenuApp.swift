@@ -40,7 +40,8 @@ enum Snapshotter {
             ("first-run", Fixtures.firstRun(now)),
             ("hover", Fixtures.hover(now)),
         ]
-        for (name, snap) in states {
+        for (name, var snap) in states {
+            snap.repoCount = 2
             let store = Store(snapshot: snap)
             for dark in [false, true] {
                 let suffix = dark ? "dark" : "light"
@@ -72,7 +73,7 @@ enum Snapshotter {
         }
     }
 
-    /// The glyph states on a light and a dark menu bar ground, at 4x.
+    /// The glyph family on a light and a dark menu bar ground: a 4x row and a 1x row (the real size), in one PNG.
     static func writeMenuBar(to url: URL) {
         let states: [(String, GlyphState)] = [
             ("idle", .idle), ("running", .running(active: 3)), ("changes", .changesWaiting(count: 2)),
@@ -82,10 +83,19 @@ enum Snapshotter {
             bar(states, dark: false)
             bar(states, dark: true)
         }
-        let renderer = ImageRenderer(content: strip)
-        renderer.scale = 4
-        guard let cg = renderer.cgImage,
-              let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else {
+        guard let rows4 = render(strip, scale: 4), let rows1 = render(strip, scale: 1) else {
+            print("render failed: menubar")
+            return
+        }
+        let width = max(rows4.width, rows1.width), height = rows4.height + rows1.height
+        guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        ctx.draw(rows1, in: CGRect(x: 0, y: 0, width: rows1.width, height: rows1.height))
+        ctx.draw(rows4, in: CGRect(x: 0, y: rows1.height, width: rows4.width, height: rows4.height))
+        guard let out = ctx.makeImage(), let png = NSBitmapImageRep(cgImage: out).representation(using: .png, properties: [:]) else {
             print("render failed: menubar")
             return
         }
@@ -93,24 +103,21 @@ enum Snapshotter {
         print("wrote \(url.path)")
     }
 
+    private static func render<V: View>(_ view: V, scale: CGFloat) -> CGImage? {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = scale
+        return renderer.cgImage
+    }
+
     private static func bar(_ states: [(String, GlyphState)], dark: Bool) -> some View {
         let ground = dark ? Color(hex: "1E1E1E") : Color(hex: "ECECEC")
         let ink = dark ? NSColor.white : NSColor.black
-        let count = dark ? NSColor(hex: "FFB000") : NSColor(hex: "C77700")
         return HStack(spacing: 28) {
             ForEach(0..<states.count, id: \.self) { i in
                 let (label, state) = states[i]
                 VStack(spacing: 4) {
-                    HStack(spacing: 4) {
-                        Image(nsImage: MenuGlyph.image(state, progress: 0.45, ink: ink, count: count,
-                                                       template: false))
-                            .resizable()
-                            .frame(width: 18, height: 18)
-                        if case .running(let n) = state {
-                            Text("\(n)").font(.system(size: 13)).foregroundColor(dark ? .white : .black)
-                        }
-                    }
-                    Text(label).font(.system(size: 9)).foregroundColor(dark ? .white : .black)
+                    Image(nsImage: MenuGlyph.image(state, progress: 0.45, ink: ink, template: false))
+                    Text(label).font(.system(size: 9)).foregroundColor(dark ? .white : .black).fixedSize()
                 }
             }
         }
@@ -119,19 +126,26 @@ enum Snapshotter {
         .background(ground)
     }
 
-    /// icon.png: the icon at 512, and at 32 and 16 beside it, on the light ground.
+    /// icon.png: the full icon at 512, and the simplified icon at 32 and 16, each at real size and at 4x.
     static func writeIcon(to url: URL) {
-        let width: CGFloat = 752, height: CGFloat = 608
-        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
-            NSColor(hex: "F5F5F5").setFill()
-            NSRect(x: 0, y: 0, width: width, height: height).fill()
-            AppIcon.draw(in: NSRect(x: 48, y: 48, width: 512, height: 512))
-            AppIcon.draw(in: NSRect(x: 608, y: 480, width: 32, height: 32))
-            AppIcon.draw(in: NSRect(x: 672, y: 480, width: 16, height: 16))
-            return true
+        let width = 840, height = 592
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: rep) else {
+            print("render failed: icon")
+            return
         }
-        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
-              let png = rep.representation(using: .png, properties: [:]) else {
+        NSGraphicsContext.current = context
+        NSColor(hex: "F5F5F5").setFill()
+        NSRect(x: 0, y: 0, width: width, height: height).fill()
+        AppIcon.draw(in: NSRect(x: 40, y: 40, width: 512, height: 512))
+        AppIcon.draw(in: NSRect(x: 620, y: 472, width: 32, height: 32), simplified: true)
+        AppIcon.draw(in: NSRect(x: 680, y: 400, width: 128, height: 128), simplified: true)
+        AppIcon.draw(in: NSRect(x: 620, y: 300, width: 16, height: 16), simplified: true)
+        AppIcon.draw(in: NSRect(x: 680, y: 236, width: 64, height: 64), simplified: true)
+        NSGraphicsContext.current = nil
+        guard let png = rep.representation(using: .png, properties: [:]) else {
             print("render failed: icon")
             return
         }
@@ -157,7 +171,7 @@ enum IconCommand {
     }
 }
 
-/// Fixtures for the design states. Repos are acme/api and acme/web; authors use first names.
+/// Fixtures for the design states. Repos are lumen/api and lumen/web; authors use first names.
 enum Fixtures {
     static let schedule = ["07:00", "13:00", "19:00"].compactMap(ScheduleTime.init)
 
@@ -168,7 +182,7 @@ enum Fixtures {
     }
 
     static func run(_ id: String, now: Date, finished: Bool, prs: [(String, PRState)],
-                    repos: [String] = ["acme/api", "acme/web"], error: String? = nil,
+                    repos: [String] = ["lumen/api", "lumen/web"], error: String? = nil,
                     tokens: Int = 0) -> RunState {
         let started = clockToday(10, 12, now)
         return RunState(
@@ -189,32 +203,32 @@ enum Fixtures {
 
     static func running(_ now: Date) -> Snapshot {
         let r = run("fixture-running", now: now, finished: false, prs: [
-            pr("acme/api", 1125, "ines", "Add rate limit headers to /v2 responses for partners", stage: .check, active: true, tokens: 212_000),
-            pr("acme/api", 1113, "tom", "Migrate invoices table to UUID keys, batched backfill", stage: .review, active: true, tokens: 96_000),
-            pr("acme/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve, tokens: 310_000),
-            pr("acme/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes, tokens: 260_000),
-            pr("acme/web", 88, "lea", "Fix the date picker timezone on CSV export", reason: "dates shift by a day", verdict: .changes, tokens: 240_000),
-            pr("acme/web", 91, "kai", "Redesign the empty states for the projects list", stage: .gather, active: true, tokens: 40_000),
-            pr("acme/web", 84, "sam", "Bump next to 15.1", reason: "draft", verdict: .skipped),
+            pr("lumen/api", 1125, "ines", "Add rate limit headers to /v2 responses for partners", stage: .check, active: true, tokens: 212_000),
+            pr("lumen/api", 1113, "tom", "Migrate invoices table to UUID keys, batched backfill", stage: .review, active: true, tokens: 96_000),
+            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve, tokens: 310_000),
+            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes, tokens: 260_000),
+            pr("lumen/web", 88, "lea", "Fix the date picker timezone on CSV export", reason: "dates shift by a day", verdict: .changes, tokens: 240_000),
+            pr("lumen/web", 91, "kai", "Redesign the empty states for the projects list", stage: .gather, active: true, tokens: 40_000),
+            pr("lumen/web", 84, "sam", "Bump next to 15.1", reason: "draft", verdict: .skipped),
         ], tokens: 1_200_000)
         return Snapshot(run: r, running: true, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
 
     static func idleChanges(_ now: Date) -> Snapshot {
         let r = run("fixture-idle", now: now, finished: true, prs: [
-            pr("acme/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
-            pr("acme/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes),
-            pr("acme/web", 88, "lea", "Fix the date picker timezone on CSV export", reason: "dates shift by a day", verdict: .changes),
-            pr("acme/web", 84, "sam", "Bump next to 15.1", reason: "draft", verdict: .skipped),
+            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
+            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes),
+            pr("lumen/web", 88, "lea", "Fix the date picker timezone on CSV export", reason: "dates shift by a day", verdict: .changes),
+            pr("lumen/web", 84, "sam", "Bump next to 15.1", reason: "draft", verdict: .skipped),
         ], tokens: 980_000)
         return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
 
     static func idleClear(_ now: Date) -> Snapshot {
         let r = run("fixture-clear", now: now, finished: true, prs: [
-            pr("acme/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
-            pr("acme/api", 1225, "tom", "Drop the legacy webhook retry table", verdict: .approve),
-            pr("acme/web", 91, "kai", "Redesign the empty states for the projects list", verdict: .approve),
+            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
+            pr("lumen/api", 1225, "tom", "Drop the legacy webhook retry table", verdict: .approve),
+            pr("lumen/web", 91, "kai", "Redesign the empty states for the projects list", verdict: .approve),
         ], tokens: 610_000)
         return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
@@ -228,9 +242,9 @@ enum Fixtures {
 
     static func failed(_ now: Date) -> Snapshot {
         let r = run("fixture-failed", now: now, finished: true, prs: [
-            pr("acme/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
-            pr("acme/api", 1212, "omar", "Cache org permissions per request in the audit log"),
-            pr("acme/web", 91, "kai", "Redesign the empty states for the projects list"),
+            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
+            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log"),
+            pr("lumen/web", 91, "kai", "Redesign the empty states for the projects list"),
         ], error: "claude exited 1: see the log for details\nFull log: ~/Library/Logs/glidepath.log", tokens: 70_000)
         return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
@@ -246,7 +260,7 @@ enum Fixtures {
 
     static func hover(_ now: Date) -> Snapshot {
         var s = running(now)
-        s.hovered = "acme/api#1113"
+        s.hovered = "lumen/api#1113"
         return s
     }
 }

@@ -28,6 +28,7 @@ struct Snapshot {
     var nextRun: Date?
     var postsReviews = false
     var schedule: [ScheduleTime] = []
+    var repoCount = 0
     var hovered: String?
 }
 
@@ -149,6 +150,7 @@ final class Store: ObservableObject {
         s.nextRun = config.flatMap { Store.nextSweep(schedule: $0.schedule, after: Date()) }
         s.postsReviews = config?.repos.contains { $0.posting == .review } ?? false
         s.schedule = config?.schedule ?? []
+        s.repoCount = config?.repos.count ?? 0
         s.hovered = snap.hovered
 
         let landed = Set(Store.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
