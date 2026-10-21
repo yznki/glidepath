@@ -54,15 +54,13 @@ struct HeaderCopy: Equatable {
                 ?? "Scheduled sweeps are skipped"
             return HeaderCopy(headline: "Paused", headlineTone: .changes, line2: last,
                               line3: since.map { "Paused since \(clock($0))" }, line3Tone: .tertiary)
-        case .running(let changes, let reviewing, let total, let landed, let started):
-            var copy = HeaderCopy(headline: "Reviewing \(reviewing) of \(total)",
+        case .running(let changes, let inFlight, _, let landed, let started):
+            var copy = HeaderCopy(headline: "\(inFlight) in flight, \(landed) landed",
                                   line3: started.map { "Started \(clock($0))" }, line3Tone: .tertiary)
             if changes > 0 {
                 copy.line2 = "\(changes) need changes"
                 copy.line2Tone = .changes
                 copy.line2Weight = 500
-            } else {
-                copy.line2 = "\(landed) landed"
             }
             return copy
         case .failed(let reason, let started, let next):
@@ -483,7 +481,7 @@ struct PRRow: View {
             let (shape, colour, label, text) = statusParts
             Text(label)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(text)
+                .foregroundStyle(strip.carriedFrom == nil ? text : p.tertiary)
                 .lineLimit(1)
             StatusMark(shape: shape, colour: strip.carriedFrom == nil ? colour : p.tertiary)
         }

@@ -60,6 +60,9 @@ enum Profile {
     /// The runway is a 2 pt bar.
     static let runwayBar: CGFloat = 2
 
+    /// PR number labels sit on this one baseline, above every dot.
+    static let labelBaseline: CGFloat = 29
+
     static let markSide: CGFloat = 10
     /// Landed marks: 10 pt, 6 pt apart, the first aligned under "land".
     static let markStep: CGFloat = 16
@@ -75,7 +78,7 @@ enum Profile {
         runningSlopeStart.y + x / runningSlopeEnd.x * (runningSlopeEnd.y - runningSlopeStart.y)
     }
 
-    /// Centre x of stage n (1...4) on the slope: the middle of its quarter.
+    /// Centre x of stage n (1...4) on the slope: the middle of its quarter. Stage labels centre on it too.
     static func stageX(_ n: Int) -> CGFloat {
         (CGFloat(min(max(n, 1), 4)) - 0.5) / 4 * runningSlopeEnd.x
     }
@@ -209,19 +212,21 @@ struct ApproachProfile: View {
     /// Stage labels above the slope: 11/500 tertiary.
     private var ticks: some View {
         ZStack(alignment: .topLeading) {
-            tick("gather", x: 0)
-            tick("review", x: 88)
-            tick("check", x: 176)
-            tick("land", x: Profile.runwayX)
+            tick("gather", stage: 1)
+            tick("review", stage: 2)
+            tick("check", stage: 3)
+            tick("land", stage: 4)
         }
         .frame(width: Profile.width, height: 12, alignment: .topLeading)
     }
 
-    private func tick(_ label: String, x: CGFloat) -> some View {
+    /// Centred on its stage's x, so the label and the stage's dots line up.
+    private func tick(_ label: String, stage: Int) -> some View {
         Text(label)
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(Palette(scheme).tertiary)
-            .offset(x: x, y: 0)
+            .fixedSize()
+            .position(x: Profile.stageX(stage), y: 6)
     }
 
     private var running: Bool { mode == .running }
@@ -295,7 +300,8 @@ struct ApproachProfile: View {
         if mode == .failed {
             var cross = Path()
             // Just short of the runway: the touchdown point, clear of the first landed mark.
-            let c = CGPoint(x: Profile.runwayX - 6, y: top - 5)
+            // On the slope's end cap, clear of the first landed mark at x = 268.
+            let c = CGPoint(x: Profile.runwayX - 10, y: top - 7)
             cross.move(to: CGPoint(x: c.x - 5, y: c.y - 5)); cross.addLine(to: CGPoint(x: c.x + 5, y: c.y + 5))
             cross.move(to: CGPoint(x: c.x + 5, y: c.y - 5)); cross.addLine(to: CGPoint(x: c.x - 5, y: c.y + 5))
             gc.stroke(cross, with: .color(p.error), lineWidth: 2)
@@ -322,7 +328,7 @@ struct ApproachProfile: View {
             }
             if pm.isActive, shownLabels.contains(pm.id) {
                 let text = Text(pm.label).font(.system(size: 11, weight: .medium)).foregroundStyle(p.tertiary)
-                gc.draw(text, at: CGPoint(x: drawn.centre.x, y: drawn.centre.y - 11), anchor: .bottom)
+                gc.draw(text, at: CGPoint(x: drawn.centre.x, y: Profile.labelBaseline), anchor: .bottom)
             }
             if hovered == pm.id {
                 let r = Profile.radius(pm) + 5

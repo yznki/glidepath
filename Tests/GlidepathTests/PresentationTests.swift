@@ -59,10 +59,11 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(idle.line2?.hasSuffix("7 PRs"), true)
         XCTAssertEqual(HeaderCopy.make(.idle(changes: 0, next: nil, lastStarted: now, total: 1), now: now).headline, "All clear")
         let running = HeaderCopy.make(.running(changes: 2, reviewing: 3, total: 7, landed: 4, started: now), now: now)
-        XCTAssertEqual(running.headline, "Reviewing 3 of 7")
+        XCTAssertEqual(running.headline, "3 in flight, 4 landed")
         XCTAssertEqual(running.line2, "2 need changes")
         XCTAssertEqual(running.line2Tone, .changes)
-        XCTAssertEqual(HeaderCopy.make(.running(changes: 0, reviewing: 3, total: 7, landed: 4, started: now), now: now).line2, "4 landed")
+        XCTAssertNil(HeaderCopy.make(.running(changes: 0, reviewing: 3, total: 7, landed: 4, started: now), now: now).line2,
+                     "landed count is in the headline, so line 2 stays empty without changes")
         let failed = HeaderCopy.make(.failed(reason: "x", started: now, next: nil), now: now)
         XCTAssertEqual(failed.headline, "Last sweep failed")
         XCTAssertEqual(failed.headlineTone, .error)
