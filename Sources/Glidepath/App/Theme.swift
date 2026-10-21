@@ -89,6 +89,8 @@ enum WinTheme {
     static let green = token(0x1B7A47, dark: 0x3DD68C)
     static let greenBg = token(0xDDF3E5, dark: 0x12301F)
     static let blue = token(0x0062D1, dark: 0x4DA3FF)
+    /// The ring around the selected segment: #d6d6db light, #34343a dark.
+    static let segRing = token(0xD6D6DB, dark: 0x34343A)
 
     /// A colour that resolves to `light` or `dark` hex (0xRRGGBB) by the effective appearance.
     private static func token(_ light: UInt32, dark: UInt32) -> Color {

@@ -61,6 +61,9 @@ enum DraftCommands {
         let payloadPath = paths.scratchDir + "/\(found.runId)/" + slug.replacingOccurrences(of: "/", with: "-")
             + "/\(n)/payload.json"
         try PRCommands.send(try PRCommands.json(payload), slug: slug, n: n, path: payloadPath)
+        ReviewText.save(ReviewTextRecord(event: payload.event, body: payload.body, comments: payload.comments,
+                                         head: draft.head, posted: ISO8601DateFormatter().string(from: Date())),
+                        runId: found.runId, slug: slug, n: n, paths)
         try? FileManager.default.removeItem(atPath: found.path)
         try markRow(paths, found.runId, slug, n, draft: false, posted: Date())
         return "posted \(draft.event) on \(slug) #\(n)"

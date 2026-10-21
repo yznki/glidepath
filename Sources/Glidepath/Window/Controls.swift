@@ -17,13 +17,15 @@ struct WinButton: View {
     let title: String
     var style: Style = .outline
     var large = false
+    /// A 32 pt primary, for a row's action; the default primary is 44 pt.
+    var small = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(title)
         }
-        .buttonStyle(WinButtonStyle(style: style, large: large))
+        .buttonStyle(WinButtonStyle(style: style, large: large, small: small))
     }
 }
 
@@ -31,10 +33,11 @@ struct WinButton: View {
 private struct WinButtonStyle: ButtonStyle {
     let style: WinButton.Style
     let large: Bool
+    let small: Bool
     @Environment(\.isEnabled) private var isEnabled
 
     private var isLink: Bool { style == .link || style == .quiet }
-    private var isBig: Bool { style == .primary || large }
+    private var isBig: Bool { !small && (style == .primary || large) }
 
     func makeBody(configuration: Configuration) -> some View {
         let pressed = configuration.isPressed
@@ -62,5 +65,88 @@ private struct WinButtonStyle: ButtonStyle {
         case .link: return WinTheme.blue
         case .quiet: return WinTheme.faint
         }
+    }
+}
+
+/// The custom pill segmented control (base.css `.seg`): a raised 32 pt track with a 3 pt inset and 26 pt pills.
+/// The selected pill takes the active fill and a 1 pt ring. Used for the Reviews filter, and for Repos and Schedule.
+struct WinSegmented<Value: Hashable>: View {
+    struct Segment {
+        let value: Value
+        let title: String
+    }
+
+    let segments: [Segment]
+    let selected: Value
+    let onSelect: (Value) -> Void
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                let on = segment.value == selected
+                Button {
+                    onSelect(segment.value)
+                } label: {
+                    Text(segment.title)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(on ? WinTheme.text : WinTheme.muted)
+                        .lineLimit(1)
+                        .padding(.horizontal, WinMetrics.s12)
+                        .frame(height: 26)
+                        .background(Capsule().fill(on ? WinTheme.active : Color.clear))
+                        .overlay(Capsule().strokeBorder(on ? WinTheme.segRing : Color.clear, lineWidth: 1))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .frame(height: 32)
+        .background(Capsule().fill(WinTheme.raised))
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+/// A verdict's mark and word in the fixed 88 pt status column (base.css `.st`): an amber triangle for changes,
+/// a green dot for approve, and a faint dash for skipped and too large.
+struct WinStatus: View {
+    enum Kind {
+        case changes, approved, skipped, tooLarge
+    }
+
+    let kind: Kind
+
+    var body: some View {
+        HStack(spacing: WinMetrics.s8) {
+            switch kind {
+            case .changes:
+                Text("Changes").foregroundStyle(WinTheme.amberInk)
+                StatusTriangle().fill(WinTheme.amber).frame(width: 8, height: 7)
+            case .approved:
+                Text("Approve").foregroundStyle(WinTheme.green)
+                Circle().fill(WinTheme.green).frame(width: 7, height: 7)
+            case .skipped:
+                Text("Skipped").foregroundStyle(WinTheme.faint)
+                Rectangle().fill(WinTheme.faint).frame(width: 8, height: 2)
+            case .tooLarge:
+                Text("Too large").foregroundStyle(WinTheme.faint)
+                Rectangle().fill(WinTheme.faint).frame(width: 8, height: 2)
+            }
+        }
+        .font(.system(size: 12, weight: .medium))
+        .lineLimit(1)
+        .frame(width: 88, alignment: .trailing)
+    }
+}
+
+/// The status triangle: 8 wide, 7 high, pointing up.
+struct StatusTriangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }

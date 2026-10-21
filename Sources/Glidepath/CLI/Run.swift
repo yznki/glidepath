@@ -272,6 +272,7 @@ final class Runner {
             return 1
         }
         pruneScratch(now: now)
+        ReviewText.prune(root: paths.stateDir, now: now)
         print("run \(id)\(dryRun ? " (dry run)" : "")")
 
         var failed = false

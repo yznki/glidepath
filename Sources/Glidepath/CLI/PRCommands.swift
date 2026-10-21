@@ -353,6 +353,8 @@ enum PRCommands {
                                  comments: payload.comments, created: Date(), title: view.title,
                                  author: view.author?.login)
             try Drafts.write(file, runId: binding.runId, store.paths)
+            ReviewText.save(ReviewTextRecord(event: payload.event, body: payload.body, comments: payload.comments,
+                                             head: head, posted: nil), runId: binding.runId, slug: slug, n: n, store.paths)
             try store.mutate(binding.runId) { run in
                 try run.setPR(repo: slug, n: n, stage: .post, author: nil, title: nil,
                               verdict: verdict(draft), reason: draft.reason)
@@ -363,6 +365,9 @@ enum PRCommands {
         }
 
         try send(payloadJSON, slug: slug, n: n, path: "\(binding.scratch)/\(n)/payload.json")
+        ReviewText.save(ReviewTextRecord(event: payload.event, body: payload.body, comments: payload.comments,
+                                         head: head, posted: ISO8601DateFormatter().string(from: Date())),
+                        runId: binding.runId, slug: slug, n: n, store.paths)
         try store.mutate(binding.runId) { try $0.setPR(repo: slug, n: n, stage: .post, author: nil, title: nil,
                                                       verdict: verdict(draft), reason: draft.reason) }
         return "posted \(payload.event) on \(slug) #\(n)"
