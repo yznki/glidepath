@@ -7,6 +7,12 @@ import AppKit
 final class PopoverModel: ObservableObject {
     @Published var loginOn = false
     @Published var rowsHeight: CGFloat = 0
+    @Published var headerHeight: CGFloat = 0
+}
+
+private struct HeaderHeight: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
 private struct RowsHeight: PreferenceKey {
@@ -136,6 +142,8 @@ struct PopoverView: View {
         }
         .padding(.horizontal, Metrics.inset)
         .padding(.top, Metrics.inset)
+        .background(GeometryReader { Color.clear.preference(key: HeaderHeight.self, value: $0.size.height) })
+        .onPreferenceChange(HeaderHeight.self) { local.headerHeight = $0 }
     }
 
     private func headerText(_ copy: HeaderCopy) -> some View {
@@ -218,7 +226,9 @@ struct PopoverView: View {
                 groupsView(groups)
                     .background(GeometryReader { Color.clear.preference(key: RowsHeight.self, value: $0.size.height) })
             }
-            .frame(height: min(max(local.rowsHeight, 1), Metrics.maxVisibleHeight))
+            // Header and footer take their own height; the list gets what is left under the 640 pt cap.
+            .frame(height: min(max(local.rowsHeight, 1),
+                               max(Metrics.popoverMaxHeight - local.headerHeight - Metrics.footerRow - 24, 1)))
             .onPreferenceChange(RowsHeight.self) { local.rowsHeight = $0 }
         }
     }

@@ -64,5 +64,6 @@ enum Metrics {
     static let profileFull: CGFloat = 64
     static let profileQuiet: CGFloat = 36
     static let footerRow: CGFloat = 44
-    static let maxVisibleHeight: CGFloat = 380
+    /// The popover never grows past this. Past it, the list scrolls.
+    static let popoverMaxHeight: CGFloat = 640
 }
