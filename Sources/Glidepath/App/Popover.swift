@@ -86,6 +86,9 @@ struct HeaderCopy: Equatable {
                 copy.line2Weight = 500
             }
             return copy
+        case .dryRun:
+            return HeaderCopy(headline: "Dry run in progress", line2: "Nothing is posted. Watch it in Glidepath.",
+                              line2Tone: .secondary)
         case .noSweeps(let next, _):
             return HeaderCopy(headline: "Ready for the first sweep",
                               line2: "Pick the repos Glidepath should review.",
@@ -432,15 +435,21 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var footerButton: some View {
-        let firstRun = store.snap.run == nil && !store.snap.running
+        let firstRun = store.snap.run == nil && !store.snap.running && !store.snap.dryRunning
+        let dryRun = store.snap.dryRunning
         if offscreen {
             if store.snap.running { standIn("Stop") }
+            else if dryRun { standIn("Open Glidepath", prominent: true) }
             else if store.snap.paused { standIn("Resume", prominent: true) }
             else if firstRun { standIn("Set up Glidepath…", prominent: true) }
             else { standIn("Run now") }
         } else if store.snap.running {
             Button("Stop") { confirmAndStop() }
                 .buttonStyle(.bordered)
+                .controlSize(.small)
+        } else if dryRun {
+            Button("Open Glidepath") { WindowRouter.shared.open(nil) }
+                .buttonStyle(.borderedProminent)
                 .controlSize(.small)
         } else if store.snap.paused {
             Button("Resume") { store.togglePause() }

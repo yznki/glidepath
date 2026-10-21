@@ -51,6 +51,11 @@ final class PresentationTests: XCTestCase {
 
         snap.jobInstalled = false
         XCTAssertEqual(Presentation.headerKind(snap, now: now), .notScheduled)
+
+        snap.jobInstalled = true
+        snap.dryRunning = true
+        XCTAssertEqual(Presentation.headerKind(snap, now: now), .dryRun)
+        XCTAssertEqual(HeaderCopy.make(.dryRun, now: now).headline, "Dry run in progress")
     }
 
     func testHeaderCopyForEachState() {

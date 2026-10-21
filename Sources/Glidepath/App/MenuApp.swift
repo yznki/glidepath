@@ -53,6 +53,7 @@ enum Snapshotter {
             ("failed", Fixtures.failed(now)),
             ("empty", Fixtures.empty(now)),
             ("first-run", Fixtures.firstRun(now)),
+            ("dry-run", Fixtures.dryRun(now)),
             ("hover", Fixtures.hover(now)),
             ("drafts", Fixtures.drafts(now)),
             ("flagged", Fixtures.flagged(now)),
@@ -346,6 +347,13 @@ enum Fixtures {
 
     static func firstRun(_ now: Date) -> Snapshot {
         Snapshot(run: nil, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
+    }
+
+    /// The first sweep's dry run: the lock is held, but the run is not current, so no run is shown.
+    static func dryRun(_ now: Date) -> Snapshot {
+        var s = firstRun(now)
+        s.dryRunning = true
+        return s
     }
 
     static func hover(_ now: Date) -> Snapshot {

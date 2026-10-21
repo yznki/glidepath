@@ -9,6 +9,7 @@ enum HeaderKind: Equatable {
     case emptyRun(repos: Int, next: Date?, lastStarted: Date?)
     case idle(changes: Int, next: Date?, lastStarted: Date?, total: Int)
     case noSweeps(next: Date?, repos: Int)
+    case dryRun
 }
 
 /// The status idiom of a row (docs/design.md, section 3): a shape and a label, one per row.
@@ -60,6 +61,7 @@ enum Presentation {
                             total: strips.count, landed: strips.filter { $0.verdict != nil }.count,
                             started: run.started)
         }
+        if snap.dryRunning { return .dryRun }
         if snap.paused {
             return .paused(since: snap.pausedSince, lastStarted: snap.run?.started)
         }

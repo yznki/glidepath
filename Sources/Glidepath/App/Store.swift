@@ -62,6 +62,8 @@ enum UpdatePhase: Equatable {
 struct Snapshot {
     var run: RunState?
     var running = false
+    /// A dry run holds the lock but is not the current run (dry runs never become current).
+    var dryRunning = false
     var paused = false
     var pausedSince: Date?
     var jobInstalled = true
@@ -234,7 +236,7 @@ final class Store: ObservableObject {
 
     var glyph: GlyphState {
         if !snap.jobInstalled { return .failed }
-        if snap.running { return .running(active: strips.filter(\.active).count) }
+        if snap.running || snap.dryRunning { return .running(active: strips.filter(\.active).count) }
         if snap.paused { return .paused }
         if let run = snap.run, run.finished != nil, Presentation.failureMessage(run) != nil { return .failed }
         if changesWaiting {
@@ -254,6 +256,7 @@ final class Store: ObservableObject {
         }
         // A run is live only while its lock is held, so a crashed run never shows as running.
         s.running = (s.run.map { $0.finished == nil } ?? false) && RunLock.isHeld(paths.lockFile)
+        s.dryRunning = !s.running && RunLock.isHeld(paths.lockFile)
         s.paused = Pause.isPaused(paths)
         s.pausedSince = s.paused ? Pause.since(paths) : nil
         s.jobInstalled = FileManager.default.fileExists(atPath: paths.plistFile)

@@ -153,8 +153,8 @@ struct MenuBarLabel: View {
         let glyph = store.glyph
         Image(nsImage: MenuGlyph.image(glyph, progress: ticker.progress, ink: .black, template: true,
                                        update: store.availableUpdate != nil))
-            .onAppear { ticker.setRunning(store.snap.running) }
-            .onChange(of: store.snap.running) { _, running in ticker.setRunning(running) }
+            .onAppear { ticker.setRunning(store.snap.running || store.snap.dryRunning) }
+            .onChange(of: store.snap.running || store.snap.dryRunning) { _, busy in ticker.setRunning(busy) }
     }
 }
 
