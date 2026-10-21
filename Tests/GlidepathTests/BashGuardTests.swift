@@ -82,4 +82,52 @@ final class BashGuardTests: XCTestCase {
         XCTAssertEqual(hook?["command"] as? String, "/opt/rr/bin/glidepath")
         XCTAssertEqual(hook?["args"] as? [String], ["hook", "bash-guard"])
     }
+
+    func testCombiningMarkBypassIsDenied() {
+        // `'` followed by U+0301 is one grapheme cluster in Swift, so a Character-level tokenizer misses the quote.
+        let payload = "glidepath 'a'\u{0301} ; touch x ; echo '\u{0301}'"
+        XCTAssertNotNil(BashGuard.denial(for: payload))
+        XCTAssertEqual(BashGuard.evaluate(stdin: hookJSON(payload)).code, 2)
+        XCTAssertNotNil(BashGuard.denial(for: "glidepath code grep --pattern 'caf\u{00E9}'"), "non-ASCII is denied even inside quotes")
+    }
+
+    func testControlCharactersAreDenied() {
+        XCTAssertNotNil(BashGuard.denial(for: "glidepath code grep --pattern 'a\r\nb'"))
+        XCTAssertNotNil(BashGuard.denial(for: "glidepath code grep --pattern 'a\nb'"))
+        XCTAssertNotNil(BashGuard.denial(for: "glidepath code grep --pattern 'a\u{0007}'"))
+        XCTAssertNotNil(BashGuard.denial(for: "glidepath code grep --pattern a\u{7F}"))
+    }
+
+    func testUnicodeLookalikesAreDenied() {
+        for command in [
+            "glidepath\u{00A0}code grep --pattern x",     // no-break space
+            "glidepath code grep\u{2028}--pattern x",     // line separator
+            "glidepath code grep --pattern x\u{200B}",    // zero-width space
+            "glidepath code grep --pattern \u{FF58}",     // fullwidth x
+            "glidepath code grep --pattern x\u{2029}",    // paragraph separator
+            "g\u{0307}lidepath code grep --pattern x",    // combining mark on the prefix
+        ] {
+            XCTAssertNotNil(BashGuard.denial(for: command), command.debugDescription)
+        }
+    }
+
+    func testAllowedCommandsStillAllowedAsBytes() {
+        XCTAssertNil(BashGuard.denial(for: "glidepath post --repo a/b --pr 1"))
+        XCTAssertNil(BashGuard.denial(for: "glidepath code grep --pattern 'foo('"))
+        XCTAssertNil(BashGuard.denial(for: "glidepath pr info --repo a/b --pr 3 --out pr.json"))
+    }
+
+    func testDuplicateCommandKeysAreRejected() {
+        let raw = #"{"tool_name":"Bash","tool_input":{"command":"glidepath pr info --repo a/b --pr 1"},"command":"glidepath post --repo a/b --pr 1"}"#
+        XCTAssertEqual(BashGuard.evaluate(stdin: Data(raw.utf8)).code, 2)
+        let twoNames = #"{"tool_name":"Bash","tool_name":"Read","tool_input":{"command":"glidepath pr info --repo a/b --pr 1"}}"#
+        XCTAssertEqual(BashGuard.evaluate(stdin: Data(twoNames.utf8)).code, 2)
+        let single = #"{"tool_name":"Bash","tool_input":{"command":"glidepath pr info --repo a/b --pr 1"}}"#
+        XCTAssertEqual(BashGuard.evaluate(stdin: Data(single.utf8)).code, 0)
+    }
+
+    /// The hook input for a command, built with JSONSerialization so the escaping is valid JSON.
+    func hookJSON(_ command: String) -> Data {
+        try! JSONSerialization.data(withJSONObject: ["tool_name": "Bash", "tool_input": ["command": command]])
+    }
 }

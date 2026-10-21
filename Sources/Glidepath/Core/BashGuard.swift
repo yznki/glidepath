@@ -1,18 +1,26 @@
 import Foundation
 
-/// PreToolUse guard for Bash inside review sessions. The command must be the glidepath binary
-/// followed by plain tokens: bare words from a fixed character set, or single-quoted strings. Anything
-/// else is denied, because the shell (zsh) would expand it: `=(cmd)`, `*(e:...)`, `$(...)`, `{a,b}`,
-/// `~`, globs, `!`, `#`, `\`, and so on. Inside single quotes the shell expands nothing.
+/// PreToolUse guard for Bash inside review sessions. The command must be the glidepath binary followed by
+/// plain tokens: bare words from a fixed ASCII set, or single-quoted strings. Anything else is denied, because
+/// the shell (zsh) would expand it: `=(cmd)`, `*(e:...)`, `$(...)`, `{a,b}`, `~`, globs, `!`, `#`, `\`, and so on.
 ///
-/// Exit codes follow Claude Code's hook contract: 2 blocks the call and sends stderr to the model,
-/// 0 means no decision (the normal allowlist applies). Any error exits 2, so the guard fails closed.
+/// Everything is decided on UTF-8 bytes, never on Swift Characters. A Character can combine a quote with a
+/// combining mark (`'` followed by U+0301 is one Character), so Character-level checks can be fooled. Non-ASCII
+/// bytes and control bytes are refused before anything else, so no byte the shell might read differently
+/// reaches the tokenizer.
+///
+/// Exit codes follow Claude Code's hook contract: 2 blocks the call and sends stderr to the model, 0 means no
+/// decision (the normal allowlist applies). Any error exits 2, so the guard fails closed.
 enum BashGuard {
-    static let prefix = "glidepath "
+    static let prefixText = "glidepath "
 
-    /// Characters allowed in a bare word. Nothing the shell expands is in this set.
-    static func isBare(_ c: Character) -> Bool {
-        (c.isASCII && (c.isLetter || c.isNumber)) || "_./:,@+-".contains(c)
+    private static let space: UInt8 = 0x20
+    private static let quote: UInt8 = 0x27
+    private static let bareExtras: Set<UInt8> = Set("_./:,@+-".utf8)
+
+    /// Bytes allowed in a bare word: ASCII letters, digits, and `_./:,@+-`. Nothing the shell expands is in this set.
+    static func isBareByte(_ b: UInt8) -> Bool {
+        (b >= 0x30 && b <= 0x39) || (b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A) || bareExtras.contains(b)
     }
 
     struct Refusal: Error, Equatable {
@@ -24,38 +32,38 @@ enum BashGuard {
         let quoted: Bool
     }
 
-    /// Splits the arguments after the prefix into tokens, or returns the reason it cannot.
-    static func tokens(_ rest: Substring) -> Result<[Token], Refusal> {
+    /// Tokenizes the bytes after the prefix. Every comparison is on a byte.
+    static func tokens(_ bytes: ArraySlice<UInt8>) -> Result<[Token], Refusal> {
         var out: [Token] = []
-        var i = rest.startIndex
-        while i < rest.endIndex {
-            let c = rest[i]
-            if c == " " {
-                i = rest.index(after: i)
+        var i = bytes.startIndex
+        while i < bytes.endIndex {
+            let b = bytes[i]
+            if b == space {
+                i += 1
                 continue
             }
-            if c == "'" {
-                let open = rest.index(after: i)
-                guard let close = rest[open...].firstIndex(of: "'") else {
+            if b == quote {
+                let open = i + 1
+                guard let close = bytes[open...].firstIndex(of: quote) else {
                     return .failure(Refusal(reason: "unterminated single quote"))
                 }
-                let after = rest.index(after: close)
-                if after < rest.endIndex, rest[after] != " " {
+                let after = close + 1
+                if after < bytes.endIndex, bytes[after] != space {
                     return .failure(Refusal(reason: "a quoted word must be followed by a space"))
                 }
-                out.append(Token(text: String(rest[open..<close]), quoted: true))
+                out.append(Token(text: String(decoding: bytes[open..<close], as: UTF8.self), quoted: true))
                 i = after
                 continue
             }
             var j = i
-            while j < rest.endIndex, isBare(rest[j]) { j = rest.index(after: j) }
+            while j < bytes.endIndex, isBareByte(bytes[j]) { j += 1 }
             if j == i {
-                return .failure(Refusal(reason: "the character \(String(c).debugDescription) is not allowed in review commands"))
+                return .failure(Refusal(reason: "the character \(String(decoding: [b], as: UTF8.self).debugDescription) is not allowed in review commands"))
             }
-            if j < rest.endIndex, rest[j] != " " {
-                return .failure(Refusal(reason: "the character \(String(rest[j]).debugDescription) is not allowed in review commands"))
+            if j < bytes.endIndex, bytes[j] != space {
+                return .failure(Refusal(reason: "the character \(String(decoding: [bytes[j]], as: UTF8.self).debugDescription) is not allowed in review commands"))
             }
-            out.append(Token(text: String(rest[i..<j]), quoted: false))
+            out.append(Token(text: String(decoding: bytes[i..<j], as: UTF8.self), quoted: false))
             i = j
         }
         return .success(out)
@@ -63,14 +71,16 @@ enum BashGuard {
 
     /// nil when the command may run, otherwise the reason it is denied.
     static func denial(for command: String) -> String? {
-        guard command.hasPrefix(prefix) else {
+        let bytes = Array(command.utf8)
+        // First, before any tokenizing: no non-ASCII byte anywhere (inside quotes too), no control bytes.
+        if bytes.contains(where: { $0 >= 0x80 || $0 < 0x20 || $0 == 0x7F }) {
+            return "non-ASCII and control characters are not allowed in review commands"
+        }
+        let prefix = Array(prefixText.utf8)
+        guard bytes.starts(with: prefix) else {
             return "only glidepath subcommands may run in a review"
         }
-        if command.contains(where: { $0 == "\n" || $0 == "\r" || $0 == "\t" }) {
-            return "newlines and tabs are not allowed in review commands"
-        }
-        let rest = command.dropFirst(prefix.count)
-        switch tokens(rest) {
+        switch tokens(bytes[prefix.count...]) {
         case .failure(let refusal):
             return "\(refusal.reason) (review commands take plain words and single-quoted strings only)"
         case .success(let list):
@@ -85,8 +95,26 @@ enum BashGuard {
         }
     }
 
+    /// The keys whose repetition would let two JSON readers disagree about the command.
+    static let singletonKeys = ["\"command\"", "\"tool_name\"", "\"tool_input\""]
+
+    /// How many times `needle` occurs in `haystack`, byte for byte.
+    static func occurrences(of needle: [UInt8], in haystack: [UInt8]) -> Int {
+        guard !needle.isEmpty, haystack.count >= needle.count else { return 0 }
+        var count = 0
+        for start in 0...(haystack.count - needle.count) where haystack[start..<start + needle.count].elementsEqual(needle) {
+            count += 1
+        }
+        return count
+    }
+
     /// Decides from the hook's JSON input on stdin.
     static func evaluate(stdin: Data) -> (code: Int32, message: String?) {
+        let raw = [UInt8](stdin)
+        // Duplicate keys: a second "command" or "tool_name" could be read differently by another JSON parser.
+        for key in singletonKeys where occurrences(of: Array(key.utf8), in: raw) > 1 {
+            return (2, "glidepath guard: \(key) appears more than once in hook input; blocked")
+        }
         guard let obj = (try? JSONSerialization.jsonObject(with: stdin)) as? [String: Any] else {
             return (2, "glidepath guard: unreadable hook input; blocked")
         }
