@@ -78,10 +78,16 @@ struct RunError: Error, CustomStringConvertible {
     var description: String { message }
 }
 
-/// `glidepath run [--dry-run] [--repo slug] [--scheduled]`.
+/// `glidepath run [--dry-run] [--repo slug] [--scheduled] [--max-prs N]`.
 enum RunCommand {
+    /// The `--max-prs` value: a whole number of 1 or more, else nil.
+    static func maxPRs(_ raw: String) -> Int? {
+        guard let n = Int(raw), n >= 1 else { return nil }
+        return n
+    }
+
     static func main(_ args: [String]) -> Int32 {
-        let a = Args(args, valued: ["--repo"])
+        let a = Args(args, valued: ["--repo", "--max-prs"])
         let paths = Paths()
         if a.has("--scheduled") && Pause.isPaused(paths) {
             print("paused; scheduled run skipped")
@@ -91,12 +97,20 @@ enum RunCommand {
             eprint(message)
             return 1
         }
-        let config: Config
+        var config: Config
         do {
             config = try Config.load(paths)
         } catch {
             eprint("\(error)")
             return 1
+        }
+        // The limit for this run only: the config file keeps its own value.
+        if a.has("--max-prs") || a.value("--max-prs") != nil {
+            guard let raw = a.value("--max-prs"), let n = maxPRs(raw) else {
+                eprint("--max-prs needs a whole number of 1 or more")
+                return 1
+            }
+            config.limits.maxPRsPerRun = n
         }
         var repos = config.repos
         if let slug = a.value("--repo") {

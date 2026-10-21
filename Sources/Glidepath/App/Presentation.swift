@@ -80,6 +80,15 @@ enum Presentation {
 
     /// What to tell the user when a sweep ends. Dry runs never become current, so they never reach here. A finished
     /// sweep with nothing reviewed says nothing, unless it failed.
+    /// The notice for a finished dry run: what it would have posted. Nothing was posted.
+    static func dryRunNotice(_ run: RunState) -> SweepNotice {
+        let strips = Store.strips(from: run)
+        let changes = strips.filter { $0.verdict == .changes }.count
+        let approvals = strips.filter { $0.verdict == .approve }.count
+        return SweepNotice(title: "Dry run done",
+                           body: "\(changes) would request changes, \(approvals) would approve. Nothing was posted.")
+    }
+
     static func notice(_ run: RunState) -> SweepNotice? {
         guard run.finished != nil else { return nil }
         if run.kind == "review" {

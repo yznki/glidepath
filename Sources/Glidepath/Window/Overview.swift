@@ -10,6 +10,8 @@ struct OverviewView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var p: Palette { Palette(scheme) }
+    /// A sweep or a dry run holds the lock: the hero glides and the panel shows what is in flight.
+    private var live: Bool { store.snap.running || store.snap.dryRunning }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -40,7 +42,7 @@ struct OverviewView: View {
                 .frame(maxWidth: .infinity)
 
                 Group {
-                    if store.snap.running {
+                    if live {
                         onApproach
                     } else {
                         idleColumns
@@ -59,8 +61,8 @@ struct OverviewView: View {
     /// disc edge to touchdown and back on a 4 s ease-in-out loop, and rests at touchdown when idle or when
     /// Reduce Motion is on.
     private var field: some View {
-        TimelineView(.animation(paused: !store.snap.running || reduceMotion)) { context in
-            HeroField(t: store.snap.running && !reduceMotion ? HeroField.glide(context.date) : 1)
+        TimelineView(.animation(paused: !live || reduceMotion)) { context in
+            HeroField(t: live && !reduceMotion ? HeroField.glide(context.date) : 1)
         }
         .frame(height: 176)
         .padding(.horizontal, -WinMetrics.canvasLeft)
@@ -68,8 +70,11 @@ struct OverviewView: View {
 
     @ViewBuilder
     private func heroActions(_ kind: HeaderKind) -> some View {
+        // A dry run has nothing to stop or start: it runs to its end in the background.
         HStack(spacing: WinMetrics.s16) {
-            if store.snap.running {
+            if store.snap.dryRunning {
+                EmptyView()
+            } else if store.snap.running {
                 WinButton(title: "Stop sweep", style: .outline, large: true) { confirmAndStop() }
             } else if store.snap.paused {
                 WinButton(title: "Resume", style: .primary) { store.togglePause() }
@@ -90,6 +95,8 @@ struct OverviewView: View {
             return "\(changes) PR\(changes == 1 ? "" : "s") need\(changes == 1 ? "s" : "") changes"
         case .running:
             return "Reviewing \(inFlight.count) of \(rows.count)"
+        case .dryRun:
+            return "Dry run · \(reviewed.filter { $0.strip.verdict != nil }.count) of \(reviewed.count)"
         default:
             return copy.headline
         }
@@ -113,6 +120,9 @@ struct OverviewView: View {
             }
             parts.append(prs)
             if let run, run.tokens > 0 { parts.append("\(compactTokens(run.tokens)) tokens") }
+        case .dryRun:
+            parts.append("Nothing is posted")
+            if let started = store.snap.dryRun?.started { parts.append("started \(HeaderCopy.clock(started))") }
         default:
             return copy.line2
         }
@@ -206,6 +216,11 @@ struct OverviewView: View {
         }
     }
 
+    /// The PRs a sweep would review: every PR except the skipped ones.
+    private var reviewed: [RowModel] {
+        rows.filter { $0.strip.verdict != .skipped }
+    }
+
     /// The last finished sweep's landed PRs, changes first, three of them.
     private var landed: [RowModel] {
         rows.filter { $0.strip.verdict != nil }
@@ -241,30 +256,8 @@ struct OverviewView: View {
                 }
             }
         }, trailing: {
-            verdictStatus(row)
+            RunRowViews.verdict(row)
         })
-    }
-
-    /// Mark and word in the fixed 88 pt status column.
-    @ViewBuilder
-    private func verdictStatus(_ row: RowModel) -> some View {
-        HStack(spacing: WinMetrics.s8) {
-            switch row.status {
-            case .changes:
-                Text("Changes").foregroundStyle(WinTheme.amberInk)
-                StatusTriangle().fill(WinTheme.amber).frame(width: 8, height: 7)
-            case .approved:
-                Text("Approved").foregroundStyle(WinTheme.green)
-                Circle().fill(WinTheme.green).frame(width: 7, height: 7)
-            case .skipped:
-                Text("Skipped").foregroundStyle(WinTheme.faint)
-                Rectangle().fill(WinTheme.faint).frame(width: 8, height: 2)
-            default:
-                EmptyView()
-            }
-        }
-        .font(.system(size: 12, weight: .medium))
-        .frame(width: 88, alignment: .trailing)
     }
 
     // MARK: Running
@@ -275,7 +268,7 @@ struct OverviewView: View {
 
     private var onApproach: some View {
         let items = inFlight
-        return panel("On approach", meta: "\(items.count) in flight · \(landed.count) landed", rows: {
+        return panel("On approach", meta: "\(items.count) in flight · \(reviewed.filter { $0.strip.verdict != nil }.count) landed", rows: {
             ForEach(Array(items.enumerated()), id: \.offset) { index, row in
                 approachRow(row, first: index == 0)
             }
@@ -291,8 +284,8 @@ struct OverviewView: View {
             Text(place).foregroundStyle(WinTheme.faint)
         }, trailing: {
             HStack(spacing: WinMetrics.s16) {
-                meter(row.meter ?? [])
-                Text(phaseWord(row))
+                RunRowViews.meter(row.meter ?? [])
+                Text(RunRowViews.phaseWord(row))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(WinTheme.blue)
                     .frame(width: 88, alignment: .trailing)
@@ -300,35 +293,14 @@ struct OverviewView: View {
         })
     }
 
-    /// Four 12x4 dashes: done faint, the current stage blue, the rest dim.
-    private func meter(_ segments: [MeterSegment]) -> some View {
-        HStack(spacing: WinMetrics.s4) {
-            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(meterColour(segment))
-                    .frame(width: 12, height: 4)
-            }
-        }
-    }
-
-    private func meterColour(_ segment: MeterSegment) -> Color {
-        switch segment {
-        case .done: return Color.primary.opacity(0.35)
-        case .current: return WinTheme.blue
-        case .future: return Color.primary.opacity(0.12)
-        }
-    }
-
-    private func phaseWord(_ row: RowModel) -> String {
-        if case .active(let phase) = row.status { return phase }
-        return ""
-    }
-
     // MARK: Shared
 
     /// Every PR of the current run, grouped and ranked as the popover ranks them.
     private var rows: [RowModel] {
-        Presentation.rows(from: store.strips, running: store.snap.running, repos: store.snap.run?.repos ?? [])
+        if store.snap.dryRunning {
+            return Presentation.rows(from: store.dryStrips, running: true, repos: []).flatMap(\.rows)
+        }
+        return Presentation.rows(from: store.strips, running: store.snap.running, repos: store.snap.run?.repos ?? [])
             .flatMap(\.rows)
     }
 
@@ -437,5 +409,55 @@ struct OverviewView: View {
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         store.reviewPR(strip)
+    }
+}
+
+/// The row parts the Overview and the onboarding first sweep share: the stage meter, the stage word, and the verdict
+/// mark with its word in the fixed 88 pt column.
+enum RunRowViews {
+    /// Four 12x4 dashes: done faint, the current stage blue, the rest dim.
+    static func meter(_ segments: [MeterSegment]) -> some View {
+        HStack(spacing: WinMetrics.s4) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(meterColour(segment))
+                    .frame(width: 12, height: 4)
+            }
+        }
+    }
+
+    static func meterColour(_ segment: MeterSegment) -> Color {
+        switch segment {
+        case .done: return Color.primary.opacity(0.35)
+        case .current: return WinTheme.blue
+        case .future: return Color.primary.opacity(0.12)
+        }
+    }
+
+    static func phaseWord(_ row: RowModel) -> String {
+        if case .active(let phase) = row.status { return phase }
+        return ""
+    }
+
+    /// Mark and word in the fixed 88 pt status column.
+    @ViewBuilder
+    static func verdict(_ row: RowModel) -> some View {
+        HStack(spacing: WinMetrics.s8) {
+            switch row.status {
+            case .changes:
+                Text("Changes").foregroundStyle(WinTheme.amberInk)
+                StatusTriangle().fill(WinTheme.amber).frame(width: 8, height: 7)
+            case .approved:
+                Text("Approved").foregroundStyle(WinTheme.green)
+                Circle().fill(WinTheme.green).frame(width: 7, height: 7)
+            case .skipped:
+                Text("Skipped").foregroundStyle(WinTheme.faint)
+                Rectangle().fill(WinTheme.faint).frame(width: 8, height: 2)
+            default:
+                EmptyView()
+            }
+        }
+        .font(.system(size: 12, weight: .medium))
+        .frame(width: 88, alignment: .trailing)
     }
 }

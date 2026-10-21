@@ -64,6 +64,8 @@ struct Snapshot {
     var running = false
     /// A dry run holds the lock but is not the current run (dry runs never become current).
     var dryRunning = false
+    /// The dry run's run file while it holds the lock. Snapshot-only fixtures set it directly.
+    var dryRun: RunState?
     var paused = false
     var pausedSince: Date?
     var jobInstalled = true
@@ -159,6 +161,9 @@ final class Store: ObservableObject {
     private var watcher: DirectoryWatcher?
     private var acknowledgedRunID: String?
     private var loggedUpdateFailure = false
+    /// The dry run seen running most recently. When the lock is free, its notification goes out once.
+    private var pendingDryRunID: String?
+    private var dryRunCheckPending = false
     /// The sweep seen running most recently. When it finishes, its notification goes out once.
     private var pendingNoticeRunID: String?
     /// Set while a check waits for a running sweep to end, or retries a failed reinstall. Stopped once the job is current.
@@ -197,6 +202,9 @@ final class Store: ObservableObject {
             MainActor.assumeIsolated { Store.shared.checkIfDue(maxAge: Updates.maxAge) }
         }
     }
+
+    /// The PRs of the running dry run, for the Overview while one holds the lock.
+    var dryStrips: [Strip] { Store.strips(from: snap.dryRun) }
 
     var strips: [Strip] {
         Store.strips(from: snap.run).map { strip in
@@ -258,6 +266,7 @@ final class Store: ObservableObject {
         // A run is live only while its lock is held, so a crashed run never shows as running.
         s.running = (s.run.map { $0.finished == nil } ?? false) && RunLock.isHeld(paths.lockFile)
         s.dryRunning = !s.running && RunLock.isHeld(paths.lockFile)
+        s.dryRun = s.dryRunning ? currentSweepRun(paths: paths, since: .distantPast) : nil
         s.paused = Pause.isPaused(paths)
         s.pausedSince = s.paused ? Pause.since(paths) : nil
         s.jobInstalled = FileManager.default.fileExists(atPath: paths.plistFile)
@@ -287,6 +296,17 @@ final class Store: ObservableObject {
             }
         }
 
+        // A dry run is not current, so its end is noticed here: the run file it left is read once the lock is free.
+        if let dry = s.dryRun {
+            pendingDryRunID = dry.id
+            scheduleDryRunCheck()
+        } else if let id = pendingDryRunID {
+            pendingDryRunID = nil
+            if let ended = try? RunStore(paths: paths).load(id), ended.finished != nil, config?.notify ?? true {
+                Notifier.post(Presentation.dryRunNotice(ended), runID: ended.id)
+            }
+        }
+
         // Held drafts are shown from disk, whichever run wrote them. Notifications above used the run alone.
         s.run?.showDrafts(Drafts.all(paths))
         let landed = Set(Store.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
@@ -300,6 +320,18 @@ final class Store: ObservableObject {
         snap = s
         reconcileJob()
         hovered = hovered.flatMap { h in Store.strips(from: s.run).contains { $0.id == h } ? h : nil }
+    }
+
+    /// The lock is released after the run file is written, and releasing it writes nothing the watcher sees. So while a
+    /// dry run holds the lock, the store checks again shortly, and notices its end.
+    private func scheduleDryRunCheck() {
+        guard !dryRunCheckPending, !isFixture else { return }
+        dryRunCheckPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self else { return }
+            self.dryRunCheckPending = false
+            self.reload()
+        }
     }
 
     /// Brings the launchd job in line with config.toml. Runs on every reload, so a schedule save made while a sweep held

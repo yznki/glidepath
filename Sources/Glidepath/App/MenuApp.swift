@@ -83,7 +83,7 @@ enum Snapshotter {
         let now = WindowFixtures.clock
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let sections: [(String, WindowSection)] = [
-            ("overview", .overview), ("running", .overview), ("reviews", .reviews),
+            ("overview", .overview), ("running", .overview), ("overview-dry-run", .overview), ("reviews", .reviews),
             ("repos", .repos), ("schedule", .schedule), ("settings", .settings),
         ]
         for (name, section) in sections {
@@ -93,14 +93,15 @@ enum Snapshotter {
                 writeWindow(screen, dark: dark, to: dir.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png"))
             }
         }
-        let steps: [(String, OnboardingStep)] = [
-            ("onb-welcome", .welcome), ("onb-tools", .tools), ("onb-repos", .repos),
-            ("onb-review", .review), ("onb-schedule", .schedule), ("onb-sweep", .firstSweep),
+        let steps: [(String, OnboardingStep, Bool)] = [
+            ("onb-welcome", .welcome, false), ("onb-tools", .tools, false), ("onb-repos", .repos, false),
+            ("onb-review", .review, false), ("onb-schedule", .schedule, false),
+            ("onb-sweep", .firstSweep, true), ("onb-sweep-landed", .firstSweep, false),
         ]
         let paths = Paths()
-        for (name, step) in steps {
+        for (name, step, running) in steps {
             let store = Store(snapshot: Snapshot())
-            let model = WindowFixtures.onboarding(step, now: now, paths: paths)
+            let model = WindowFixtures.onboarding(step, now: now, paths: paths, running: running)
             let screen = WindowScreen(store: store, router: WindowRouter(showOnboarding: true), onboarding: model)
             for dark in [true, false] {
                 writeWindow(screen, dark: dark, to: dir.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png"))

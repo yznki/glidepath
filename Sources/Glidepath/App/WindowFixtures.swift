@@ -156,11 +156,48 @@ enum WindowFixtures {
             snap.run = sweepRunning(now)
             snap.running = true
         }
+        if name == "overview-dry-run" {
+            // The first sweep's dry run holds the lock. It is not the current run, so the run is nil.
+            snap.run = nil
+            snap.dryRunning = true
+            snap.dryRun = firstSweepRun(now, landed: false)
+        }
         return snap
     }
 
+    /// The first sweep's dry run of three PRs: one landed and two in flight while it runs, all three landed when it ends.
+    /// Seven PRs are skipped: one yours, three too large, three already reviewed.
+    static func firstSweepRun(_ now: Date, landed: Bool) -> RunState {
+        let reviewed: [(String, PRState)] = landed ? [
+            row("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
+            row("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", verdict: .changes,
+                reason: "missing RLS test"),
+            row("lumen/web", 88, "lea", "Fix the date picker timezone on CSV export", verdict: .approve),
+        ] : [
+            row("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
+            row("lumen/api", 1225, "tom", "Drop the legacy webhook retry table", verdict: nil, stage: .review, active: true),
+            row("lumen/web", 88, "lea", "Fix the date picker timezone on CSV export", verdict: nil, stage: .check, active: true),
+        ]
+        let skipped: [(String, PRState)] = [
+            row("lumen/api", 1100, "yznki", "Rotate the staging keys", verdict: .skipped, reason: "your own PR"),
+            row("lumen/api", 1101, "omar", "Move billing to the new ledger", verdict: .skipped,
+                reason: "too large (4000 changed lines)", skip: "size", lines: 4000),
+            row("lumen/api", 1102, "tom", "Split the audit tables", verdict: .skipped,
+                reason: "too large (2100 changed lines)", skip: "size", lines: 2100),
+            row("lumen/api", 1103, "dana", "Vendor the SDK", verdict: .skipped,
+                reason: "too large (2500 changed lines)", skip: "size", lines: 2500),
+            row("lumen/web", 90, "sam", "Rewrite the onboarding copy", verdict: .skipped,
+                reason: "already reviewed at this head"),
+            row("lumen/web", 91, "kai", "Redesign the empty states", verdict: .skipped,
+                reason: "already reviewed at this head"),
+            row("lumen/web", 92, "ines", "Bump the chart library", verdict: .skipped,
+                reason: "already reviewed at this head"),
+        ]
+        return run("fixture-first-sweep", now, minutes: landed ? 3.2 : nil, prs: reviewed + skipped, tokens: 120_000)
+    }
+
     /// The onboarding model for one step. `repos` and the tool rows are what the step's checks would have found.
-    @MainActor static func onboarding(_ step: OnboardingStep, now: Date, paths: Paths) -> OnboardingModel {
+    @MainActor static func onboarding(_ step: OnboardingStep, now: Date, paths: Paths, running: Bool = false) -> OnboardingModel {
         var state = OnboardingState()
         state.step = step
         state.schedule = times
@@ -183,17 +220,14 @@ enum WindowFixtures {
         var strips: [Strip] = []
         if step == .firstSweep {
             state.repos = ["lumen/api"]
-            let dry = run("fixture-dry", now, minutes: 4, prs: [
-                row("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
-                row("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", verdict: .changes,
-                    reason: "missing RLS test"),
-                row("lumen/api", 1225, "tom", "Drop the legacy webhook retry table", verdict: .approve),
-                row("lumen/api", 1231, "lea", "Add retry to the webhook sender", verdict: .changes,
-                    reason: "retries are not idempotent"),
-            ], tokens: 120_000)
-            strips = Store.strips(from: dry)
-            let landing = OnboardingSummary.landing(strips, posting: .comment, repo: "lumen/api")
-            state.firstSweep = .finished(reviews: landing.reviews, summary: landing.text)
+            if running {
+                state.firstSweep = .running
+                strips = Store.strips(from: firstSweepRun(now, landed: false))
+            } else {
+                strips = Store.strips(from: firstSweepRun(now, landed: true))
+                let landing = OnboardingSummary.landing(strips, posting: .comment, repo: "lumen/api")
+                state.firstSweep = .finished(reviews: landing.reviews, summary: landing.text)
+            }
         }
         return OnboardingModel(fixture: state, paths: paths, tools: tools, repos: discovered,
                                repoList: .loaded, liveStrips: strips)

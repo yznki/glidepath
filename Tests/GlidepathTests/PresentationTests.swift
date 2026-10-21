@@ -58,6 +58,37 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(HeaderCopy.make(.dryRun, now: now).headline, "Dry run in progress")
     }
 
+    func testDryRunNoticeCountsWhatItWouldPost() {
+        let finished = run([pr(1, verdict: .changes), pr(2, verdict: .changes), pr(3, verdict: .approve)], finished: true)
+        let notice = Presentation.dryRunNotice(finished)
+        XCTAssertEqual(notice.title, "Dry run done")
+        XCTAssertEqual(notice.body, "2 would request changes, 1 would approve. Nothing was posted.")
+    }
+
+    func testSkippedLineCountsByReason() {
+        func skipped(_ reason: String, size: Bool = false) -> Strip {
+            var s = strip(1, verdict: .skipped, reason: reason)
+            if size { s.skipReason = "size" }
+            return s
+        }
+        let strips = [strip(9, verdict: .approve), strip(8, active: true),
+                      skipped("your own PR"),
+                      skipped("too large (4000 changed lines)", size: true), skipped("too large (2100 changed lines)", size: true),
+                      skipped("too large (2500 changed lines)", size: true),
+                      skipped("already reviewed at this head"), skipped("already reviewed at this head"),
+                      skipped("already reviewed at this head")]
+        XCTAssertEqual(OnboardingSummary.skippedLine(strips),
+                       "7 skipped: 1 yours, 3 too large, 3 already reviewed")
+        XCTAssertNil(OnboardingSummary.skippedLine([strip(9, verdict: .approve)]))
+    }
+
+    func testHeroGlideMovesWhileRunning() {
+        let start = Date(timeIntervalSinceReferenceDate: 0)
+        XCTAssertNotEqual(HeroField.glide(start), HeroField.glide(start.addingTimeInterval(1)),
+                          "the touchdown dot must move over the 4 s loop")
+        XCTAssertEqual(HeroField.glide(start), HeroField.glide(start.addingTimeInterval(4)), "the loop repeats every 4 s")
+    }
+
     func testHeaderCopyForEachState() {
         let idle = HeaderCopy.make(.idle(changes: 2, next: nil, lastStarted: now, total: 7), now: now)
         XCTAssertEqual(idle.headline, "2 need changes", "no dot before a headline")

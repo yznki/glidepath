@@ -34,7 +34,7 @@ enum CLI {
       glidepath init                      set up config, skill, schedule, app; ends with a dry run
       glidepath init --refresh            re-link the skill, app and job from this binary (no prompts, no dry run)
       glidepath update [--wait]           update a Homebrew install to the latest release (--wait: wait for a sweep to end)
-      glidepath run [--dry-run] [--repo owner/name]
+      glidepath run [--dry-run] [--repo owner/name] [--max-prs N]
                                              run the review pipeline now
       glidepath state set --run ID --repo owner/name --pr N [--stage gather|review|check] [--reason TEXT]
       glidepath state show [--run ID]     print a run as JSON (default: current)

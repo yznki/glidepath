@@ -106,6 +106,13 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(OnboardingState.initial(existing: nil).repos, [])
     }
 
+    func testMaxPRsNeedsAWholeNumberOfOneOrMore() {
+        XCTAssertEqual(RunCommand.maxPRs("3"), 3)
+        XCTAssertNil(RunCommand.maxPRs("0"))
+        XCTAssertNil(RunCommand.maxPRs("-2"))
+        XCTAssertNil(RunCommand.maxPRs("two"))
+    }
+
     func testRepoListParsingKeepsOnlyValidSlugs() throws {
         let json = """
         [{"nameWithOwner":"acme/old","primaryLanguage":null,"pushedAt":"2026-01-01T00:00:00Z"},
