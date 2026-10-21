@@ -73,6 +73,12 @@ struct ShortcutsSheet: View {
                             Text(item.title)
                                 .font(.system(size: 13))
                                 .foregroundStyle(WinTheme.text)
+                            if let note = item.note {
+                                Text(note)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(WinTheme.faint)
+                                    .lineLimit(1)
+                            }
                             Spacer(minLength: WinMetrics.s8)
                             Text(item.glyphs)
                                 .font(.system(size: 13))
