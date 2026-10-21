@@ -181,8 +181,8 @@ final class SecurityTests: XCTestCase {
     }
 
     func testSessionGetsPinnedGitHubConfigDir() {
-        let env = Claude.childEnvironment(parent: ["PATH": "/bin", "GH_CONFIG_DIR": "/Users/u/.config/gh"], binding: [:])
-        XCTAssertEqual(env["GH_CONFIG_DIR"], "/Users/u/.config/gh")
+        let env = Claude.childEnvironment(parent: ["PATH": "/bin", "GH_CONFIG_DIR": "/home/test/.config/gh"], binding: [:])
+        XCTAssertEqual(env["GH_CONFIG_DIR"], "/home/test/.config/gh")
         XCTAssertNil(Claude.childEnvironment(parent: ["PATH": "/bin", "GH_TOKEN": "t"], binding: [:])["GH_TOKEN"])
     }
 
