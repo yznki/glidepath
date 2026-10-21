@@ -9,20 +9,25 @@ struct RunBinding {
     static let scratchKey = "REVIEW_RADAR_SCRATCH"
     static let dryRunKey = "REVIEW_RADAR_DRY_RUN"
 
+    static let cloneKey = "REVIEW_RADAR_CLONE"
+
     let runId: String
     let repo: String
     let scratch: String
+    let clone: String
     let dryRun: Bool
 
     var environment: [String: String] {
-        [Self.runKey: runId, Self.repoKey: repo, Self.scratchKey: scratch, Self.dryRunKey: dryRun ? "1" : "0"]
+        [Self.runKey: runId, Self.repoKey: repo, Self.scratchKey: scratch, Self.cloneKey: clone,
+         Self.dryRunKey: dryRun ? "1" : "0"]
     }
 
     static func current(_ env: [String: String] = ProcessInfo.processInfo.environment) throws -> RunBinding {
-        guard let id = env[runKey], let repo = env[repoKey], let scratch = env[scratchKey] else {
+        guard let id = env[runKey], let repo = env[repoKey], let scratch = env[scratchKey],
+              let clone = env[cloneKey] else {
             throw CommandError("not inside a review-radar run (REVIEW_RADAR_RUN is not set)")
         }
-        return RunBinding(runId: id, repo: repo, scratch: scratch, dryRun: env[dryRunKey] == "1")
+        return RunBinding(runId: id, repo: repo, scratch: scratch, clone: clone, dryRun: env[dryRunKey] == "1")
     }
 
     /// The bound run. A run that has finished accepts nothing.
@@ -82,6 +87,60 @@ enum StrictFlags {
             throw CommandError("--pr must be a PR number")
         }
         return n
+    }
+}
+
+/// `review-radar code grep|files`: read-only search of the run's checkout. These replace the Grep and Glob
+/// tools, which cannot be scoped: a bare Grep allow rule reads any path on the machine.
+enum CodeCommands {
+    static let maxLines = 200
+
+    static func main(_ args: [String]) -> Int32 {
+        do {
+            let binding = try RunBinding.current()
+            switch args.first {
+            case "grep":
+                let f = try StrictFlags.parse(Array(args.dropFirst()), allowed: ["--pattern"])
+                print(try grep(clone: binding.clone, pattern: try pattern(f)))
+            case "files":
+                _ = try StrictFlags.parse(Array(args.dropFirst()), allowed: [])
+                print(try files(clone: binding.clone))
+            default:
+                throw CommandError("usage: review-radar code grep --pattern TEXT | code files")
+            }
+            return 0
+        } catch {
+            eprint("\(error)")
+            return 1
+        }
+    }
+
+    /// A fixed string, 1 to 120 characters, on one line. Passed as an argument, never through a shell.
+    static func pattern(_ f: [String: String]) throws -> String {
+        guard let text = f["--pattern"], !text.isEmpty, text.count <= 120, !text.contains("\n") else {
+            throw CommandError("--pattern is required: one line, 1 to 120 characters")
+        }
+        return text
+    }
+
+    /// `git grep` searches tracked files of the checkout only, so .git and untracked files are never read.
+    static func grepArguments(clone: String, pattern: String) -> [String] {
+        ["-C", clone, "grep", "-n", "-I", "-F", "-e", pattern]
+    }
+
+    static func grep(clone: String, pattern: String) throws -> String {
+        let r = Shell.run("git", grepArguments(clone: clone, pattern: pattern), timeout: 120)
+        if r.status == 1 { return "no matches" }
+        guard r.ok else { throw CommandError("search failed: \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))") }
+        let lines = r.stdout.split(separator: "\n", omittingEmptySubsequences: false)
+        let shown = lines.prefix(maxLines).joined(separator: "\n")
+        return lines.count > maxLines ? shown + "\n[truncated at \(maxLines) lines]" : shown
+    }
+
+    static func files(clone: String) throws -> String {
+        let r = Shell.run("git", ["-C", clone, "ls-files"], timeout: 120)
+        guard r.ok else { throw CommandError("file list failed") }
+        return r.stdout
     }
 }
 

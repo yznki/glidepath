@@ -53,6 +53,7 @@ enum CLI {
         case "init": return InitCommand.main(rest)
         case "state": return StateCommand.main(rest)
         case "hook": return HookCommand.main(rest)
+        case "code": return CodeCommands.main(rest)
         case "pr": return PRCommands.main(rest)
         case "post": return PRCommands.post(rest)
         case "pause": return setPaused(true)

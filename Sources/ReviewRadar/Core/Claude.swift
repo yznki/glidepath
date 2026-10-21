@@ -48,6 +48,8 @@ enum Claude {
             "Bash(review-radar pr threads:*)",
             "Bash(review-radar state set:*)",
             "Bash(review-radar post:*)",
+            "Bash(review-radar code grep:*)",
+            "Bash(review-radar code files:*)",
         ]
         if let rules { list.append("Read(\(permissionPath(rules)))") }
         if gitnexus { list += gitnexusTools.map { "mcp__gitnexus__\($0)" } }
@@ -92,7 +94,7 @@ enum Claude {
     /// `tools` names tool families; the command-level limits are the allowlist and the bash guard.
     static func agentsJSON() -> String {
         let common: [String: Any] = [
-            "tools": ["Read", "Grep", "Glob", "Edit", "Bash"],
+            "tools": ["Read", "Edit", "Write", "Bash"],
             "permissionMode": "dontAsk",
         ]
         func agent(_ description: String, _ prompt: String, _ model: String) -> [String: Any] {

@@ -40,6 +40,7 @@ final class SecurityTests: XCTestCase {
         XCTAssertEqual(Set(list().filter { $0.hasPrefix("Bash(") }), [
             "Bash(review-radar pr info:*)", "Bash(review-radar pr diff:*)", "Bash(review-radar pr threads:*)",
             "Bash(review-radar state set:*)", "Bash(review-radar post:*)",
+            "Bash(review-radar code grep:*)", "Bash(review-radar code files:*)",
         ])
     }
 
@@ -181,6 +182,15 @@ final class SecurityTests: XCTestCase {
 
     func testClonesUseHTTPS() {
         XCTAssertEqual(RepoClone.cloneURL("acme/api"), "https://github.com/acme/api.git")
+    }
+
+    func testCodeSearchIsFixedStringAndTrackedFilesOnly() throws {
+        XCTAssertEqual(CodeCommands.grepArguments(clone: "/c", pattern: "a*b"),
+                       ["-C", "/c", "grep", "-n", "-I", "-F", "-e", "a*b"])
+        XCTAssertEqual(try CodeCommands.pattern(["--pattern": "x"]), "x")
+        XCTAssertThrowsError(try CodeCommands.pattern([:]))
+        XCTAssertThrowsError(try CodeCommands.pattern(["--pattern": "a\nb"]))
+        XCTAssertThrowsError(try CodeCommands.pattern(["--pattern": String(repeating: "x", count: 121)]))
     }
 
     func testChildPathStartsWithRunningBinaryDirectory() {

@@ -298,7 +298,7 @@ final class Runner {
             "split_over=\(config.limits.splitOverLines)",
             "dry_run=\(dryRun)",
         ].joined(separator: " ")
-        let binding = RunBinding(runId: id, repo: repo.slug, scratch: scratch, dryRun: dryRun)
+        let binding = RunBinding(runId: id, repo: repo.slug, scratch: scratch, clone: repo.clone, dryRun: dryRun)
         let args = Claude.arguments(
             prompt: prompt, systemPrompt: skill, sessionId: session, scratch: scratch, mcpConfig: mcpPath,
             agents: Claude.agentsJSON(),

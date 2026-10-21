@@ -21,7 +21,9 @@ You do not review code yourself.
 - `review-radar pr threads --repo <slug> --pr <n>`: existing comments and reviews (JSON, read-only)
 - `review-radar state set --run <id> --repo <slug> --pr <n> --stage <gather|review|check>`: progress
 - `review-radar post --repo <slug> --pr <n>`: post the review from `final.json` (or print it in a dry run)
-- Read, Grep and Glob inside the working directory and `scratch=`
+- Read inside the working directory and `scratch=`
+- `review-radar code grep --pattern TEXT`: fixed-string search of the checkout's tracked files (line numbers, capped at 200 lines)
+- `review-radar code files`: the checkout's tracked file list
 - Edit and Write inside `scratch=`
 - Agent, only for the named agents `gatherer`, `reviewer` and `checker`
 
@@ -66,8 +68,8 @@ then `impact` upstream at depth 2 for each changed top-level function, class or 
 `api_impact` for changed route or controller files. Record each caller outside the diff as
 `symbol -> caller (file:line), depth, risk`. Cap at 60 lines, sorted by risk.
 
-When `gitnexus=off`, or the graph returns unknown or partial results: use Grep inside the working
-directory for each changed top-level symbol, and say the list comes from grep. An empty caller list is
+When `gitnexus=off`, or the graph returns unknown or partial results: use `review-radar code grep --pattern NAME` for each changed
+top-level symbol. Pass the bare name without parentheses, because the guard refuses parentheses. Say the list comes from grep. An empty caller list is
 not "unused"; write "no callers found by grep" instead.
 
 A gap is not a failure. The reviewer must say so in its notes.
