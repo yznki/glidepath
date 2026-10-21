@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>dev.reviewradar.app</string>
+    <string>dev.glidepath.app</string>
     <key>CFBundleName</key>
-    <string>Review Radar</string>
+    <string>Glidepath</string>
     <key>CFBundleDisplayName</key>
-    <string>Review Radar</string>
+    <string>Glidepath</string>
     <key>CFBundleExecutable</key>
-    <string>review-radar</string>
+    <string>glidepath</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundlePackageType</key>

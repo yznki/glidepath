@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "review-radar",
+    name: "glidepath",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "review-radar", targets: ["ReviewRadar"]),
+        .executable(name: "glidepath", targets: ["Glidepath"]),
     ],
     targets: [
-        .executableTarget(name: "ReviewRadar", path: "Sources/ReviewRadar"),
-        .testTarget(name: "ReviewRadarTests", dependencies: ["ReviewRadar"], path: "Tests/ReviewRadarTests"),
+        .executableTarget(name: "Glidepath", path: "Sources/Glidepath"),
+        .testTarget(name: "GlidepathTests", dependencies: ["Glidepath"], path: "Tests/GlidepathTests"),
     ]
 )

@@ -1,4 +1,4 @@
-// Draws the Review Radar app icon (1024x1024 PNG). Usage: xcrun swift icon.swift <out.png>
+// Draws the Glidepath app icon (1024x1024 PNG). Usage: xcrun swift icon.swift <out.png>
 import AppKit
 
 func hex(_ s: String, _ a: CGFloat = 1) -> NSColor {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wraps the release binary into build/Review Radar.app (LSUIElement, ad-hoc signed).
+# Wraps the release binary into build/Glidepath.app (LSUIElement, ad-hoc signed).
 # Uses Command Line Tools only. Pass --no-build to reuse an existing .build/release binary.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -8,14 +8,14 @@ if [[ "${1:-}" != "--no-build" ]]; then
     swift build -c release
 fi
 
-BIN=".build/release/review-radar"
-APP="build/Review Radar.app"
+BIN=".build/release/glidepath"
+APP="build/Glidepath.app"
 ICONSET="build/AppIcon.iconset"
 
 rm -rf "$APP" "$ICONSET"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$ICONSET"
 
-cp "$BIN" "$APP/Contents/MacOS/review-radar"
+cp "$BIN" "$APP/Contents/MacOS/glidepath"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
 # App icon: icon.swift draws a 1024 px PNG; sips makes the iconset sizes; iconutil packs the .icns.

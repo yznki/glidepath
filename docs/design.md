@@ -1,4 +1,4 @@
-# Review Radar design pass 1
+# Glidepath design pass 1
 
 Baseline critic score 6.3 (design 6.3, usability 6.0, creativity 6.5, content 6.5).
 Target 8+. The fixes below come from the critique; the idea stays (ATC radar, PRs as flights,
@@ -36,7 +36,7 @@ Weights 400 and 600 only (stamp 700 is the one exception). SF Pro; SF Mono only 
 | idle, no runs yet | "No sweeps yet" | "First sweep 13:00 · in 2 h 41 min" |
 | paused | "Paused" | "Since 10:35 · scheduled sweeps are skipped" |
 | run failed | "Last sweep failed" (error colour) | first line of the error, then "Open log" link |
-| job not loaded | "Not scheduled" (changes colour) | "Run `review-radar init` to set it up" (selectable) |
+| job not loaded | "Not scheduled" (changes colour) | "Run `glidepath init` to set it up" (selectable) |
 | empty run | "No PRs to review" | "Checked 3 repos at 10:12 · next 13:00" |
 
 ## Radar (the signature, as an instrument)
@@ -77,7 +77,7 @@ Weights 400 and 600 only (stamp 700 is the one exception). SF Pro; SF Mono only 
 - Left: one bordered (`.bordered`, controlSize small) primary button: "Run now" (idle), "Resume"
   (paused), "Running…" disabled while running.
 - Right: `ellipsis.circle` menu button: Pause / Resume, Open log, Open at login (native checkmark
-  item), separator, Quit Review Radar (⌘Q).
+  item), separator, Quit Glidepath (⌘Q).
 - No status word in the footer. No second rule above the footer; spacing only.
 
 ## Menu bar glyph

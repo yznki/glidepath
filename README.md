@@ -1,12 +1,12 @@
-# review-radar
+# glidepath
 
-review-radar runs Claude Code on a schedule to review open pull requests in the GitHub repos you list.
+glidepath runs Claude Code on a schedule to review open pull requests in the GitHub repos you list.
 It posts the reviews to GitHub and shows the run in a macOS menu bar app: one blip per PR on a radar,
 one strip per PR with its stage and verdict.
 
 ![Popover during a run (placeholder until a live screenshot is taken)](docs/shots/running-dark.png)
 
-It is a single binary, `review-radar`. The scheduled job, the review skill and the menu bar app all
+It is a single binary, `glidepath`. The scheduled job, the review skill and the menu bar app all
 come from that binary and the skill files it installs.
 
 ## What it does
@@ -17,11 +17,11 @@ On each scheduled time, for each configured repo:
 2. Lists open PRs. It skips your own PRs, drafts, bot authors, authors outside the allowed set,
    PRs you have already reviewed at the current head, and PRs over the size limit. Each skip is
    recorded with its reason.
-3. Starts `claude -p` in that checkout with the `review-radar` skill. The skill gathers each PR's
+3. Starts `claude -p` in that checkout with the `glidepath` skill. The skill gathers each PR's
    diff, reviews it against a written rubric, checks the findings against the code, and posts
    the review.
 
-Results land in `~/.local/state/review-radar/runs/`. The menu bar app watches that folder and updates
+Results land in `~/.local/state/glidepath/runs/`. The menu bar app watches that folder and updates
 without polling.
 
 ## Requirements
@@ -33,11 +33,11 @@ without polling.
 - `claude`, Claude Code 2.1.306 or later, logged in. Install with `brew install --cask claude-code`.
 - GitNexus is optional. See [Config](#config) for `gitnexus`.
 
-`review-radar init` checks each of these and prints the fix command for any that is missing.
+`glidepath init` checks each of these and prints the fix command for any that is missing.
 
 ## Testing without touching your config
 
-`XDG_CONFIG_HOME` and `XDG_STATE_HOME` (absolute paths only) move review-radar's own config and state
+`XDG_CONFIG_HOME` and `XDG_STATE_HOME` (absolute paths only) move glidepath's own config and state
 folders, for example for a sandboxed test run. HOME is not changed, so claude and gh keep their sign-in
 (the runner also pins gh's config directory to `~/.config/gh`).
 
@@ -46,18 +46,18 @@ folders, for example for a sandboxed test run. HOME is not changed, so claude an
 From Homebrew (once the tap is published):
 
 ```sh
-brew install yznki/tap/review-radar
-review-radar init
+brew install yznki/tap/glidepath
+glidepath init
 ```
 
 From source:
 
 ```sh
-git clone https://github.com/yznki/review-radar.git
-cd review-radar
+git clone https://github.com/yznki/glidepath.git
+cd glidepath
 swift build -c release
-./make-app.sh --no-build      # optional: builds build/Review Radar.app
-.build/release/review-radar init
+./make-app.sh --no-build      # optional: builds build/Glidepath.app
+.build/release/glidepath init
 ```
 
 `swift build` needs only the Command Line Tools. `swift test` needs the full Xcode toolchain, because
@@ -65,26 +65,26 @@ the Command Line Tools do not include XCTest.
 
 ## init walkthrough
 
-`review-radar init` does these steps in order and stops at the first failed requirement:
+`glidepath init` does these steps in order and stops at the first failed requirement:
 
 1. **Requirements.** Checks Command Line Tools, `git`, `gh`, `gh` sign-in and `claude`.
 2. **Config.** If there is no config yet, asks for a repo as `owner/name` (or takes `--repo owner/name`)
-   and writes `~/.config/review-radar/config.toml` with the defaults. An existing config is kept.
+   and writes `~/.config/glidepath/config.toml` with the defaults. An existing config is kept.
 3. **Clone.** Clones each repo with `gh repo clone` into its `clone` path and detaches it at the default branch.
-4. **Skill.** Copies `SKILL.md` and `rubric.md` to `~/.claude/skills/review-radar/`.
-5. **App.** Links `Review Radar.app` into `~/Applications/`. Skipped if the app is not next to the binary.
-6. **Schedule.** Writes `~/Library/LaunchAgents/dev.reviewradar.run.plist` and loads it with
-   `launchctl bootstrap`. The plist runs `review-radar run --scheduled` at each `schedule` time, with
+4. **Skill.** Copies `SKILL.md` and `rubric.md` to `~/.claude/skills/glidepath/`.
+5. **App.** Links `Glidepath.app` into `~/Applications/`. Skipped if the app is not next to the binary.
+6. **Schedule.** Writes `~/Library/LaunchAgents/dev.glidepath.run.plist` and loads it with
+   `launchctl bootstrap`. The plist runs `glidepath run --scheduled` at each `schedule` time, with
    the `PATH` from the shell you ran `init` in. If you change tools later (for example, move `gh`),
    run `init` again.
-7. **Dry run.** Runs `review-radar run --dry-run` on the first repo. It reviews, prints the drafts,
+7. **Dry run.** Runs `glidepath run --dry-run` on the first repo. It reviews, prints the drafts,
    and posts nothing.
 
 After the dry run, open the menu bar app and check the output. Posting starts at the next scheduled time.
 
 ## Config
 
-`~/.config/review-radar/config.toml`:
+`~/.config/glidepath/config.toml`:
 
 ```toml
 schedule = ["07:00", "13:00", "19:00"]   # global; one launchd job
@@ -96,10 +96,10 @@ split_over_lines = 1500       # reviews are split by area above this
 
 [[repo]]
 slug = "acme/api"
-clone = "~/review-radar/clones/acme-api"   # init clones a dedicated detached checkout
+clone = "~/glidepath/clones/acme-api"   # init clones a dedicated detached checkout
 posting = "comment"           # comment | review
 authors = "collaborators"     # collaborators | anyone | ["login", ...]
-rules = "~/.config/review-radar/rules/acme-api.md"   # optional
+rules = "~/.config/glidepath/rules/acme-api.md"   # optional
 rules_mode = "extend"         # extend | replace
 gitnexus = "auto"             # auto | on | off
 include_own = false           # true to review your own PRs too
@@ -112,7 +112,7 @@ include_own = false           # true to review your own PRs too
 | `limits.max_changed_lines` | `3000` | Additions plus deletions above this are skipped with reason "too large". |
 | `limits.split_over_lines` | `1500` | Above this, the review is split into one reviewer per area. |
 | `repo.slug` | required | `owner/name` on GitHub. |
-| `repo.clone` | `~/review-radar/clones/<owner>-<name>` | Detached checkout the skill reads. Never used for work. |
+| `repo.clone` | `~/glidepath/clones/<owner>-<name>` | Detached checkout the skill reads. Never used for work. |
 | `repo.posting` | `comment` | `comment` posts a COMMENT review whose first line is `Verdict: approve` or `Verdict: changes`. `review` posts APPROVE or REQUEST_CHANGES. |
 | `repo.authors` | `collaborators` | `collaborators` means write, maintain or admin access on the repo. `anyone` means any author. A list means only those logins. |
 | `repo.rules` | none | A Markdown file with extra review rules for this repo. |
@@ -120,7 +120,7 @@ include_own = false           # true to review your own PRs too
 | `repo.gitnexus` | `auto` | Use the GitNexus MCP tools for blast radius. `auto` uses them when the `gitnexus` command is on your PATH and `authors` is not `"anyone"`. Otherwise the skill uses grep. |
 | `repo.include_own` | `false` | Review PRs you opened too. Off by default. GitHub accepts only a COMMENT review on your own PR, so `post` sends COMMENT for those whatever `posting` says. |
 
-Edits take effect on the next run. `review-radar doctor` checks the file.
+Edits take effect on the next run. `glidepath doctor` checks the file.
 
 ## Security model
 
@@ -137,36 +137,36 @@ Read(//<scratch>/**)                   this run's scratch directory
 Edit(//<scratch>/**)                   writes only under scratch
 Read(//<rules file>)                   only when rules is set
 Agent(gatherer)  Agent(reviewer)  Agent(checker)
-Bash(review-radar pr info:*)  Bash(review-radar pr diff:*)  Bash(review-radar pr threads:*)
-Bash(review-radar state set:*)  Bash(review-radar post:*)
-Bash(review-radar code grep:*)  Bash(review-radar code files:*)   read-only search of the checkout
+Bash(glidepath pr info:*)  Bash(glidepath pr diff:*)  Bash(glidepath pr threads:*)
+Bash(glidepath state set:*)  Bash(glidepath post:*)
+Bash(glidepath code grep:*)  Bash(glidepath code files:*)   read-only search of the checkout
 mcp__gitnexus__detect_changes  ...impact  ...api_impact  ...context  ...query  ...route_map  ...shape_check
                                        only when GitNexus is on
 ```
 
 There is no bare `Read`, `Grep` or `Glob`. A bare Grep allow rule reads any path on the machine, so search
-goes through `review-radar code grep`, which only reads the checkout's tracked files. The skill is not a
+goes through `glidepath code grep`, which only reads the checkout's tracked files. The skill is not a
 file the session reads: its text is passed as the system prompt.
 
-**2. Bash guard hook.** The session has a PreToolUse hook on `Bash` that runs `review-radar hook bash-guard`
-for every command. It denies any command that does not start with `review-radar `, and any command that
+**2. Bash guard hook.** The session has a PreToolUse hook on `Bash` that runs `glidepath hook bash-guard`
+for every command. It denies any command that does not start with `glidepath `, and any command that
 contains `;`, `&`, `|`, `$`, a backtick, `>`, `<`, `(`, `)`, or a newline. The guard fails closed: if its
 input cannot be read, it blocks.
 
 **3. Disallowed tools.** `WebFetch`, `WebSearch`, `Skill`, and `Bash(ps:*)`, `Bash(du:*)`, `Bash(lsof:*)`,
 `Bash(which:*)` are denied even if something else allowed them.
 
-**4. Wrappers, not commands.** The review-radar subcommands the session may use:
+**4. Wrappers, not commands.** The glidepath subcommands the session may use:
 
 | Command | What it does |
 | --- | --- |
-| `review-radar pr info --repo R --pr N` | Title, author, head SHA, files and body, as JSON. Records the head SHA. |
-| `review-radar pr diff --repo R --pr N [--path F]` | The diff, or one file's part of it. `F` must be a file in the PR. |
-| `review-radar pr threads --repo R --pr N` | Existing comments and reviews. Read-only. Also works in dry runs. |
-| `review-radar post --repo R --pr N` | Posts `final.json` after validation. Dry runs print the payload instead. |
-| `review-radar code grep --pattern TEXT` | Fixed-string search of the checkout's tracked files. Replaces the Grep tool, which cannot be scoped. |
-| `review-radar code files` | The checkout's tracked file list. Replaces the Glob tool. |
-| `review-radar state set ...` | Stage progress for this run only. Cannot set verdicts or the post stage. |
+| `glidepath pr info --repo R --pr N` | Title, author, head SHA, files and body, as JSON. Records the head SHA. |
+| `glidepath pr diff --repo R --pr N [--path F]` | The diff, or one file's part of it. `F` must be a file in the PR. |
+| `glidepath pr threads --repo R --pr N` | Existing comments and reviews. Read-only. Also works in dry runs. |
+| `glidepath post --repo R --pr N` | Posts `final.json` after validation. Dry runs print the payload instead. |
+| `glidepath code grep --pattern TEXT` | Fixed-string search of the checkout's tracked files. Replaces the Grep tool, which cannot be scoped. |
+| `glidepath code files` | The checkout's tracked file list. Replaces the Glob tool. |
+| `glidepath state set ...` | Stage progress for this run only. Cannot set verdicts or the post stage. |
 
 Each wrapper takes only the flags listed here and checks its arguments against the run it is bound to. The
 binding is set in the child process environment by the runner, not by the model. A repo or PR outside the
@@ -256,31 +256,31 @@ and the blips breathe while idle. Reduced motion stops the arm, the breathing an
 Pause writes a marker file, so scheduled runs skip until you resume. Manual runs still work.
 
 The app is the same binary as the CLI. Launched with no arguments, or with `app`, it opens the menu bar.
-`review-radar --snapshot <dir>` renders the design states from fixtures to PNG files.
+`glidepath --snapshot <dir>` renders the design states from fixtures to PNG files.
 
 ## Commands
 
 | Command | What it does |
 | --- | --- |
-| `review-radar init` | Set up config, clones, skill, app link and schedule. Ends with a dry run. |
-| `review-radar run [--dry-run] [--repo owner/name]` | Run now. `--dry-run` reviews and posts nothing. |
-| `review-radar state show [--run ID]` | Print a run as JSON. Defaults to the current run. |
-| `review-radar pr info` / `pr diff` / `pr threads` / `post` | Used by the review session. Run them only inside a run; see [Security model](#security-model). |
-| `review-radar pause` / `resume` | Skip or allow scheduled runs. |
-| `review-radar doctor` | Check requirements and installed pieces. |
-| `review-radar uninstall [--purge]` | Remove the schedule, skill and app link. `--purge` also removes config and state. |
+| `glidepath init` | Set up config, clones, skill, app link and schedule. Ends with a dry run. |
+| `glidepath run [--dry-run] [--repo owner/name]` | Run now. `--dry-run` reviews and posts nothing. |
+| `glidepath state show [--run ID]` | Print a run as JSON. Defaults to the current run. |
+| `glidepath pr info` / `pr diff` / `pr threads` / `post` | Used by the review session. Run them only inside a run; see [Security model](#security-model). |
+| `glidepath pause` / `resume` | Skip or allow scheduled runs. |
+| `glidepath doctor` | Check requirements and installed pieces. |
+| `glidepath uninstall [--purge]` | Remove the schedule, skill and app link. `--purge` also removes config and state. |
 
 `state set` and the `pr` and `post` commands are used by the review session and refuse to run outside one.
 
 ## Uninstall
 
 ```sh
-review-radar uninstall          # removes the schedule, skill and app link; keeps config and state
-review-radar uninstall --purge  # also removes config and state
-brew uninstall review-radar     # removes the binary and app
+glidepath uninstall          # removes the schedule, skill and app link; keeps config and state
+glidepath uninstall --purge  # also removes config and state
+brew uninstall glidepath     # removes the binary and app
 ```
 
-Clones under `~/review-radar/clones/` are not removed. Delete them yourself if you no longer need them.
+Clones under `~/glidepath/clones/` are not removed. Delete them yourself if you no longer need them.
 
 ## Limits
 
