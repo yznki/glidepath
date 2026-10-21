@@ -296,13 +296,19 @@ enum Uninstall {
 /// `glidepath hook bash-guard`: the PreToolUse hook that review sessions run for every Bash call.
 enum HookCommand {
     static func main(_ args: [String]) -> Int32 {
+        // First thing: a closed stderr must not kill the guard with SIGPIPE (exit 141) before it denies.
+        signal(SIGPIPE, SIG_IGN)
         guard args == ["bash-guard"] else {
             eprint("usage: glidepath hook bash-guard")
             return 2
         }
         let input = FileHandle.standardInput.readDataToEndOfFile()
         let decision = BashGuard.evaluate(stdin: input)
-        if let message = decision.message { eprint(message) }
+        // A raw write: FileHandle.write raises on a closed pipe, and the decision must still be returned.
+        if let message = decision.message {
+            let bytes = Array((message + "\n").utf8)
+            _ = bytes.withUnsafeBufferPointer { write(2, $0.baseAddress, $0.count) }
+        }
         return decision.code
     }
 }
