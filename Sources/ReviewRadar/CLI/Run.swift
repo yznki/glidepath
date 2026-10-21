@@ -157,6 +157,7 @@ final class Runner {
             eprint("cannot create run \(id): \(error)")
             return 1
         }
+        pruneScratch(now: now)
         print("run \(id)\(dryRun ? " (dry run)" : "")")
 
         var failed = false
@@ -226,30 +227,31 @@ final class Runner {
     }
 
     private func invokeReview(_ repo: RepoConfig, kept: [PRInfo]) throws -> Int {
+        let fm = FileManager.default
         let numbers = kept.map(\.n)
         let session = UUID().uuidString.lowercased()
         let scratch = paths.scratchDir + "/" + id + "/" + repo.owner + "-" + repo.name
-        try FileManager.default.createDirectory(atPath: scratch, withIntermediateDirectories: true)
+        try fm.createDirectory(atPath: scratch, withIntermediateDirectories: true)
         let gitnexus = gitnexusEnabled(repo)
+        let mcpPath = scratch + "/mcp.json"
+        try Claude.mcpConfig(gitnexus: gitnexus).write(toFile: mcpPath, atomically: true, encoding: .utf8)
 
+        let allowlist = Claude.allowlist(clone: repo.clone, scratch: scratch, skillDir: paths.skillDir,
+                                         rules: repo.rules, gitnexus: gitnexus)
         let prompt = [
             "/review-radar", repo.slug, numbers.map(String.init).joined(separator: ","),
-            "run=\(id)", "scratch=\(scratch)", "posting=\(repo.posting.rawValue)",
-            "gitnexus=\(gitnexus ? "on" : "off")", "rules=\(repo.rules ?? "none")",
-            "rules_mode=\(repo.rulesMode.rawValue)", "split_over=\(config.limits.splitOverLines)",
-            "dry_run=\(dryRun)",
+            "run=\(id)", "scratch=\(scratch)", "gitnexus=\(gitnexus ? "on" : "off")",
+            "rules=\(repo.rules ?? "none")", "rules_mode=\(repo.rulesMode.rawValue)",
+            "split_over=\(config.limits.splitOverLines)", "dry_run=\(dryRun)",
         ].joined(separator: " ")
+        let binding = RunBinding(runId: id, repo: repo.slug, scratch: scratch, dryRun: dryRun)
+        let args = Claude.arguments(prompt: prompt, sessionId: session, scratch: scratch,
+                                    mcpConfig: mcpPath, allowlist: allowlist)
+        let childEnv = Claude.childEnvironment(parent: env, binding: binding.environment)
 
-        let args = [
-            "-p", prompt,
-            "--model", "opus",
-            "--permission-mode", "dontAsk",
-            "--session-id", session,
-            "--add-dir", scratch,
-            "--allowedTools", allowlist(repo, scratch: scratch, gitnexus: gitnexus).joined(separator: ","),
-        ]
         print("\(repo.slug): reviewing \(numbers.map { "#\($0)" }.joined(separator: " "))")
-        let result = Shell.run("claude", args, cwd: repo.clone, env: env, timeout: 3600)
+        print("allowlist: " + allowlist.joined(separator: ","))
+        let result = Shell.run("claude", args, cwd: repo.clone, env: childEnv, timeout: 3600)
         let logPath = scratch + "/claude.log"
         try? (result.stdout + result.stderr).write(toFile: logPath, atomically: true, encoding: .utf8)
         if dryRun { print(result.stdout) }
@@ -266,25 +268,17 @@ final class Runner {
         return usage.total
     }
 
-    /// Only these tools run without a prompt. Posting goes through `gh api`, which is left out of
-    /// dry runs because the allow rule cannot tell a POST from a GET.
-    func allowlist(_ repo: RepoConfig, scratch: String, gitnexus: Bool) -> [String] {
-        var list = [
-            "Read", "Grep", "Glob", "Agent",
-            "Bash(git fetch:*)", "Bash(git diff:*)", "Bash(git show:*)", "Bash(git log:*)",
-            "Bash(gh pr view:*)", "Bash(gh pr diff:*)", "Bash(gh pr list:*)",
-            "Bash(review-radar state:*)",
-            "Edit(\(absoluteRule(scratch))/**)",
-        ]
-        if let rules = repo.rules { list.append("Read(\(absoluteRule(rules)))") }
-        if !dryRun { list.append("Bash(gh api repos/*/pulls/*/reviews:*)") }
-        if gitnexus { list.append("mcp__gitnexus__*") }
-        return list
-    }
-
-    /// Permission rules write absolute paths as `//path`; a single leading slash means project-relative.
-    private func absoluteRule(_ path: String) -> String {
-        path.hasPrefix("/") ? "/" + path : path
+    /// Scratch directories older than seven days go, except the current run's.
+    func pruneScratch(now: Date) {
+        let fm = FileManager.default
+        let cutoff = now.addingTimeInterval(-7 * 24 * 3600)
+        for name in (try? fm.contentsOfDirectory(atPath: paths.scratchDir)) ?? [] where name != id {
+            let dir = paths.scratchDir + "/" + name
+            if let attrs = try? fm.attributesOfItem(atPath: dir),
+               let modified = attrs[.modificationDate] as? Date, modified < cutoff {
+                try? fm.removeItem(atPath: dir)
+            }
+        }
     }
 
     private func gitnexusEnabled(_ repo: RepoConfig) -> Bool {
@@ -370,9 +364,7 @@ final class Runner {
     // MARK: State
 
     private func update(_ body: (inout RunState) throws -> Void) throws {
-        var run = try store.load(id)
-        try body(&run)
-        try store.save(run)
+        try store.mutate(id, body)
     }
 
     private func printSummary() {
