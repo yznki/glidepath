@@ -222,7 +222,13 @@ enum Doctor {
         for note in Checks.userSettingsNotes() {
             print("warn  ~/.claude/settings.json: \(note)")
         }
-        return items.allSatisfy(\.ok) ? 0 : 1
+        // The same check `run` makes: user hooks that would run inside review sessions block the run.
+        let conflicts = Claude.hookConflicts(paths: paths)
+        for conflict in conflicts {
+            print("FAIL  \(conflict.file) defines \(conflict.events.joined(separator: ", ")) hooks; run refuses until they are moved")
+        }
+        if conflicts.isEmpty { print("ok    no user hooks that would run inside review sessions") }
+        return items.allSatisfy(\.ok) && Claude.hookConflicts(paths: paths).isEmpty ? 0 : 1
     }
 }
 
