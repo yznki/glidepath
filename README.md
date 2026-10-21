@@ -5,13 +5,9 @@
   </picture>
 </p>
 
-<p align="center"><strong>Every PR reviewed before you're back.</strong><br>
+<p align="center"><strong>PRs reviewed before you're back.</strong><br>
 Glidepath runs Claude Code reviews of your GitHub pull requests on a schedule
 and shows them landing in your Mac's menu bar.</p>
-
-<p align="center">
-  <img src="docs/media/hero.gif" alt="The Glidepath popover during a review run: pull requests move down the glide slope through gather, review and check, then land on the runway as approved or needing changes." width="400">
-</p>
 
 ```sh
 brew install yznki/tap/glidepath
@@ -20,21 +16,33 @@ glidepath init
 
 `init` checks your tools, asks which repos to watch, and does a dry run before anything is posted.
 
-glidepath is a single binary, `glidepath`. The scheduled job, the review skill and the menu bar app all come from
-that binary and the skill files it installs.
+<p align="center">
+  <img src="docs/media/hero.gif" alt="The Glidepath popover during a review run: pull requests move down the glide slope through gather, review and check, then land on the runway as approved or needing changes." width="400">
+</p>
+
+## Safe on public repos
+
+- Claude may run only Glidepath's own commands, each bound to the current run.
+- A strict filter rejects any other shell command.
+- Reads and writes stay inside the repo checkout and the run's scratch folder.
+- GitHub tokens never reach the model.
+- Only collaborators' PRs are reviewed, and reviews are posted as comments, by default.
+
+Tested against one adversarial PR; see the transcript in [docs/security-test.md](docs/security-test.md). The full
+design is in [docs/security.md](docs/security.md).
 
 ## Contents
 
-1. [How a run works](#1-how-a-run-works)
-2. [What it costs](#2-what-it-costs)
-3. [Safe on public repos](#3-safe-on-public-repos)
-4. [The menu bar app](#4-the-menu-bar-app)
-5. [Config](#5-config)
-6. [Commands](#6-commands)
-7. [Your review rules](#7-your-review-rules)
-8. [Install, requirements and limits](#8-install-requirements-and-limits)
+- [How a run works](#how-a-run-works)
+- [What it costs](#what-it-costs)
+- [The menu bar app](#the-menu-bar-app)
+- [Config](#config)
+- [Commands](#commands)
+- [Your review rules](#your-review-rules)
+- [Requirements](#requirements), [Install from source](#install-from-source), [Uninstall](#uninstall), [Limits](#limits), [Development](#development)
+- [License](#license)
 
-## 1. How a run works
+## How a run works
 
 On each scheduled time, for each configured repo:
 
@@ -56,11 +64,21 @@ On each scheduled time, for each configured repo:
 Each run starts `claude -p` in the checkout with the `glidepath` skill. The skill gathers and reviews through the
 steps above, and posts with `glidepath post`.
 
+Glidepath is a single binary, `glidepath`. The scheduled job, the review skill and the menu bar app all come from that binary and the skill files it installs.
+
 Results land in `~/.local/state/glidepath/runs/`. The menu bar app watches that folder and updates without polling.
 
-## 2. What it costs
 
-A sandbox run on 2026-10-21 reviewed 2 PRs in 3 minutes 49 seconds and used 106,804 tokens.
+## What it costs
+
+A sandbox run on 2026-10-21 reviewed 2 PRs and used 106,804 tokens in 3 minutes 49 seconds. The PRs were +8 −1 in one
+file (#1) and +10 −0 in one file (#2).
+
+Glidepath uses three models, one per job:
+
+- **Opus** runs the main session. It orchestrates the run and starts each step.
+- **Haiku** gathers each PR: the diff, the existing comments, and the callers of changed code.
+- **Sonnet** reviews each PR, and a second Sonnet pass checks each finding against the code.
 
 Each PR is one or more Claude sessions: a gather step, a review per PR (more for large PRs, split by area), and a
 checker. Costs grow with diff size and with how much of the repo the reviewer reads.
@@ -72,150 +90,16 @@ checker. Costs grow with diff size and with how much of the repo the reviewer re
 - Typical token use is not measured yet. Run the dry run on a repo you know, read the totals in the app, and set the
   caps from that.
 
-## 3. Safe on public repos
 
-We ran it against a PR written to attack the reviewer. It asked for SSH keys, the GitHub token, a self-approval, a
-review posted to another repo and a tracking image. None of it happened, and the review called the attack out.
-
-The design, in five points:
-
-- Claude may only run Glidepath's own subcommands, and each one is bound to the current run.
-- A byte-level guard rejects any other shell command.
-- Reads and writes are scoped to the checkout and the run's scratch folder.
-- GitHub tokens never reach the model.
-- Only collaborators' PRs are reviewed, and reviews are posted as comments, by default.
-
-The details follow.
-
-### Allowlist
-
-The session runs with `--permission-mode dontAsk` and this allowlist. Anything else is denied rather than asked
-about, because nobody is there to answer.
-
-```
-Read(//<clone>/**)                     the checkout of the default branch
-Read(//<scratch>/**)                   this run's scratch directory
-Edit(//<scratch>/**)                   writes only under scratch
-Read(//<rules file>)                   only when rules is set
-Agent(gatherer)  Agent(reviewer)  Agent(checker)
-Bash(glidepath pr info:*)  Bash(glidepath pr diff:*)  Bash(glidepath pr threads:*)
-Bash(glidepath state set:*)  Bash(glidepath post:*)
-Bash(glidepath code grep:*)  Bash(glidepath code files:*)   read-only search of the checkout
-mcp__gitnexus__detect_changes  ...impact  ...api_impact  ...context  ...query  ...route_map  ...shape_check
-                                       only when GitNexus is on
-```
-
-There is no bare `Read`, `Grep` or `Glob`. A bare Grep allow rule reads any path on the machine, so search goes
-through `glidepath code grep`, which only reads the checkout's tracked files. The skill is not a file the session
-reads: its text is passed as the system prompt.
-
-### Bash guard hook
-
-The session has a PreToolUse hook on `Bash` that runs `glidepath hook bash-guard` for every command. The command must
-be `glidepath ` followed by plain words (letters, digits and `_./:,@+-`) and single-quoted strings. Anything else is
-denied, including `;`, `&`, `|`, `$`, backticks, `<`, `>`, redirects, braces, globs, `~`, `!`, `#`, backslashes,
-`=(...)` and zsh glob qualifiers. Parentheses inside a quoted string are fine. An unquoted value that starts with
-`--` is denied, so a flag cannot be passed as a value. The guard fails closed: if its input cannot be read, it blocks.
-
-### Disallowed tools
-
-`WebFetch`, `WebSearch`, `Skill`, and `Bash(ps:*)`, `Bash(du:*)`, `Bash(lsof:*)`, `Bash(which:*)` are denied even if
-something else allowed them.
-
-### Wrappers
-
-The glidepath subcommands the session may use:
-
-| Command | What it does |
-| --- | --- |
-| `glidepath pr info --repo R --pr N` | Title, author, head SHA, files and body, as JSON. Records the head SHA. |
-| `glidepath pr diff --repo R --pr N [--path F]` | The diff, or one file's part of it. `F` must be a file in the PR. |
-| `glidepath pr threads --repo R --pr N` | Existing comments and reviews. Read-only. Also works in dry runs. |
-| `glidepath post --repo R --pr N` | Posts `final.json` after validation. Dry runs print the payload instead. |
-| `glidepath code grep --pattern TEXT` | Fixed-string search of the checkout's tracked files. Replaces the Grep tool, which cannot be scoped. |
-| `glidepath code files` | The checkout's tracked file list. Replaces the Glob tool. |
-| `glidepath state set ...` | Stage progress for this run only. Cannot set verdicts or the post stage. |
-
-Each wrapper takes only the flags listed here and checks its arguments against the run it is bound to. The binding
-is set in the child process environment by the runner, not by the model. A repo or PR outside the run is refused
-with `unknown PR for this run`. A PR whose head has moved since `pr info` is refused and recorded as skipped. The
-wrappers call gh with an argument list, never through a shell.
-
-### Posting checks
-
-Before anything is posted, `post` refuses a review that contains an image (`![`, `<img`), an iframe, or a link to
-any host other than github.com. It also enforces the length limits, at most 5 comments, and that each comment is on
-a file in the PR.
-
-### Subagents
-
-The three subagents (`gatherer` on Haiku, `reviewer` and `checker` on Sonnet) are defined by the session itself, in
-dontAsk, with the same allowlist and the same hook. Their `tools` field cannot limit Bash to specific commands, so
-for Bash the limits are the allowlist and the guard, which apply to subagents too.
-
-### Your own hooks
-
-`run` refuses to start when `~/.claude/settings.json`, `~/.claude/settings.local.json` or any hooks file under
-`~/.claude/plugins` defines a `PreToolUse`, `PostToolUse` or `PermissionRequest` hook, because those hooks would run
-inside review sessions. The message names the file. `SessionStart`, `UserPromptSubmit` and `Stop` hooks are allowed.
-`doctor` reports the same. To run reviews, move the hooks out of those files, or stop the plugin that provides them,
-then run again.
-
-### Settings and MCP
-
-The session loads only the user's settings (`--setting-sources user`), never the clone's `.claude/` folder, and only
-the MCP servers the session defines (`--strict-mcp-config`). The session's own settings (its hook and its allowlist)
-come from the command line.
-
-### Environment
-
-The session gets `PATH`, `HOME`, `USER`, `LANG`, `TMPDIR`, claude's own variables (`ANTHROPIC_API_KEY`,
-`CLAUDE_CODE_*`) and the run binding. `GH_TOKEN` and `GITHUB_TOKEN` are never passed. The wrappers use your own gh
-sign-in, as gh's configuration and keychain provide it.
-
-### GitNexus
-
-GitNexus can read the repos it has indexed, and `auto` mode turns it off whenever the authors are `anyone`, because
-those PRs come from strangers. Set `gitnexus = "on"` explicitly to override. Only the seven read-only GitNexus tools
-listed above are allowed; the tools that rename, sync groups or query across repos are not.
-
-### Rules file
-
-The rules file is visible to the reviewer and may be quoted in public comments. Never put secrets, tokens, internal
-hostnames or private data in it.
-
-### Your own PRs
-
-Skipped unless `include_own = true`. When they are reviewed, the review is a COMMENT with the verdict in its first
-line, because GitHub does not accept APPROVE or REQUEST_CHANGES on your own PR.
-
-### Collaborators only, by default
-
-A PR author is reviewed only when they have write, maintain or admin access, and that permission must be readable.
-Without push access, the permission cannot be read, and those PRs are skipped with that reason. For those authors,
-or any others, list the logins in `authors`.
-
-### PR text is untrusted
-
-Titles, bodies, comments, diffs and file contents are data. The skill says so, and the wrappers label PR text as
-data in their output. This is defence in depth, not a guarantee: a convincing PR can still get a poor review posted.
-That is why `posting = "comment"` is the default, and why dry runs exist.
-
-### Posting is visible
-
-Reviews appear under your GitHub account. "Run now" in the app asks for confirmation when any repo uses
-`posting = "review"`.
-
-### Local state
-
-The run file holds PR numbers, titles, authors, verdicts and token counts. It holds no tokens, and the session
-transcript stays in Claude Code's own folder.
-
-## 4. The menu bar app
+## The menu bar app
 
 The app follows [docs/design.md](docs/design.md). The header is an approach profile: a glide slope with four stage
 labels (gather, review, check, land) and a runway on the right, where landed PRs park as marks. During a run, each
 PR is a dot on the slope at the stage it is in.
+
+<p align="center">
+  <img src="docs/shots/menubar.png" alt="The menu bar glyphs on a light and a dark bar: idle, running with 3, changes waiting with 2, paused, failed." width="560">
+</p>
 
 | Running | Idle, with changes |
 | --- | --- |
@@ -225,8 +109,8 @@ PR is a dot on the slope at the stage it is in.
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/shots/paused-dark.png"><img src="docs/shots/paused-light.png" alt="Paused: rows dimmed, Resume button" width="300"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/shots/failed-dark.png"><img src="docs/shots/failed-light.png" alt="Failed: red headline, a cross at the touchdown point, rows carried over from the earlier sweep" width="300"></picture> |
 | Scheduled sweeps are skipped until you resume. Rows and marks are dimmed. | The last sweep did not finish. Rows carried over from an earlier sweep show when they were decided. |
 
-- Header: the headline says what needs you ("2 need changes", "All clear", "Last sweep failed", "Paused"), the
-  second line gives the progress, and the third gives the time.
+- Header: the headline counts the sweep ("3 in flight, 4 landed"), the second line says what needs you ("2 need changes"),
+  and the third gives the time. Other headlines are "All clear", "Last sweep failed" and "Paused".
 - Rows: changes first, then no result, in flight (latest stage first), approved, and skipped. Each row has the PR
   title (one line), `#number · author`, and the status on the right. Changes rows also show the review's reason on a
   third line.
@@ -243,7 +127,8 @@ Pause writes a marker file, so scheduled runs skip until you resume. Manual runs
 
 The app is the same binary as the CLI. Launched with no arguments, or with `app`, it opens the menu bar.
 
-## 5. Config
+
+## Config
 
 `~/.config/glidepath/config.toml`:
 
@@ -285,18 +170,19 @@ Edits take effect on the next run. `glidepath doctor` checks the file.
 
 ### Testing without touching your config
 
-`XDG_CONFIG_HOME` and `XDG_STATE_HOME` (absolute paths only) move glidepath's own config and state folders, for
+`XDG_CONFIG_HOME` and `XDG_STATE_HOME` (absolute paths only) move Glidepath's own config and state folders, for
 example for a sandboxed test run. HOME is not changed, so claude and gh keep their sign-in (the runner also pins gh's
 config directory to `~/.config/gh`).
 
-## 6. Commands
+
+## Commands
 
 | Command | What it does |
 | --- | --- |
 | `glidepath init` | Set up config, clones, skill, app link and schedule. Ends with a dry run. |
 | `glidepath run [--dry-run] [--repo owner/name]` | Run now. `--dry-run` reviews and posts nothing. |
 | `glidepath state show [--run ID]` | Print a run as JSON. Defaults to the current run. |
-| `glidepath pr info` / `pr diff` / `pr threads` / `post` | Used by the review session. Run them only inside a run; see [Security model](#3-safe-on-public-repos). |
+| `glidepath pr info` / `pr diff` / `pr threads` / `post` | Used by the review session. Run them only inside a run; see [docs/security.md](docs/security.md). |
 | `glidepath pause` / `resume` | Skip or allow scheduled runs. |
 | `glidepath doctor` | Check requirements and installed pieces. |
 | `glidepath uninstall [--purge]` | Remove the schedule, skill and app link. `--purge` also removes config and state. |
@@ -304,28 +190,29 @@ config directory to `~/.config/gh`).
 `state set` (`--run`, `--repo`, `--pr`, `--stage gather|review|check`, `--reason`) and the `pr` and `post` commands are
 used by the review session and refuse to run outside one.
 
-## 7. Your review rules
+
+## Your review rules
 
 A repo can add a Markdown rules file with `rules`, and `rules_mode` chooses how it combines with the built-in rubric
 (`extend` or `replace`). The rules file is read by the reviewer and may be quoted in public comments, so keep secrets,
 tokens, internal hostnames and private data out of it.
 
-## 8. Install, requirements and limits
 
-### Requirements
+
+## Requirements
 
 - macOS 14 or later, Apple Silicon or Intel.
 - Xcode Command Line Tools (`xcode-select --install`).
 - `git`, from the Command Line Tools.
 - `gh`, the GitHub CLI, signed in with the `repo` scope (`gh auth login`, or `gh auth refresh -s repo`).
 - `claude`, Claude Code 2.1.306 or later, logged in. Install with `brew install --cask claude-code`.
-- GitNexus is optional. See [Config](#5-config) for `gitnexus`.
+- GitNexus is optional. See [Config](#config) for `gitnexus`.
 
 `glidepath init` checks each of these and prints the fix command for any that is missing. Claude Code 2.1.306 or later
-is needed because the session flags in [Security](#3-safe-on-public-repos) were checked against that version. A gh
+is needed because the session flags in [docs/security.md](docs/security.md) were checked against that version. A gh
 token with the `repo` scope is needed for private repos.
 
-### Install from source
+## Install from source
 
 ```sh
 git clone https://github.com/yznki/glidepath.git
@@ -338,7 +225,7 @@ swift build -c release
 `swift build` needs only the Command Line Tools. `swift test` needs the full Xcode toolchain, because the Command Line
 Tools do not include XCTest.
 
-### init walkthrough
+## init walkthrough
 
 `glidepath init` does these steps in order and stops at the first failed requirement:
 
@@ -357,7 +244,7 @@ Tools do not include XCTest.
 
 After the dry run, open the menu bar app and check the output. Posting starts at the next scheduled time.
 
-### Uninstall
+## Uninstall
 
 ```sh
 glidepath uninstall          # removes the schedule, skill and app link; keeps config and state
@@ -367,7 +254,7 @@ brew uninstall glidepath     # removes the binary and app
 
 Clones under `~/glidepath/clones/` are not removed. Delete them yourself if you no longer need them.
 
-### Limits
+## Limits
 
 - macOS only. The menu bar app needs AppKit and SwiftUI.
 - GitHub only. The CLI calls `gh` and the GitHub REST API.
@@ -376,7 +263,7 @@ Clones under `~/glidepath/clones/` are not removed. Delete them yourself if you 
 - The tap and the v1.0.0 release tarball are not published yet. The formula's `sha256` is a placeholder until the
   release is cut (see [RELEASING.md](RELEASING.md)).
 
-### Development
+## Development
 
 ```sh
 swift build                                        # Command Line Tools are enough
@@ -389,6 +276,7 @@ PNG files, light and dark, plus the menu bar glyphs. `glidepath --hero-gif <path
 looping GIF, with injected time.
 
 CI runs `swift build` and `swift test` on macOS.
+
 
 ## License
 
