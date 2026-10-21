@@ -590,17 +590,3 @@ final class ReposModel: ObservableObject {
         saved.flash()
     }
 }
-
-/// A text field in the window's style (base.css `.field`): 32 tall, surface fill, control stroke, radius 8.
-private extension View {
-    func winField() -> some View {
-        self
-            .textFieldStyle(.plain)
-            .font(.system(size: 13))
-            .foregroundStyle(WinTheme.text)
-            .padding(.horizontal, WinMetrics.s12)
-            .frame(height: 32)
-            .background(RoundedRectangle(cornerRadius: 8).fill(WinTheme.surface))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(WinTheme.control, lineWidth: 1))
-    }
-}

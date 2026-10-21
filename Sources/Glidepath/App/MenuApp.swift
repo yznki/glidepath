@@ -26,7 +26,7 @@ struct GlidepathApp: App {
                 .background(OpenWindowBridge())
         } label: {
             MenuBarLabel(store: Store.shared)
-                .background(OpenWindowBridge())
+                .background(OpenWindowBridge(opensWhenUnconfigured: true))
         }
         .menuBarExtraStyle(.window)
         Window("Glidepath", id: "main") {

@@ -13,6 +13,14 @@ struct HeroField: View {
     /// The `t` at which the dot is on the disc edge. The dot's path is 1.6 times the edge distance, as in kit.js.
     static let edge: CGFloat = 1 - 1 / 1.6
 
+    /// Eased position of the dot: 2 s from the disc edge to touchdown, then 2 s back, on a 4 s loop.
+    static func glide(_ date: Date) -> CGFloat {
+        let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 4) / 4
+        let leg = phase < 0.5 ? phase * 2 : (1 - phase) * 2
+        let eased = 0.5 - 0.5 * cos(Double.pi * leg)
+        return edge + (1 - edge) * CGFloat(eased)
+    }
+
     var body: some View {
         Canvas { ctx, size in
             let W = size.width, D = size.height

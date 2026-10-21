@@ -57,18 +57,10 @@ struct OverviewView: View {
     /// Reduce Motion is on.
     private var field: some View {
         TimelineView(.animation(paused: !store.snap.running || reduceMotion)) { context in
-            HeroField(t: store.snap.running && !reduceMotion ? glide(context.date) : 1)
+            HeroField(t: store.snap.running && !reduceMotion ? HeroField.glide(context.date) : 1)
         }
         .frame(height: 176)
         .padding(.horizontal, -WinMetrics.canvasLeft)
-    }
-
-    /// Eased position of the dot: 2 s from the disc edge to touchdown, then 2 s back.
-    private func glide(_ date: Date) -> CGFloat {
-        let phase = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 4) / 4
-        let leg = phase < 0.5 ? phase * 2 : (1 - phase) * 2
-        let eased = 0.5 - 0.5 * cos(Double.pi * leg)
-        return HeroField.edge + (1 - HeroField.edge) * CGFloat(eased)
     }
 
     @ViewBuilder

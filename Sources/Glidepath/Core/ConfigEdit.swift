@@ -177,6 +177,26 @@ enum ConfigEditor {
         }
     }
 
+    /// Copies an existing config.toml aside before onboarding replaces it, as config.toml.bak-YYYYMMDD-HHMMSS
+    /// (a counter is added if that name is taken). Returns the backup path, or nil when there was no file.
+    static func backupExisting(paths: Paths, now: Date = Date()) throws -> String? {
+        let fm = FileManager.default
+        let target = paths.configFile
+        guard fm.fileExists(atPath: target) else { return nil }
+        let stamp = DateFormatter()
+        stamp.locale = Locale(identifier: "en_US_POSIX")
+        stamp.dateFormat = "yyyyMMdd-HHmmss"
+        let base = target + ".bak-" + stamp.string(from: now)
+        var backup = base
+        var n = 2
+        while fm.fileExists(atPath: backup) {
+            backup = "\(base)-\(n)"
+            n += 1
+        }
+        try fm.copyItem(atPath: target, toPath: backup)
+        return backup
+    }
+
     // MARK: Helpers
 
     /// Runs `change` on the repo with this slug and returns the config with it replaced.

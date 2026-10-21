@@ -97,6 +97,10 @@ enum WinTheme {
     static let avatar = token(0xE4E4E8, dark: 0x26262A)
     /// The ring around the selected segment: #d6d6db light, #34343a dark.
     static let segRing = token(0xD6D6DB, dark: 0x34343A)
+    /// The onboarding rail's ground: #050506 in dark, a light grey in light.
+    static let rail = token(0xEDEDF0, dark: 0x050506)
+    /// The onboarding rail's unreached track and upcoming points (kit.js TRACK).
+    static let track = token(0xC9C9CF, dark: 0x2C2C30)
 
     /// A colour that resolves to `light` or `dark` hex (0xRRGGBB) by the effective appearance.
     private static func token(_ light: UInt32, dark: UInt32) -> Color {

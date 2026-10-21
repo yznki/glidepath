@@ -168,23 +168,24 @@ enum Checks {
         let fix: String
     }
 
-    static func tools() -> [Item] {
+    /// `env` supplies the PATH the tools are looked up on; the app passes the job's PATH, since a Finder launch lacks Homebrew.
+    static func tools(env: [String: String] = ProcessInfo.processInfo.environment) -> [Item] {
         [
-            Item(name: "Xcode Command Line Tools", ok: Shell.run("xcode-select", ["-p"]).ok,
+            Item(name: "Xcode Command Line Tools", ok: Shell.run("xcode-select", ["-p"], env: env).ok,
                  fix: "xcode-select --install"),
-            Item(name: "git", ok: Shell.find("git") != nil, fix: "xcode-select --install"),
-            Item(name: "gh (GitHub CLI)", ok: Shell.find("gh") != nil, fix: "brew install gh"),
-            Item(name: "gh signed in", ok: Shell.run("gh", ["auth", "status"]).ok, fix: "gh auth login"),
-            Item(name: "claude (Claude Code)", ok: Shell.find("claude") != nil,
+            Item(name: "git", ok: Shell.find("git", path: env["PATH"]) != nil, fix: "xcode-select --install"),
+            Item(name: "gh (GitHub CLI)", ok: Shell.find("gh", path: env["PATH"]) != nil, fix: "brew install gh"),
+            Item(name: "gh signed in", ok: Shell.run("gh", ["auth", "status"], env: env).ok, fix: "gh auth login"),
+            Item(name: "claude (Claude Code)", ok: Shell.find("claude", path: env["PATH"]) != nil,
                  fix: "brew install --cask claude-code, then run claude once and log in"),
-            claudeVersion(),
-            ghRepoScope(),
+            claudeVersion(env: env),
+            ghRepoScope(env: env),
         ]
     }
 
     /// The review sessions use flags that exist from `Claude.minimumVersion` on.
-    static func claudeVersion() -> Item {
-        let r = Shell.run("claude", ["--version"], timeout: 30)
+    static func claudeVersion(env: [String: String] = ProcessInfo.processInfo.environment) -> Item {
+        let r = Shell.run("claude", ["--version"], env: env, timeout: 30)
         let reported = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         let ok = r.ok && Claude.isVersion(reported, atLeast: Claude.minimumVersion)
         return Item(name: "claude version \(Claude.minimumVersion) or later (found \(reported.isEmpty ? "none" : reported))",
@@ -192,8 +193,8 @@ enum Checks {
     }
 
     /// Private repos need the `repo` scope. A token that does not list scopes (fine-grained) is flagged too.
-    static func ghRepoScope() -> Item {
-        let r = Shell.run("gh", ["auth", "status"], timeout: 30)
+    static func ghRepoScope(env: [String: String] = ProcessInfo.processInfo.environment) -> Item {
+        let r = Shell.run("gh", ["auth", "status"], env: env, timeout: 30)
         let text = r.stdout + r.stderr
         let line = text.split(separator: "\n").first { $0.contains("Token scopes:") }
         let ok = line.map { $0.contains("'repo'") } ?? false

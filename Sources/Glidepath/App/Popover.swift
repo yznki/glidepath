@@ -447,7 +447,7 @@ struct PopoverView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
         } else if firstRun {
-            Button("Set up Glidepath…") { WindowRouter.shared.open(.overview) }
+            Button("Set up Glidepath…") { WindowRouter.shared.openOnboarding() }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
         } else {

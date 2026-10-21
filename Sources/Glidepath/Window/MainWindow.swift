@@ -7,9 +7,16 @@ struct MainWindowView: View {
     @ObservedObject var store = Store.shared
 
     var body: some View {
-        HStack(spacing: 0) {
-            Sidebar(router: router)
-            canvas
+        Group {
+            if router.showOnboarding {
+                // Onboarding has no sidebar: the rail and the pane fill the window.
+                OnboardingView(store: store)
+            } else {
+                HStack(spacing: 0) {
+                    Sidebar(router: router)
+                    canvas
+                }
+            }
         }
         .frame(minWidth: WinMetrics.minWidth, minHeight: WinMetrics.minHeight)
         .background(WinTheme.ground)
@@ -86,11 +93,16 @@ final class MainWindowLifecycle {
 
 /// Lives in the menu bar scene, where `openWindow` is available, and hands the router a way to open the window.
 struct OpenWindowBridge: View {
+    /// Only the menu bar label sets this: it is on screen from launch, so it opens the window once when no config exists.
+    var opensWhenUnconfigured = false
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
-            .onAppear { WindowRouter.shared.openAction = { id in openWindow(id: id) } }
+            .onAppear {
+                WindowRouter.shared.openAction = { id in openWindow(id: id) }
+                if opensWhenUnconfigured { WindowRouter.shared.openAtLaunchIfUnconfigured() }
+            }
     }
 }
