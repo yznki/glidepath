@@ -167,7 +167,8 @@ struct PopoverView: View {
         let mods = ShortcutModifiers(press.modifiers)
         let rows = groups.flatMap(\.rows)
         if press.key == .escape, mods.isEmpty {
-            NSApp.keyWindow?.orderOut(nil)
+            // Through the status item, as ⌥⌘G does, so the menu bar knows the popover is closed.
+            PopoverToggle.toggle()
             return .handled
         }
         if press.key == .return, mods.isEmpty {

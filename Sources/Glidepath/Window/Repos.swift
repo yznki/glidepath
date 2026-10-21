@@ -72,12 +72,14 @@ struct ReposView: View {
     /// name starts with the letters typed. Nothing fires while a text field has focus.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         let mods = ShortcutModifiers(press.modifiers)
-        // ⌘E works from anywhere, the detail included; the detail takes it through the router. Remove Repo is Edit > Delete.
-        if mods == [.command], press.characters == "e" {
+        // ⌘E works from anywhere, the detail included, but not while a text field is being edited (⌘E is the field's
+        // then). Remove Repo is Edit > Delete.
+        if mods == [.command], press.characters == "e", !TextFocus.isEditing {
             WindowRouter.shared.deliver(.editRules, section: nil)
             return .handled
         }
-        guard !TextFocus.isEditing, focus != .detail else { return .ignored }
+        // The list's keys belong to the list only.
+        guard !TextFocus.isEditing, focus == .list else { return .ignored }
         if press.key == .return, mods.isEmpty {
             focus = .detail
             return .handled

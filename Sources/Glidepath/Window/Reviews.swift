@@ -32,7 +32,10 @@ struct ReviewsView: View {
         .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
             takeFilter()
         }
+        // The selected row's draft flag can change without its id changing (a post or discard reloads the sweeps).
         .onChange(of: model.selected?.id) { _ in ShortcutContext.shared.setReview(model.selected) }
+        .onChange(of: model.selected?.draft) { _ in ShortcutContext.shared.setReview(model.selected) }
+        .onReceive(model.$sweeps) { _ in ShortcutContext.shared.setReview(model.selected) }
         .onDisappear { ShortcutContext.shared.setReview(nil) }
         .onKeyPress(phases: .down) { handleKey($0) }
     }
@@ -50,6 +53,8 @@ struct ReviewsView: View {
             ScrollPager.pageDown()
             return .handled
         }
+        // The list's keys belong to the list only: a list that does not have focus leaves them alone.
+        guard focus == .list else { return .ignored }
         if press.key == .return, mods.isEmpty {
             focus = .detail
             return .handled
