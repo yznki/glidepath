@@ -130,4 +130,18 @@ final class BashGuardTests: XCTestCase {
     func hookJSON(_ command: String) -> Data {
         try! JSONSerialization.data(withJSONObject: ["tool_name": "Bash", "tool_input": ["command": command]])
     }
+
+    func testUnicodeEscapeInHookInputIsDenied() {
+        // The duplicate-command payload from the review, as given.
+        let duplicate = #"{"tool_name":"Bash","tool_input":{"command":"glidepath a","command":"id"}}"#
+        XCTAssertEqual(BashGuard.evaluate(stdin: Data(duplicate.utf8)).code, 2)
+        let duplicateTool = #"{"tool_name":"Read","tool_name":"Bash","tool_input":{"command":"glidepath a"}}"#
+        XCTAssertEqual(BashGuard.evaluate(stdin: Data(duplicateTool.utf8)).code, 2)
+        // A key spelled with an escape hides the duplicate from the byte count; the escape itself is refused.
+        let escaped = #"{"tool_name":"Bash","tool_input":{"command":"glidepath a","\u0063ommand":"id"}}"#
+        XCTAssertEqual(BashGuard.evaluate(stdin: Data(escaped.utf8)).code, 2)
+        // A plain command with no escape still passes.
+        let plain = #"{"tool_name":"Bash","tool_input":{"command":"glidepath post --repo a/b --pr 1"}}"#
+        XCTAssertEqual(BashGuard.evaluate(stdin: Data(plain.utf8)).code, 0)
+    }
 }

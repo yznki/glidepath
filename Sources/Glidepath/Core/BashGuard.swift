@@ -111,6 +111,11 @@ enum BashGuard {
     /// Decides from the hook's JSON input on stdin.
     static func evaluate(stdin: Data) -> (code: Int32, message: String?) {
         let raw = [UInt8](stdin)
+        // A \u escape can spell a key (\u0063ommand is "command") and so hide a duplicate from the byte count
+        // below. A legal command has no non-ASCII or control characters, so no legitimate input needs one.
+        if occurrences(of: [0x5C, 0x75], in: raw) > 0 {
+            return (2, "glidepath guard: a \\u escape is not allowed in hook input; blocked")
+        }
         // Duplicate keys: a second "command" or "tool_name" could be read differently by another JSON parser.
         for key in singletonKeys where occurrences(of: Array(key.utf8), in: raw) > 1 {
             return (2, "glidepath guard: \(key) appears more than once in hook input; blocked")
