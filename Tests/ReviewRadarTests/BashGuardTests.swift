@@ -2,35 +2,54 @@ import XCTest
 @testable import ReviewRadar
 
 final class BashGuardTests: XCTestCase {
-    func testAllowsReviewRadarSubcommands() {
+    func testAllowsPlainSubcommands() {
         XCTAssertNil(BashGuard.denial(for: "review-radar post --repo a/b --pr 1"))
         XCTAssertNil(BashGuard.denial(for: "review-radar pr threads --repo a/b --pr 12"))
         XCTAssertNil(BashGuard.denial(for: "review-radar state set --run r1 --repo a/b --pr 1 --stage review"))
+        XCTAssertNil(BashGuard.denial(for: "review-radar code grep --pattern foo"))
+        XCTAssertNil(BashGuard.denial(for: "review-radar code grep --pattern 'foo('"))
+        XCTAssertNil(BashGuard.denial(for: "review-radar code grep --pattern '--force'"))
+        XCTAssertNil(BashGuard.denial(for: "review-radar pr info --repo a/b --pr 3 --out pr.json"))
     }
 
-    func testDeniesCommandExecutionAndSecretReads() {
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar pr diff --repo a/b --pr 1; cat ~/.ssh/id_rsa"))
-        XCTAssertNotNil(BashGuard.denial(for: "ps aux"))
-        XCTAssertNotNil(BashGuard.denial(for: "cat /etc/hosts"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info --repo a/b --pr 1 && cat x"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info --repo a/b --pr 1 & cat x"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info | sh"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar post --repo $(id) --pr 1"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar post --repo `id` --pr 1"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info > /tmp/x"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info < /etc/passwd"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar x && (cat y)"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar x <(cat y)"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar x >(cat y)"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar x; (cat y)"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info\ncat /etc/hosts"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info\rcat /etc/hosts"))
+    func testDeniesZshExpansionPayloads() {
+        // Both run code under zsh -c if they get past the guard.
+        XCTAssertNotNil(BashGuard.denial(for: "review-radar code grep --pattern =(touch x)"))
+        XCTAssertNotNil(BashGuard.denial(for: "review-radar code grep --pattern /etc/host*(e:'touch x':)"))
     }
 
-    func testParenthesesAloneAreAllowed() {
-        XCTAssertNil(BashGuard.denial(for: "review-radar code grep --pattern foo("))
-        XCTAssertNil(BashGuard.denial(for: "review-radar code grep --pattern divide(a, b)"))
-        XCTAssertNil(BashGuard.denial(for: "review-radar pr info (x)"))
+    func testDeniesCommandCompositionAndExpansion() {
+        for command in [
+            "review-radar x && (cat y)",
+            "review-radar x <(cat y)",
+            "review-radar x;y",
+            "review-radar x | y",
+            "review-radar x `id`",
+            "review-radar x $(id)",
+            "review-radar x {a,b}",
+            "review-radar x ~/x",
+            "review-radar x *",
+            "review-radar x !",
+            "review-radar x #",
+            "review-radar x \\",
+            "review-radar x > y",
+            "review-radar x < y",
+            "review-radar x & y",
+            "review-radar x (y)",
+            "review-radar x=1",
+            "review-radar x'a'b",
+            "review-radar x 'a'b",
+            "review-radar x \"a\"",
+            "review-radar x\tcat",
+            "review-radar x\ncat y",
+        ] {
+            XCTAssertNotNil(BashGuard.denial(for: command), command)
+        }
+    }
+
+    func testUnquotedDashValuesAreDenied() {
+        XCTAssertNotNil(BashGuard.denial(for: "review-radar code grep --pattern --force"))
+        XCTAssertNil(BashGuard.denial(for: "review-radar code grep --pattern '--force'"))
     }
 
     func testRequiresTheExactPrefix() {
