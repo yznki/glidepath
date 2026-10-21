@@ -260,8 +260,6 @@ Clones under `~/glidepath/clones/` are not removed. Delete them yourself if you 
 - GitHub only. The CLI calls `gh` and the GitHub REST API.
 - Per-PR token totals include only the subagents the skill starts for that PR. They are attributed by the PR number in
   each subagent's brief. Main-session tokens count toward the run total only.
-- The tap and the v1.0.0 release tarball are not published yet. The formula's `sha256` is a placeholder until the
-  release is cut (see [RELEASING.md](RELEASING.md)).
 
 ## Development
 
