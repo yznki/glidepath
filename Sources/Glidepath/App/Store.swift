@@ -27,35 +27,8 @@ struct Snapshot {
     var jobInstalled = true
     var nextRun: Date?
     var postsReviews = false
+    var schedule: [ScheduleTime] = []
     var hovered: String?
-}
-
-/// Blip positions and ping timers. The radar reads and writes this every frame; it is not SwiftUI state,
-/// so animating it does not re-render the view tree.
-final class RadarMotion {
-    var radius: [String: Double] = [:]
-    var lastTarget: [String: Double] = [:]
-    var pingStart: [String: Date] = [:]
-    var lastFrame: Date?
-
-    /// Eases each blip toward its target radius and starts a ping when a PR lands at the centre.
-    func advance(targets: [String: Double], now: Date, reduceMotion: Bool) {
-        let dt = lastFrame.map { now.timeIntervalSince($0) } ?? 0
-        lastFrame = now
-        for (id, target) in targets {
-            let current = radius[id] ?? target
-            if reduceMotion || radius[id] == nil {
-                radius[id] = target
-            } else {
-                // Rate 5 per second approximates the design's spring (response 0.45 s, damping 0.86).
-                radius[id] = current + (target - current) * (1 - exp(-5 * dt))
-            }
-            if let previous = lastTarget[id], previous > 0.18, target <= 0.18, !reduceMotion {
-                pingStart[id] = now
-            }
-            lastTarget[id] = target
-        }
-    }
 }
 
 /// Watches the state folders with DispatchSource, so the popover updates on each write without polling.
@@ -112,7 +85,7 @@ final class Store: ObservableObject {
     @Published var hovered: String?
 
     let paths = Paths()
-    let motion = RadarMotion()
+    let profileMotion = ProfileMotion()
     var popoverOpen = false
     private var watcher: DirectoryWatcher?
     private var acknowledgedRunID: String?
@@ -152,7 +125,9 @@ final class Store: ObservableObject {
         if snap.running { return .running(active: strips.filter(\.active).count) }
         if snap.paused { return .paused }
         if let run = snap.run, run.finished != nil, Presentation.failureMessage(run) != nil { return .failed }
-        if changesWaiting { return .changesWaiting }
+        if changesWaiting {
+            return .changesWaiting(count: strips.filter { $0.verdict == .changes }.count)
+        }
         return .idle
     }
 
@@ -173,6 +148,7 @@ final class Store: ObservableObject {
         let config = try? Config.load(paths)
         s.nextRun = config.flatMap { Store.nextSweep(schedule: $0.schedule, after: Date()) }
         s.postsReviews = config?.repos.contains { $0.posting == .review } ?? false
+        s.schedule = config?.schedule ?? []
         s.hovered = snap.hovered
 
         let landed = Set(Store.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
@@ -203,6 +179,22 @@ final class Store: ObservableObject {
 
     func setHovered(_ id: String?) {
         hovered = id
+    }
+
+    /// Stops the running sweep: signals its process group, then records the run as finished. Reviews already
+    /// posted stay posted; the PRs not yet reviewed show "No result". A stopped run is not a failed run.
+    func stopRun() {
+        guard let text = try? String(contentsOfFile: paths.pidFile, encoding: .utf8),
+              let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 else {
+            actionError = "no sweep to stop"
+            return
+        }
+        _ = kill(-pid, SIGTERM)
+        try? RunStore(paths: paths).mutate(snap.run?.id ?? "") { run in
+            if run.finished == nil { run.finish(at: Date(), error: nil) }
+        }
+        actionError = nil
+        reload()
     }
 
     // MARK: Actions

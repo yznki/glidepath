@@ -121,6 +121,10 @@ enum RunCommand {
             eprint("\(error)")
             return 1
         }
+        // A group of its own, so Stop can signal this runner and the review sessions it starts together.
+        _ = setpgid(0, 0)
+        try? "\(getpid())".write(toFile: paths.pidFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: paths.pidFile) }
         let runner = Runner(paths: paths, config: config, dryRun: a.has("--dry-run"))
         return withExtendedLifetime(lock) { runner.execute(repos: repos) }
     }

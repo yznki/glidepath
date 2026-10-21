@@ -4,8 +4,8 @@ import AppKit
 /// The menu bar app. Same binary as the CLI: `glidepath` with no arguments (or `app`) lands here.
 struct GlidepathApp: App {
     init() {
-        // Snapshot rendering: draw the fixtures to PNGs, then exit before any UI starts.
         let args = CommandLine.arguments
+        // Snapshot rendering: draw the fixtures to PNGs, then exit before any UI starts.
         if let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count {
             let outDir = args[i + 1]
             MainActor.assumeIsolated { Snapshotter.run(outDir: outDir) }
@@ -49,6 +49,7 @@ enum Snapshotter {
             }
         }
         writeMenuBar(to: dir.appendingPathComponent("menubar.png"))
+        writeIcon(to: dir.appendingPathComponent("icon.png"))
     }
 
     static func write<V: View>(_ view: V, dark: Bool, to url: URL, scale: CGFloat) {
@@ -74,7 +75,7 @@ enum Snapshotter {
     /// The glyph states on a light and a dark menu bar ground, at 4x.
     static func writeMenuBar(to url: URL) {
         let states: [(String, GlyphState)] = [
-            ("idle", .idle), ("running", .running(active: 3)), ("changes", .changesWaiting),
+            ("idle", .idle), ("running", .running(active: 3)), ("changes", .changesWaiting(count: 2)),
             ("paused", .paused), ("failed", .failed),
         ]
         let strip = VStack(alignment: .leading, spacing: 0) {
@@ -95,12 +96,13 @@ enum Snapshotter {
     private static func bar(_ states: [(String, GlyphState)], dark: Bool) -> some View {
         let ground = dark ? Color(hex: "1E1E1E") : Color(hex: "ECECEC")
         let ink = dark ? NSColor.white : NSColor.black
+        let count = dark ? NSColor(hex: "FFB000") : NSColor(hex: "C77700")
         return HStack(spacing: 28) {
             ForEach(0..<states.count, id: \.self) { i in
                 let (label, state) = states[i]
                 VStack(spacing: 4) {
                     HStack(spacing: 4) {
-                        Image(nsImage: MenuGlyph.image(state, angle: -60, ink: ink,
+                        Image(nsImage: MenuGlyph.image(state, progress: 0.45, ink: ink, count: count,
                                                        template: false))
                             .resizable()
                             .frame(width: 18, height: 18)
@@ -116,10 +118,49 @@ enum Snapshotter {
         .padding(.vertical, 12)
         .background(ground)
     }
+
+    /// icon.png: the icon at 512, and at 32 and 16 beside it, on the light ground.
+    static func writeIcon(to url: URL) {
+        let width: CGFloat = 752, height: CGFloat = 608
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
+            NSColor(hex: "F5F5F5").setFill()
+            NSRect(x: 0, y: 0, width: width, height: height).fill()
+            AppIcon.draw(in: NSRect(x: 48, y: 48, width: 512, height: 512))
+            AppIcon.draw(in: NSRect(x: 608, y: 480, width: 32, height: 32))
+            AppIcon.draw(in: NSRect(x: 672, y: 480, width: 16, height: 16))
+            return true
+        }
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else {
+            print("render failed: icon")
+            return
+        }
+        try? png.write(to: url)
+        print("wrote \(url.path)")
+    }
 }
 
-/// Mock data for the design states. Repos are acme/api and acme/web; authors use first names.
+/// `glidepath --render-icon FILE PIXELS`: writes the app icon as a PNG. make-app.sh builds the icon set from it.
+enum IconCommand {
+    static func run(_ args: [String]) -> Int32 {
+        guard args.count == 2, let pixels = Int(args[1]), pixels > 0, let data = AppIcon.png(pixels: pixels) else {
+            eprint("usage: glidepath --render-icon FILE PIXELS")
+            return 2
+        }
+        do {
+            try data.write(to: URL(fileURLWithPath: args[0]))
+            return 0
+        } catch {
+            eprint("\(error)")
+            return 1
+        }
+    }
+}
+
+/// Fixtures for the design states. Repos are acme/api and acme/web; authors use first names.
 enum Fixtures {
+    static let schedule = ["07:00", "13:00", "19:00"].compactMap(ScheduleTime.init)
+
     static func pr(_ repo: String, _ n: Int, _ author: String, _ title: String, reason: String? = nil,
                    stage: Stage = .gather, active: Bool = false, verdict: Verdict? = nil, tokens: Int = 0) -> (String, PRState) {
         (repo, PRState(n: n, author: author, title: title, stage: stage, active: active && verdict == nil,
@@ -128,12 +169,12 @@ enum Fixtures {
 
     static func run(_ id: String, now: Date, finished: Bool, prs: [(String, PRState)],
                     repos: [String] = ["acme/api", "acme/web"], error: String? = nil,
-                    repoError: [String: String] = [:], tokens: Int = 0) -> RunState {
+                    tokens: Int = 0) -> RunState {
         let started = clockToday(10, 12, now)
         return RunState(
             id: id, started: started, finished: finished ? started.addingTimeInterval(14 * 60) : nil,
             repos: repos.map { slug in
-                RepoState(slug: slug, prs: prs.filter { $0.0 == slug }.map(\.1), error: repoError[slug])
+                RepoState(slug: slug, prs: prs.filter { $0.0 == slug }.map(\.1), error: nil)
             },
             tokens: tokens, error: error)
     }
@@ -148,34 +189,34 @@ enum Fixtures {
 
     static func running(_ now: Date) -> Snapshot {
         let r = run("fixture-running", now: now, finished: false, prs: [
-            pr("acme/api", 1125, "ines", "Add rate limit headers to /v2 responses", stage: .check, active: true, tokens: 212_000),
-            pr("acme/api", 1113, "tom", "Migrate invoices table to UUID keys", stage: .review, active: true, tokens: 96_000),
+            pr("acme/api", 1125, "ines", "Add rate limit headers to /v2 responses for partners", stage: .check, active: true, tokens: 212_000),
+            pr("acme/api", 1113, "tom", "Migrate invoices table to UUID keys, batched backfill", stage: .review, active: true, tokens: 96_000),
             pr("acme/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve, tokens: 310_000),
-            pr("acme/api", 1212, "omar", "Cache org permissions per request", reason: "missing RLS test", verdict: .changes, tokens: 260_000),
-            pr("acme/web", 88, "lea", "Fix date picker timezone on export", reason: "dates shift by a day", verdict: .changes, tokens: 240_000),
-            pr("acme/web", 91, "kai", "Redesign empty states for projects list", stage: .gather, active: true, tokens: 40_000),
+            pr("acme/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes, tokens: 260_000),
+            pr("acme/web", 88, "lea", "Fix the date picker timezone on CSV export", reason: "dates shift by a day", verdict: .changes, tokens: 240_000),
+            pr("acme/web", 91, "kai", "Redesign the empty states for the projects list", stage: .gather, active: true, tokens: 40_000),
             pr("acme/web", 84, "sam", "Bump next to 15.1", reason: "draft", verdict: .skipped),
         ], tokens: 1_200_000)
-        return Snapshot(run: r, running: true, jobInstalled: true, nextRun: nextThirteen(now))
+        return Snapshot(run: r, running: true, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
 
     static func idleChanges(_ now: Date) -> Snapshot {
         let r = run("fixture-idle", now: now, finished: true, prs: [
             pr("acme/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
-            pr("acme/api", 1212, "omar", "Cache org permissions per request", reason: "missing RLS test", verdict: .changes),
-            pr("acme/web", 88, "lea", "Fix date picker timezone on export", reason: "dates shift by a day", verdict: .changes),
+            pr("acme/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes),
+            pr("acme/web", 88, "lea", "Fix the date picker timezone on CSV export", reason: "dates shift by a day", verdict: .changes),
             pr("acme/web", 84, "sam", "Bump next to 15.1", reason: "draft", verdict: .skipped),
         ], tokens: 980_000)
-        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now))
+        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
 
     static func idleClear(_ now: Date) -> Snapshot {
         let r = run("fixture-clear", now: now, finished: true, prs: [
             pr("acme/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
             pr("acme/api", 1225, "tom", "Drop the legacy webhook retry table", verdict: .approve),
-            pr("acme/web", 91, "kai", "Redesign empty states for projects list", verdict: .approve),
+            pr("acme/web", 91, "kai", "Redesign the empty states for the projects list", verdict: .approve),
         ], tokens: 610_000)
-        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now))
+        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
 
     static func paused(_ now: Date) -> Snapshot {
@@ -188,19 +229,19 @@ enum Fixtures {
     static func failed(_ now: Date) -> Snapshot {
         let r = run("fixture-failed", now: now, finished: true, prs: [
             pr("acme/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
-            pr("acme/api", 1212, "omar", "Cache org permissions per request"),
-            pr("acme/web", 91, "kai", "Redesign empty states for projects list"),
+            pr("acme/api", 1212, "omar", "Cache org permissions per request in the audit log"),
+            pr("acme/web", 91, "kai", "Redesign the empty states for the projects list"),
         ], error: "claude exited 1: see the log for details\nFull log: ~/Library/Logs/glidepath.log", tokens: 70_000)
-        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now))
+        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
 
     static func empty(_ now: Date) -> Snapshot {
         let r = run("fixture-empty", now: now, finished: true, prs: [])
-        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now))
+        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
 
     static func firstRun(_ now: Date) -> Snapshot {
-        Snapshot(run: nil, jobInstalled: true, nextRun: nextThirteen(now))
+        Snapshot(run: nil, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
 
     static func hover(_ now: Date) -> Snapshot {

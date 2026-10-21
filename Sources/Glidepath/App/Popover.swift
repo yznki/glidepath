@@ -11,7 +11,6 @@ final class PopoverModel: ObservableObject {
 
 final class SettleModel: ObservableObject {
     @Published var scale: CGFloat = 1
-    @Published var angle: Double = 0
 }
 
 private struct RowsHeight: PreferenceKey {
@@ -19,12 +18,79 @@ private struct RowsHeight: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
-/// "1.2k", "84k", "3.1M". Token counts in the header.
+/// "1.2k", "84k", "3.1M". Token counts in the menu.
 func compactTokens(_ n: Int) -> String {
     switch n {
     case 1_000_000...: return String(format: "%.1fM", Double(n) / 1_000_000)
     case 1_000...: return String(format: "%.0fk", Double(n) / 1_000)
     default: return "\(n)"
+    }
+}
+
+/// The three header lines for each state (docs/design.md, section 2). Pure, so the copy is testable.
+struct HeaderCopy: Equatable {
+    enum Headline: Equatable {
+        case ink(String)
+        case dot(String)      // amber dot, then the text
+        case error(String)
+        case amber(String)
+    }
+    var headline: Headline
+    var line2: String?
+    var line3: String?
+    var openLog = false
+
+    static func make(_ kind: HeaderKind, now: Date) -> HeaderCopy {
+        switch kind {
+        case .notScheduled:
+            return HeaderCopy(headline: .amber("Not scheduled"), line2: "Run `glidepath init` to set it up")
+        case .paused(let since):
+            return HeaderCopy(headline: .ink("Paused"), line2: "Scheduled sweeps are skipped",
+                              line3: since.map { "Since \(clock($0))" })
+        case .running(let changes, let reviewing, let total, let landed, let started):
+            let headline: Headline = changes > 0 ? .dot("\(changes) need changes") : .ink("Reviewing \(total) PR\(total == 1 ? "" : "s")")
+            return HeaderCopy(headline: headline,
+                              line2: "\(reviewing) reviewing · \(landed) of \(total) landed",
+                              line3: started.map { "Started \(clock($0))" })
+        case .failed(_, let started):
+            let from = started.map { " Showing results from \(clock($0))." } ?? ""
+            return HeaderCopy(headline: .error("Last sweep failed"),
+                              line2: "Couldn't finish the review.\(from)", openLog: true)
+        case .emptyRun(let repos, let next):
+            return HeaderCopy(headline: .ink("No open PRs"),
+                              line2: "Watching \(repos) repo\(repos == 1 ? "" : "s")",
+                              line3: next.map { "Next sweep \(clock($0)), in \(untilText($0, now))" })
+        case .idle(let changes, let next, let lastStarted, let total):
+            let headline: Headline = changes > 0 ? .dot("\(changes) need changes") : .ink("All clear")
+            let count = "\(total) PR\(total == 1 ? "" : "s")"
+            let last = lastStarted.map { "Last sweep \(clock($0)) · \(count)" } ?? count
+            return HeaderCopy(headline: headline, line2: last,
+                              line3: next.map { "Next sweep \(clock($0)), in \(untilText($0, now))" } ?? "No sweep scheduled")
+        case .noSweeps(let next, let schedule):
+            let times = schedule.map(\.text)
+            let list: String
+            switch times.count {
+            case 0: list = "No schedule set"
+            case 1: list = "A sweep runs at \(times[0])"
+            default: list = "Sweeps run at \(times.dropLast().joined(separator: ", ")) and \(times.last ?? "")"
+            }
+            return HeaderCopy(headline: .ink("Ready for the first sweep"), line2: list,
+                              line3: next.map { "Next at \(clock($0)), in \(untilText($0, now))" })
+        }
+    }
+
+    static let clockFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    static func clock(_ d: Date) -> String { clockFormatter.string(from: d) }
+
+    static func untilText(_ next: Date, _ now: Date) -> String {
+        let mins = max(0, Int(next.timeIntervalSince(now) / 60))
+        let h = mins / 60, m = mins % 60
+        return h > 0 ? "\(h) h \(m) min" : "\(m) min"
     }
 }
 
@@ -40,7 +106,6 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Rectangle().fill(p.line).frame(height: 1)
             list
             footer
         }
@@ -60,48 +125,66 @@ struct PopoverView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 14) {
-            RadarView(blips: blips, mode: radarMode, hovered: store.hovered, motion: store.motion,
-                      onHover: { store.setHovered($0) })
-                .frame(width: Metrics.radar, height: Metrics.radar)
+        VStack(alignment: .leading, spacing: 12) {
+            ApproachProfile(marks: marks, mode: profileMode, hovered: store.hovered,
+                            justLanded: store.justLanded, motion: store.profileMotion,
+                            onHover: { store.setHovered($0) })
+                .frame(width: Metrics.contentWidth, height: Metrics.profileHeight, alignment: .topLeading)
             TimelineView(.periodic(from: .now, by: 30)) { context in
-                let kind = Presentation.headerKind(store.snap, now: context.date)
-                headerText(kind, now: context.date)
+                headerText(HeaderCopy.make(Presentation.headerKind(store.snap, now: context.date), now: context.date))
             }
         }
         .padding(.horizontal, Metrics.gutter)
-        .padding(.vertical, 16)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
     }
 
-    private func headerText(_ kind: HeaderKind, now: Date) -> some View {
-        let copy = HeaderCopy.make(kind, now: now, palette: p)
-        return VStack(alignment: .leading, spacing: 4) {
-            Text(copy.headline)
-                .font(.system(size: 17, weight: .semibold))
-                .fixedSize(horizontal: false, vertical: true)
-            if let sub = copy.sub {
-                Text(sub)
-                    .font(.system(size: 12))
-                    .foregroundStyle(p.secondary)
+    private func headerText(_ copy: HeaderCopy) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            switch copy.headline {
+            case .ink(let s):
+                Text(s).font(.system(size: 17, weight: .semibold)).foregroundStyle(p.ink)
+            case .dot(let s):
+                HStack(spacing: 7) {
+                    Circle().fill(p.amber).frame(width: 8, height: 8)
+                    Text(s).font(.system(size: 17, weight: .semibold)).foregroundStyle(p.ink)
+                }
+            case .error(let s):
+                Text(s).font(.system(size: 17, weight: .semibold)).foregroundStyle(p.error)
+            case .amber(let s):
+                Text(s).font(.system(size: 17, weight: .semibold)).foregroundStyle(p.changesChipText)
+            }
+            if let line2 = copy.line2 {
+                Text(line2)
+                    .font(.system(size: 13))
+                    .foregroundStyle(p.ink)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
+            if let line3 = copy.line3 {
+                Text(line3)
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if copy.openLog {
                 if offscreen {
-                    Text("Open log").font(.system(size: 12)).foregroundStyle(p.doing)
+                    Text("Open log").font(.system(size: 12)).foregroundStyle(p.error).underline()
                 } else {
                     Button("Open log") { store.openLog() }
                         .buttonStyle(.link)
                         .font(.system(size: 12))
+                        .foregroundStyle(p.error)
                 }
             }
         }
-        .frame(maxWidth: .infinity, minHeight: Metrics.radar, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var radarMode: RadarMode {
+    private var profileMode: ProfileMode {
         if store.snap.running { return .running }
         if store.snap.paused { return .paused }
+        if let run = store.snap.run, run.finished != nil, Presentation.failureMessage(run) != nil { return .failed }
         return .idle
     }
 
@@ -109,12 +192,8 @@ struct PopoverView: View {
         Presentation.rows(from: store.strips, running: store.snap.running, repos: store.snap.run?.repos ?? [])
     }
 
-    /// Blips in display order: the radar's slot for a PR is its place in the list.
-    private var blips: [Blip] {
-        groups.flatMap(\.rows).map { row in
-            Blip(id: row.id, progress: Presentation.progress(row.strip), verdict: row.strip.verdict,
-                 active: row.strip.active && row.strip.verdict == nil)
-        }
+    private var marks: [ProfileMark] {
+        Presentation.marks(groups, running: store.snap.running)
     }
 
     // MARK: List
@@ -125,18 +204,13 @@ struct PopoverView: View {
         let rows = groups.flatMap(\.rows)
         if !store.snap.jobInstalled || (store.snap.run == nil && !store.snap.running) {
             Text(store.snap.jobInstalled ? "Nothing has run yet." : "Run glidepath init to set up the schedule.")
-                .font(.system(size: 12))
+                .font(.system(size: 13))
                 .foregroundStyle(p.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, Metrics.gutter)
-                .frame(height: 52, alignment: .center)
+                .padding(.vertical, 8)
         } else if rows.isEmpty {
-            Text(groups.map(\.repo).joined(separator: ", ") + ": no open PRs")
-                .font(.system(size: 12))
-                .foregroundStyle(p.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, Metrics.gutter)
-                .frame(height: 52, alignment: .center)
+            EmptyView()   // the header already says "No open PRs"
         } else if offscreen {
             groupsView(groups)
         } else {
@@ -144,39 +218,40 @@ struct PopoverView: View {
                 groupsView(groups)
                     .background(GeometryReader { Color.clear.preference(key: RowsHeight.self, value: $0.size.height) })
             }
-            .frame(height: min(max(local.rowsHeight, 1), CGFloat(Metrics.maxVisibleRows) * Metrics.rowPitch + 40))
+            .frame(height: min(max(local.rowsHeight, 1), Metrics.maxVisibleHeight))
             .onPreferenceChange(RowsHeight.self) { local.rowsHeight = $0 }
         }
     }
 
     private func groupsView(_ groups: [RepoGroup]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(groups) { group in
-                VStack(alignment: .leading, spacing: 0) {
-                    if groups.count > 1 {
-                        Text(group.repo)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(p.secondary)
-                            .padding(.horizontal, Metrics.gutter)
-                            .padding(.top, 14)
-                            .padding(.bottom, 6)
-                    }
-                    if let error = group.error {
-                        Text(error)
-                            .font(.system(size: 12))
-                            .foregroundStyle(p.error)
-                            .lineLimit(2)
-                            .padding(.horizontal, Metrics.gutter)
-                            .padding(.bottom, 4)
-                    }
-                    ForEach(group.rows) { row in
-                        PRRow(row: row, hovered: store.hovered == row.id, store: store, offscreen: offscreen)
-                    }
+            ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
+                if index > 0 {
+                    Rectangle().fill(p.rule).frame(height: 1)
+                        .padding(.horizontal, Metrics.gutter)
                 }
-                .padding(.bottom, groups.count > 1 ? 4 : 0)
+                if groups.count > 1 {
+                    Text(group.repo)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(p.secondary)
+                        .padding(.horizontal, Metrics.gutter)
+                        .padding(.top, index == 0 ? 14 : 20)
+                        .padding(.bottom, 4)
+                }
+                if let error = group.error {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundStyle(p.error)
+                        .lineLimit(2)
+                        .padding(.horizontal, Metrics.gutter)
+                        .padding(.bottom, 4)
+                }
+                ForEach(group.rows) { row in
+                    PRRow(row: row, hovered: store.hovered == row.id, store: store, offscreen: offscreen)
+                }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.bottom, 4)
     }
 
     // MARK: Footer
@@ -191,28 +266,34 @@ struct PopoverView: View {
                     .font(.system(size: 15))
                     .foregroundStyle(p.ink)
             } else {
-            Menu {
-                Button(store.snap.paused ? "Resume" : "Pause") { store.togglePause() }
-                Button("Open log") { store.openLog() }
-                Toggle("Open at login", isOn: Binding(
-                    get: { local.loginOn },
-                    set: { on in
-                        store.setLoginItem(on)
-                        local.loginOn = store.loginItemOn
+                Menu {
+                    Button(store.snap.paused ? "Resume" : "Pause") { store.togglePause() }
+                    Button("Open log") { store.openLog() }
+                    if let tokens = store.snap.run?.tokens, tokens > 0 {
+                        Divider()
+                        Button("Last run: \(compactTokens(tokens)) tokens") {}
+                            .disabled(true)
                     }
-                ))
-                Divider()
-                Button("Quit Glidepath") { NSApp.terminate(nil) }
-                    .keyboardShortcut("q")
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 15))
-                    .foregroundStyle(p.ink)
-                    .accessibilityLabel("More")
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
+                    Divider()
+                    Toggle("Open at login", isOn: Binding(
+                        get: { local.loginOn },
+                        set: { on in
+                            store.setLoginItem(on)
+                            local.loginOn = store.loginItemOn
+                        }
+                    ))
+                    Divider()
+                    Button("Quit Glidepath") { NSApp.terminate(nil) }
+                        .keyboardShortcut("q")
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.system(size: 15))
+                        .foregroundStyle(p.ink)
+                        .accessibilityLabel("More")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
             }
         }
         .padding(.horizontal, Metrics.gutter)
@@ -232,13 +313,11 @@ struct PopoverView: View {
     @ViewBuilder
     private var footerButton: some View {
         if offscreen {
-            standIn(store.snap.running ? "Running…" : (store.snap.paused ? "Resume" : "Run now"),
-                    enabled: !store.snap.running)
+            standIn(store.snap.running ? "Stop" : (store.snap.paused ? "Resume" : "Run now"))
         } else if store.snap.running {
-            Button("Running…") {}
+            Button("Stop") { confirmAndStop() }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .disabled(true)
         } else if store.snap.paused {
             Button("Resume") { store.togglePause() }
                 .buttonStyle(.bordered)
@@ -263,72 +342,20 @@ struct PopoverView: View {
         }
         store.runNow()
     }
-}
 
-/// Header copy for each HeaderKind (docs/design.md, header table).
-struct HeaderCopy {
-    var headline: AttributedString
-    var sub: String?
-    var openLog = false
-
-    static func make(_ kind: HeaderKind, now: Date, palette p: Palette) -> HeaderCopy {
-        switch kind {
-        case .notScheduled:
-            return HeaderCopy(headline: text("Not scheduled", p.changesText),
-                              sub: "Run `glidepath init` to set it up")
-        case .paused(let since):
-            return HeaderCopy(headline: text("Paused", p.ink),
-                              sub: since.map { "Since \(clock($0)) · scheduled sweeps are skipped" }
-                                ?? "Scheduled sweeps are skipped")
-        case .running(let changes, let reviewing, let total, let landed, let started, let tokens):
-            let headline = changes > 0
-                ? text("\(changes) need changes\u{00A0}·", p.changesText) + text(" \(reviewing) reviewing", p.ink)
-                : text("Reviewing \(total) PR\(total == 1 ? "" : "s")", p.ink)
-            var parts = ["\(landed) of \(total) landed"]
-            if let started { parts.append("started \(clock(started))") }
-            if tokens > 0 { parts.append("\(compactTokens(tokens)) tokens") }
-            return HeaderCopy(headline: headline, sub: parts.joined(separator: " · "))
-        case .failed(let message):
-            return HeaderCopy(headline: text("Last sweep failed", p.error), sub: message, openLog: true)
-        case .emptyRun(let repos, let checkedAt, let next):
-            var sub = "Checked \(repos) repo\(repos == 1 ? "" : "s") at \(clock(checkedAt))"
-            if let next { sub += " · next \(clock(next))" }
-            return HeaderCopy(headline: text("No PRs to review", p.ink), sub: sub)
-        case .idle(let changes, let next):
-            let headline = changes > 0
-                ? text("\(changes) need changes", p.changesText)
-                : text("All clear", p.ink)
-            return HeaderCopy(headline: headline, sub: next.map { "Next sweep \(clock($0)) · in \(untilText($0, now))" }
-                              ?? "No sweep scheduled")
-        case .noSweeps(let next):
-            return HeaderCopy(headline: text("No sweeps yet", p.ink),
-                              sub: next.map { "First sweep \(clock($0)) · in \(untilText($0, now))" }
-                                ?? "No schedule set")
-        }
-    }
-
-    static func text(_ s: String, _ colour: Color) -> AttributedString {
-        var a = AttributedString(s)
-        a.foregroundColor = colour
-        return a
-    }
-
-    static let clockFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f
-    }()
-
-    static func clock(_ d: Date) -> String { clockFormatter.string(from: d) }
-
-    static func untilText(_ next: Date, _ now: Date) -> String {
-        let mins = max(0, Int(next.timeIntervalSince(now) / 60))
-        let h = mins / 60, m = mins % 60
-        return h > 0 ? "\(h) h \(m) min" : "\(m) min"
+    private func confirmAndStop() {
+        let alert = NSAlert()
+        alert.messageText = "Stop the current sweep?"
+        alert.informativeText = "Reviews already posted stay posted."
+        alert.addButton(withTitle: "Stop")
+        alert.addButton(withTitle: "Keep running")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        store.stopRun()
     }
 }
 
-/// One PR row: 52 pt pitch, title and meta on the left, a fixed 72 pt right column.
+/// One PR row: a title that wraps to two lines, meta, and the status column on the right (docs/design.md,
+/// sections 3 and 4). Chevron on hover in the right gutter.
 struct PRRow: View {
     let row: RowModel
     let hovered: Bool
@@ -346,36 +373,49 @@ struct PRRow: View {
                 NSWorkspace.shared.open(url)
             }
         } label: {
-            HStack(alignment: .center, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(strip.title ?? "Untitled PR")
                         .font(.system(size: 13, weight: .semibold))
+                        .lineSpacing(3)
                         .foregroundStyle(p.ink)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                     meta
+                    if case .changes = row.status, let reason = strip.reason {
+                        Text(reason)
+                            .font(.system(size: 12))
+                            .foregroundStyle(p.changesChipText)
+                            .lineLimit(1)
+                            .help(reason)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                rightColumn
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11))
-                    .foregroundStyle(p.secondary)
-                    .opacity(hovered ? 1 : 0)
-                    .frame(width: 11)
+                statusColumn
+                    .padding(.trailing, hovered ? 14 : 0)
             }
             .padding(.horizontal, Metrics.gutter)
-            .frame(height: Metrics.rowPitch)
+            .padding(.vertical, 9)
+            .frame(minHeight: Metrics.rowMinHeight, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(p.ink.opacity(hovered ? 0.05 : 0))
                     .padding(.horizontal, 8)
             )
+            .overlay(alignment: .trailing) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10))
+                    .foregroundStyle(p.secondary)
+                    .opacity(hovered ? 1 : 0)
+                    .padding(.trailing, Metrics.gutter)
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .focused($focused)
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(p.doing, lineWidth: 2)
+                .stroke(p.doingMark, lineWidth: 2)
                 .padding(.horizontal, 8)
                 .opacity(focused ? 1 : 0)
         )
@@ -387,89 +427,71 @@ struct PRRow: View {
         var line = AttributedString("#\(strip.number)")
         line.font = .system(size: 12, design: .monospaced)
         line.foregroundColor = p.secondary
-        var rest = AttributedString(" · \(strip.author ?? "unknown")" + (strip.reason.map { " · \($0)" } ?? ""))
+        var rest = AttributedString(" · \(strip.author ?? "unknown")")
         rest.font = .system(size: 12)
         rest.foregroundColor = p.secondary
         return Text(line + rest).lineLimit(1)
     }
 
-    private var rightColumn: some View {
-        VStack(alignment: .trailing, spacing: 6) {
-            if let verdict = strip.verdict {
-                Stamp(verdict: verdict, settle: store.justLanded.contains(strip.id), offscreen: offscreen)
-            } else if let phase = row.phase {
+    @ViewBuilder
+    private var statusColumn: some View {
+        VStack(alignment: .trailing, spacing: 5) {
+            switch row.status {
+            case .changes:
+                chip("Changes", text: p.changesChipText, fill: p.changesChipFill)
+            case .approved:
+                chip("Approved", text: p.approveChipText, fill: p.approveChipFill)
+            case .noResult:
+                chip("No result", text: p.noResultText, fill: p.noResultFill)
+            case .skipped(let reason):
+                Text(Self.skippedText(reason))
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.secondary)
+                    .lineLimit(1)
+            case .active(let phase):
                 Text(phase)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(p.doing)
+                    .foregroundStyle(p.doingText)
+            case .queued:
+                Text("Queued")
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.secondary)
             }
-            if let rail = row.rail {
-                RailView(segments: rail, palette: p)
+            if let meter = row.meter {
+                meterView(meter)
             }
         }
-        .frame(width: Metrics.rightColumn, alignment: .trailing)
     }
-}
 
-/// The four-part rail: done segments ink at 60%, the current segment in the doing colour, future at 12%.
-struct RailView: View {
-    let segments: [RailSegment]
-    let palette: Palette
+    private func chip(_ label: String, text: Color, fill: Color) -> some View {
+        Text(label)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(text)
+            .padding(.horizontal, 8)
+            .frame(height: Metrics.chipHeight)
+            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(fill))
+    }
 
-    var body: some View {
+    private func meterView(_ segments: [MeterSegment]) -> some View {
         HStack(spacing: 3) {
             ForEach(0..<segments.count, id: \.self) { i in
-                Capsule()
+                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                     .fill(colour(segments[i]))
-                    .frame(width: (Metrics.railWidth - 9) / 4, height: 3)
+                    .frame(width: 10, height: 3)
             }
         }
-        .frame(width: Metrics.railWidth, height: 3)
     }
 
-    private func colour(_ s: RailSegment) -> Color {
+    private func colour(_ s: MeterSegment) -> Color {
         switch s {
-        case .done: return palette.ink.opacity(0.6)
-        case .current: return palette.doing
-        case .future: return palette.ink.opacity(0.12)
+        case .done: return p.ink.opacity(0.6)
+        case .current: return p.doingMark
+        case .future: return p.meterFuture
         }
     }
-}
 
-/// A verdict stamp: upright at rest, 72 pt wide. It settles into place once when it lands on an open popover.
-struct Stamp: View {
-    let verdict: Verdict
-    let settle: Bool
-    var offscreen = false
-    @StateObject private var model = SettleModel()
-    @Environment(\.colorScheme) private var scheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        let p = Palette(scheme)
-        let word: String = {
-            switch verdict {
-            case .approve: return "APPROVED"
-            case .changes: return "CHANGES"
-            case .skipped: return "SKIPPED"
-            }
-        }()
-        Text(word)
-            .font(.system(size: 11, weight: .bold))
-            .foregroundStyle(p.verdictText(verdict))
-            .frame(width: Metrics.rightColumn)
-            .padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(p.verdictFill(verdict).opacity(0.12)))
-            .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).stroke(p.verdictText(verdict), lineWidth: 1.5))
-            .scaleEffect(model.scale)
-            .rotationEffect(.degrees(model.angle))
-            .onAppear {
-                guard settle, !offscreen, !reduceMotion else { return }
-                model.scale = 1.15
-                model.angle = -3
-                withAnimation(.easeOut(duration: 0.14)) {
-                    model.scale = 1
-                    model.angle = 0
-                }
-            }
+    static func skippedText(_ reason: String?) -> String {
+        guard let reason, !reason.isEmpty else { return "Skipped" }
+        return reason.prefix(1).uppercased() + reason.dropFirst() + ", skipped"
     }
 }
