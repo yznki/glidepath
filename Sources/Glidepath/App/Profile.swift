@@ -215,18 +215,23 @@ struct ApproachProfile: View {
             tick("gather", stage: 1)
             tick("review", stage: 2)
             tick("check", stage: 3)
-            tick("land", stage: 4)
+            tick("land", x: Profile.runwayX + Profile.runwayLength / 2)
         }
         .frame(width: Profile.width, height: 12, alignment: .topLeading)
     }
 
-    /// Centred on its stage's x, so the label and the stage's dots line up.
+    /// Centred over its stage's x, so the label and the stage's dots line up.
     private func tick(_ label: String, stage: Int) -> some View {
+        tick(label, x: Profile.stageX(stage))
+    }
+
+    /// Centred over an explicit x: "land" sits over the runway's centre.
+    private func tick(_ label: String, x: CGFloat) -> some View {
         Text(label)
             .font(.system(size: 11, weight: .medium))
             .foregroundStyle(Palette(scheme).tertiary)
             .fixedSize()
-            .position(x: Profile.stageX(stage), y: 6)
+            .position(x: x, y: 6)
     }
 
     private var running: Bool { mode == .running }

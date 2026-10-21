@@ -53,7 +53,7 @@ Running (64 pt):
 
 - **Slope**: from (0, 36) to (268, 52), so the stage labels sit above it, clear of the tick row.
 - **Stage labels**: "gather", "review", "check", "land", each centred over its stage x (see Stage columns), in the top
-  row (y = 0 to 12). 11/500 tertiary. The "land" label is over stage 4 (x = 234.5), so it sits left of the landed marks.
+  row (y = 0 to 12). 11/500 tertiary. The "land" label is centred over the runway (x = 298), above the landed marks.
 - **Stage columns**: stage n is centred at x = (n - 0.5) / 4 * 268.
 - **In-flight PRs**: a 10 pt circle in the system blue, spread 11 pt apart along the slope within their stage. Each is
   labelled with its number ("#1113", 11/500 tertiary). Every number sits on one baseline (y = 29), above all the dots,
