@@ -163,6 +163,14 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(try Config.parse(original.render(), home: home), original)
     }
 
+    func testHotkeyDefaultsOnAndRoundTrips() throws {
+        XCTAssertTrue(try Config.parse("", home: home).hotkey)
+        let off = try Config.parse("hotkey = false\n", home: home)
+        XCTAssertFalse(off.hotkey)
+        XCTAssertEqual(try Config.parse(off.render(), home: home), off)
+        XCTAssertThrowsError(try Config.parse("hotkey = \"yes\"\n", home: home))
+    }
+
     func testRenderEscapesStringsSoTheyReadBack() throws {
         var repo = RepoConfig(slug: "acme/api", clone: "/tmp/a \"b\" \\c")
         repo.flagPaths = ["infra\\\"x/"]

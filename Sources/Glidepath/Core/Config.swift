@@ -128,6 +128,9 @@ struct Config: Equatable {
     /// Notification when a sweep finishes. The menu bar app reads it; nothing writes it.
     var notify = true
     var days: ScheduleDays = .all
+    /// The global ⌥⌘G shortcut that opens the menu bar popover from any app. Settings writes it; a config without it
+    /// keeps the shortcut on.
+    var hotkey = true
 
     static func load(_ paths: Paths) throws -> Config {
         guard let text = try? String(contentsOfFile: paths.configFile, encoding: .utf8) else {
@@ -143,7 +146,8 @@ struct Config: Equatable {
         } catch let e as TOMLError {
             throw ConfigError(message: "config.toml: \(e)")
         }
-        try checkKeys(doc, allowed: ["schedule", "days", "limits", "repo", "check_updates", "notify"], where: "top level")
+        try checkKeys(doc, allowed: ["schedule", "days", "limits", "repo", "check_updates", "notify", "hotkey"],
+                      where: "top level")
 
         let scheduleText = try strings(doc["schedule"], key: "schedule") ?? defaultSchedule
         guard !scheduleText.isEmpty else { throw ConfigError(message: "schedule must list at least one time") }
@@ -177,7 +181,9 @@ struct Config: Equatable {
         }
         let checkUpdates = try bool(doc["check_updates"], key: "check_updates") ?? true
         let notify = try bool(doc["notify"], key: "notify") ?? true
-        return Config(schedule: schedule, limits: limits, repos: repos, checkUpdates: checkUpdates, notify: notify, days: days)
+        let hotkey = try bool(doc["hotkey"], key: "hotkey") ?? true
+        return Config(schedule: schedule, limits: limits, repos: repos, checkUpdates: checkUpdates, notify: notify,
+                      days: days, hotkey: hotkey)
     }
 
     /// `days`: "weekdays", "all" (the default when absent) or a list of mon..sun.
@@ -260,6 +266,7 @@ struct Config: Equatable {
         var out = "schedule = [" + schedule.map { tomlQuoted($0.text) }.joined(separator: ", ") + "]\n"
         out += "check_updates = \(checkUpdates)\n"
         out += "notify = \(notify)\n"
+        out += "hotkey = \(hotkey)\n"
         if days != .all { out += "days = \(days.tomlText)\n" }
         out += "\n[limits]\n"
         out += "max_prs_per_run = \(limits.maxPRsPerRun)\n"
