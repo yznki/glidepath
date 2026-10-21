@@ -70,11 +70,7 @@ struct ReposView: View {
     /// name starts with the letters typed. Nothing fires while a text field has focus.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         let mods = ShortcutModifiers(press.modifiers)
-        // ⌘ combos work from anywhere, the detail included; the detail takes them through the router.
-        if mods == [.command], press.key == .delete {
-            WindowRouter.shared.deliver(.removeRepo, section: nil)
-            return .handled
-        }
+        // ⌘E works from anywhere, the detail included; the detail takes it through the router. Remove Repo is Edit > Delete.
         if mods == [.command], press.characters == "e" {
             WindowRouter.shared.deliver(.editRules, section: nil)
             return .handled
@@ -126,6 +122,7 @@ struct ReposView: View {
                 .foregroundStyle(WinTheme.text)
                 .frame(height: 32, alignment: .leading)
                 .padding(.horizontal, WinMetrics.s20)
+            ScrollViewReader { proxy in
             WinScroll {
                 // The add link follows the last row, 4 below it, rather than pinning to the bottom.
                 VStack(spacing: 0) {
@@ -141,6 +138,10 @@ struct ReposView: View {
                 .padding(.bottom, WinMetrics.canvasBottom)
             }
             .frame(maxHeight: .infinity)
+            .onChange(of: selected?.slug) { _, slug in
+                if let slug { proxy.scrollTo(slug) }
+            }
+            }
             .padding(.top, WinMetrics.s16)
             .focusable()
             .focused($focus, equals: .list)

@@ -6,24 +6,26 @@ enum ShortcutAction: String, CaseIterable {
     // Glidepath
     case about, checkUpdates, settings, hide, quit
     // File
-    case addRepo, closeWindow
+    case addRepo, addTime, closeWindow
     // Edit
-    case find
+    case find, discardDraft, removeRepo, deletePin
     // View
     case showOverview, showReviews, showRepos, showSchedule, showSettings
     case filterAll, filterChanges, filterDrafts, filterSkipped
     // Sweep
     case runSweep, stopSweep, togglePause, reviewRepoNow, openLog
     // Review
-    case postReview, discardDraft, reviewAnyway, openOnGitHub, copyLink, copyReviewText
+    case postReview, reviewAnyway, openOnGitHub, copyLink, copyReviewText
     // Window
     case minimize, zoom, bringAllToFront
     // Help
     case shortcuts
     // Repos detail
-    case editRules, removeRepo
-    // Schedule
-    case nudgeEarlier, nudgeLater, nudgeEarlierHour, nudgeLaterHour, deletePin, undo
+    case editRules
+    // Schedule: pins are chosen with ← →, and moved with ↑ ↓ or ⌥← ⌥→ (⇧ for the hour).
+    case selectPrevPin, selectNextPin
+    case pinLater, pinEarlier, pinLaterHour, pinEarlierHour
+    case nudgeLater, nudgeEarlier, nudgeLaterHour, nudgeEarlierHour
     // Onboarding
     case primary, back, toggleRow, selectAllRows, selectNoRows, checkAgain
     // Popover
@@ -122,6 +124,19 @@ struct ShortcutModifiers: OptionSet {
     }
 }
 
+extension ShortcutAction {
+    /// How far a pin moves for a move action, in minutes. Nil for every other action.
+    var pinMinutes: Int? {
+        switch self {
+        case .pinLater, .nudgeLater: return PinNudge.quarter
+        case .pinEarlier, .nudgeEarlier: return -PinNudge.quarter
+        case .pinLaterHour, .nudgeLaterHour: return 60
+        case .pinEarlierHour, .nudgeEarlierHour: return -60
+        default: return nil
+        }
+    }
+}
+
 /// One row of the table.
 struct Shortcut: Identifiable, Equatable {
     let action: ShortcutAction
@@ -132,6 +147,11 @@ struct Shortcut: Identifiable, Equatable {
     var menu: ShortcutMenu?
     /// Two entries may share a combination only when each names the other: they are enabled in different states.
     var alternateOf: ShortcutAction?
+    /// A context item: the menu slot shows whichever contextual action applies (Edit > Delete, File > New), so several
+    /// entries may share its combination.
+    var contextual = false
+    /// Where the item applies, shown in the sheet beside its name.
+    var note: String?
 
     var id: ShortcutAction { action }
     /// "⌘R", "⌥⌘1", "⇧⌘P", "⌘↩". Empty when the action has no key.
@@ -147,10 +167,20 @@ enum Shortcuts {
         Shortcut(action: .hide, title: "Hide Glidepath", key: .character("h"), modifiers: .command, menu: .glidepath),
         Shortcut(action: .quit, title: "Quit Glidepath", key: .character("q"), modifiers: .command, menu: .glidepath),
 
-        Shortcut(action: .addRepo, title: "Add Repo…", key: .character("n"), modifiers: .command, menu: .file),
+        Shortcut(action: .addRepo, title: "Add Repo…", key: .character("n"), modifiers: .command, menu: .file,
+                 contextual: true, note: "Everywhere but Schedule"),
+        Shortcut(action: .addTime, title: "Add Time…", key: .character("n"), modifiers: .command, menu: .file,
+                 contextual: true, note: "Schedule"),
         Shortcut(action: .closeWindow, title: "Close Window", key: .character("w"), modifiers: .command, menu: .file),
 
-        Shortcut(action: .find, title: "Find", key: .character("f"), modifiers: .command, menu: .edit),
+        Shortcut(action: .discardDraft, title: "Discard Draft", key: .delete, modifiers: .command, menu: .edit,
+                 contextual: true, note: "Reviews, a held draft"),
+        Shortcut(action: .removeRepo, title: "Remove Repo…", key: .delete, modifiers: .command, menu: .edit,
+                 contextual: true, note: "Repos"),
+        Shortcut(action: .deletePin, title: "Remove Time", key: .delete, modifiers: .command, menu: .edit,
+                 contextual: true, note: "Schedule, pin selected"),
+        Shortcut(action: .find, title: "Find", key: .character("f"), modifiers: .command, menu: .edit,
+                 note: "Repos, onboarding"),
 
         Shortcut(action: .showOverview, title: "Overview", key: .character("1"), modifiers: .command, menu: .view),
         Shortcut(action: .showReviews, title: "Reviews", key: .character("2"), modifiers: .command, menu: .view),
@@ -175,7 +205,6 @@ enum Shortcuts {
         Shortcut(action: .openLog, title: "Open Log", key: .character("l"), modifiers: [.option, .command], menu: .sweep),
 
         Shortcut(action: .postReview, title: "Post Review", key: .returnKey, modifiers: .command, menu: .review),
-        Shortcut(action: .discardDraft, title: "Discard Draft", key: .delete, modifiers: .command, menu: .review),
         Shortcut(action: .reviewAnyway, title: "Review Anyway", key: .returnKey, modifiers: .command, menu: .review,
                  alternateOf: .postReview),
         Shortcut(action: .openOnGitHub, title: "Open on GitHub", key: .character("o"), modifiers: .command,
@@ -193,15 +222,21 @@ enum Shortcuts {
 
         // Views: these are handled by the view and appear only in the sheet.
         Shortcut(action: .editRules, title: "Edit rules file", key: .character("e"), modifiers: .command, scope: .repos),
-        Shortcut(action: .removeRepo, title: "Remove repo", key: .delete, modifiers: .command, scope: .repos),
-        Shortcut(action: .nudgeLater, title: "Move pin 15 min later", key: .upArrow, scope: .schedule),
-        Shortcut(action: .nudgeEarlier, title: "Move pin 15 min earlier", key: .downArrow, scope: .schedule),
-        Shortcut(action: .nudgeLaterHour, title: "Move pin 1 h later", key: .upArrow, modifiers: .shift, scope: .schedule),
-        Shortcut(action: .nudgeEarlierHour, title: "Move pin 1 h earlier", key: .downArrow, modifiers: .shift,
+        Shortcut(action: .selectPrevPin, title: "Select the previous pin", key: .leftArrow, scope: .schedule),
+        Shortcut(action: .selectNextPin, title: "Select the next pin", key: .rightArrow, scope: .schedule),
+        Shortcut(action: .nudgeEarlier, title: "Move pin 15 min earlier", key: .leftArrow, modifiers: .option,
                  scope: .schedule),
-        Shortcut(action: .undo, title: "Undo a schedule change", key: .character("z"), modifiers: .command,
+        Shortcut(action: .nudgeLater, title: "Move pin 15 min later", key: .rightArrow, modifiers: .option,
                  scope: .schedule),
-        Shortcut(action: .deletePin, title: "Delete pin (⌘Z restores)", key: .delete, scope: .schedule),
+        Shortcut(action: .nudgeEarlierHour, title: "Move pin 1 h earlier", key: .leftArrow,
+                 modifiers: [.shift, .option], scope: .schedule),
+        Shortcut(action: .nudgeLaterHour, title: "Move pin 1 h later", key: .rightArrow,
+                 modifiers: [.shift, .option], scope: .schedule),
+        Shortcut(action: .pinLater, title: "Move pin 15 min later", key: .upArrow, scope: .schedule),
+        Shortcut(action: .pinEarlier, title: "Move pin 15 min earlier", key: .downArrow, scope: .schedule),
+        Shortcut(action: .pinLaterHour, title: "Move pin 1 h later", key: .upArrow, modifiers: .shift, scope: .schedule),
+        Shortcut(action: .pinEarlierHour, title: "Move pin 1 h earlier", key: .downArrow, modifiers: .shift,
+                 scope: .schedule),
         Shortcut(action: .primary, title: "Primary step button", key: .returnKey, modifiers: .command, scope: .onboarding),
         Shortcut(action: .back, title: "Back", key: .character("["), modifiers: .command, scope: .onboarding),
         Shortcut(action: .toggleRow, title: "Toggle the selected row", key: .space, scope: .onboarding),
@@ -224,6 +259,11 @@ enum Shortcuts {
     static func shortcut(_ action: ShortcutAction) -> Shortcut {
         guard let s = all.first(where: { $0.action == action }) else { fatalError("no shortcut for \(action)") }
         return s
+    }
+
+    /// The first entry for a key in a scope, the way the view's key handling looks keys up.
+    static func action(key: ShortcutKey, modifiers: ShortcutModifiers, scope: ShortcutScope) -> ShortcutAction? {
+        all.first { $0.scope == scope && $0.key == key && $0.modifiers == modifiers }?.action
     }
 
     /// The menu's items, in table order.
@@ -252,6 +292,7 @@ enum Shortcuts {
             for (i, a) in keyed.enumerated() {
                 for b in keyed[(i + 1)...] where a.glyphs == b.glyphs {
                     if a.alternateOf == b.action || b.alternateOf == a.action { continue }
+                    if a.contextual && b.contextual { continue }
                     out.append((a.action, b.action))
                 }
             }

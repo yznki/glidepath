@@ -68,4 +68,55 @@ final class ShortcutTests: XCTestCase {
         XCTAssertEqual(ShortcutAvailability.title(.togglePause, ShortcutState(paused: true)), "Resume Sweeps")
         XCTAssertEqual(ShortcutAvailability.title(.togglePause, ShortcutState()), "Pause Sweeps")
     }
+
+    func testFileNewIsAddTimeInScheduleAndAddRepoElsewhere() {
+        XCTAssertEqual(ShortcutAvailability.contextNew(ShortcutState(section: .schedule)), .addTime)
+        XCTAssertEqual(ShortcutAvailability.contextNew(ShortcutState(section: .repos)), .addRepo)
+        XCTAssertEqual(ShortcutAvailability.contextNew(ShortcutState(section: .reviews)), .addRepo)
+        XCTAssertEqual(ShortcutAvailability.title(.addTime, ShortcutState()), "Add Time…")
+    }
+
+    func testEditDeleteFollowsTheSelection() {
+        XCTAssertNil(ShortcutAvailability.contextDelete(ShortcutState(section: .repos)))
+        XCTAssertEqual(ShortcutAvailability.contextDelete(ShortcutState(section: .repos, repoSelected: true)), .removeRepo)
+        XCTAssertEqual(ShortcutAvailability.contextDelete(ShortcutState(section: .schedule, pinSelected: true)), .deletePin)
+        XCTAssertNil(ShortcutAvailability.contextDelete(ShortcutState(section: .schedule)))
+        XCTAssertEqual(ShortcutAvailability.contextDelete(ShortcutState(section: .reviews, reviewSelected: true,
+                                                                        reviewCanDiscard: true)), .discardDraft)
+        XCTAssertNil(ShortcutAvailability.contextDelete(ShortcutState(section: .reviews, reviewSelected: true)))
+    }
+
+    func testRemoveTimeInOnboardingNeedsAPin() {
+        XCTAssertTrue(ShortcutAvailability.enabled(.deletePin, ShortcutState(onboarding: true, pinSelected: true)))
+        XCTAssertFalse(ShortcutAvailability.enabled(.deletePin, ShortcutState(onboarding: true)))
+    }
+
+    func testPinKeysAreLookedUpInTheTable() {
+        func pin(_ key: ShortcutKey, _ mods: ShortcutModifiers = []) -> ShortcutAction? {
+            Shortcuts.action(key: key, modifiers: mods, scope: .schedule)
+        }
+        XCTAssertEqual(pin(.leftArrow), .selectPrevPin)
+        XCTAssertEqual(pin(.rightArrow), .selectNextPin)
+        XCTAssertEqual(pin(.leftArrow, .option), .nudgeEarlier)
+        XCTAssertEqual(pin(.rightArrow, .option), .nudgeLater)
+        XCTAssertEqual(pin(.leftArrow, [.shift, .option]), .nudgeEarlierHour)
+        XCTAssertEqual(pin(.upArrow), .pinLater)
+        XCTAssertEqual(pin(.downArrow), .pinEarlier)
+        XCTAssertEqual(pin(.upArrow, .shift), .pinLaterHour)
+        XCTAssertEqual(pin(.downArrow, .shift), .pinEarlierHour)
+        XCTAssertNil(pin(.upArrow, .command))
+    }
+
+    func testPinMinutesMatchTheirDirection() {
+        XCTAssertEqual(ShortcutAction.pinLater.pinMinutes, 15)
+        XCTAssertEqual(ShortcutAction.nudgeEarlier.pinMinutes, -15)
+        XCTAssertEqual(ShortcutAction.pinLaterHour.pinMinutes, 60)
+        XCTAssertEqual(ShortcutAction.nudgeEarlierHour.pinMinutes, -60)
+        XCTAssertNil(ShortcutAction.selectNextPin.pinMinutes)
+    }
+
+    func testUndoIsTheStandardEditMenuItem() {
+        // The ⌘Z handler is gone: undo belongs to the window's undo manager and the standard Edit menu.
+        XCTAssertNil(Shortcuts.all.first { $0.key == .character("z") && $0.modifiers == .command })
+    }
 }

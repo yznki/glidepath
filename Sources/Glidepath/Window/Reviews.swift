@@ -42,8 +42,14 @@ struct ReviewsView: View {
     /// Arrows, Home and End move the selection; Return moves focus to the detail; Esc clears the filter; a letter
     /// jumps to the first title that starts with the letters typed. Nothing fires while a text field has focus.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        guard !TextFocus.isEditing, focus != .detail else { return .ignored }
+        guard !TextFocus.isEditing else { return .ignored }
         let mods = ShortcutModifiers(press.modifiers)
+        if focus == .detail {
+            // Space pages the review body down, as it does in a document.
+            guard press.key == .space, mods.isEmpty else { return .ignored }
+            ScrollPager.pageDown()
+            return .handled
+        }
         if press.key == .return, mods.isEmpty {
             focus = .detail
             return .handled

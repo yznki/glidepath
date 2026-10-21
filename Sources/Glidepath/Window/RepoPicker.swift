@@ -139,6 +139,8 @@ struct RepoPicker: View {
                 }
                 .focusable()
                 .focused($listFocused)
+                .focusedValue(\.repoPicker, RepoPickerActions(selectAll: { selectAll(rows, on: true) },
+                                                              selectNone: { selectAll(rows, on: false) }))
                 .onKeyPress(phases: .down) { handleKey($0, rows: rows) }
             }
         }
@@ -190,17 +192,10 @@ struct RepoPicker: View {
     // MARK: Keys and actions
 
     /// Arrows, Home and End move the cursor; Space toggles its row; a letter jumps to the first repo that starts with
-    /// the letters typed. ⌘A selects every visible repo and ⇧⌘A none. Nothing plain fires while a text field has focus.
+    /// the letters typed. Edit > Select All and Select None act on the visible repos while the list has focus.
+    /// Nothing fires while a text field has focus.
     private func handleKey(_ press: KeyPress, rows: [DiscoveredRepo]) -> KeyPress.Result {
         let mods = ShortcutModifiers(press.modifiers)
-        if mods == [.command], press.characters == "a" {
-            selectAll(rows, on: true)
-            return .handled
-        }
-        if mods == [.command, .shift], press.characters == "a" || press.characters == "A" {
-            selectAll(rows, on: false)
-            return .handled
-        }
         guard !TextFocus.isEditing else { return .ignored }
         let current = rows.firstIndex { $0.slug == cursor.slug }
         if press.key == .space, mods.isEmpty, let slug = cursor.slug, !locked.contains(slug) {

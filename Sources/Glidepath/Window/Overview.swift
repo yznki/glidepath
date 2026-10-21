@@ -4,10 +4,17 @@ import AppKit
 /// The Overview section (v1.2 mockups 4-overview and 5-running). The hero is the stripe field with the glide dot,
 /// the headline from `HeaderCopy`, one line, and one action. Below it: two panels when idle, or one panel while a
 /// sweep runs.
+/// The Overview's keyboard row: the PR the arrows are on. Return opens it on GitHub.
+final class OverviewKeys: ObservableObject {
+    @Published var strip: String?
+}
+
 struct OverviewView: View {
     @ObservedObject var store: Store
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @StateObject private var keys = OverviewKeys()
+    @FocusState private var focused: Bool
 
     private var p: Palette { Palette(scheme) }
     /// A sweep or a dry run holds the lock: the hero glides and the panel shows what is in flight.
@@ -52,7 +59,44 @@ struct OverviewView: View {
                 .frame(maxHeight: .infinity, alignment: .top)
             }
             .frame(maxHeight: .infinity, alignment: .top)
+            .focusable()
+            .focusEffectDisabled()
+            .focused($focused)
+            .onAppear { focused = true }
+            .onKeyPress(phases: .down) { handleKey($0) }
         }
+    }
+
+    // MARK: Keys
+
+    /// The PRs the panels show, in panel order: in flight and landed while a sweep runs, waiting and the last sweep's
+    /// landed PRs otherwise.
+    private var keyStrips: [Strip] {
+        if live {
+            var strips = inFlight.map(\.strip)
+            if store.snap.dryRunning { strips += reviewed.filter { $0.strip.verdict != nil }.map(\.strip) }
+            return strips
+        }
+        return waiting + landed.prefix(3).map(\.strip)
+    }
+
+    /// ↑ ↓ (and Home, End, Page Up, Page Down) move the row highlight through the panels; Return opens the PR on GitHub.
+    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
+        guard !TextFocus.isEditing else { return .ignored }
+        let mods = ShortcutModifiers(press.modifiers)
+        let strips = keyStrips
+        if press.key == .return, mods.isEmpty {
+            guard let strip = strips.first(where: { $0.id == keys.strip }),
+                  let url = URL(string: "https://github.com/\(strip.repo)/pull/\(strip.number)") else { return .ignored }
+            NSWorkspace.shared.open(url)
+            return .handled
+        }
+        if let key = ListKey(press.key), let move = ListNav.move(key, mods) {
+            let current = strips.firstIndex { $0.id == keys.strip }
+            if let i = ListNav.move(move, from: current, count: strips.count) { keys.strip = strips[i].id }
+            return .handled
+        }
+        return .ignored
     }
 
     // MARK: Hero
@@ -183,7 +227,7 @@ struct OverviewView: View {
     }
 
     private func waitingRow(_ strip: Strip, first: Bool) -> some View {
-        rowView(first: first, title: strip.title ?? "#\(strip.number)", meta: {
+        rowView(first: first, keyboard: keys.strip == strip.id, title: strip.title ?? "#\(strip.number)", meta: {
             Text(waitingMeta(strip))
                 .foregroundStyle(strip.draftError == nil ? WinTheme.faint : p.error)
         }, trailing: {
@@ -249,7 +293,7 @@ struct OverviewView: View {
     private func landedRow(_ row: RowModel, first: Bool) -> some View {
         let strip = row.strip
         let place = "\(strip.repo) #\(strip.number)"
-        return rowView(first: first, title: strip.title ?? "#\(strip.number)", meta: {
+        return rowView(first: first, keyboard: keys.strip == strip.id, title: strip.title ?? "#\(strip.number)", meta: {
             HStack(spacing: 0) {
                 if let reason = strip.reason {
                     Text(reason).foregroundStyle(WinTheme.amberInk)
@@ -302,7 +346,7 @@ struct OverviewView: View {
     private func approachRow(_ row: RowModel, first: Bool) -> some View {
         let strip = row.strip
         let place = "\(strip.repo) #\(strip.number)" + (strip.author.map { " · \($0)" } ?? "")
-        return rowView(first: first, title: strip.title ?? "#\(strip.number)", meta: {
+        return rowView(first: first, keyboard: keys.strip == strip.id, title: strip.title ?? "#\(strip.number)", meta: {
             Text(place).foregroundStyle(WinTheme.faint)
         }, trailing: {
             HStack(spacing: WinMetrics.s16) {
@@ -362,7 +406,7 @@ struct OverviewView: View {
 
     /// A 56 pt row: title (13 medium) over meta (12), the trailing content in its own column. The rule is drawn
     /// inside the row's top edge, so it adds no height.
-    private func rowView<Meta: View, Trailing: View>(first: Bool, title: String,
+    private func rowView<Meta: View, Trailing: View>(first: Bool, keyboard: Bool = false, title: String,
                                                      @ViewBuilder meta: () -> Meta,
                                                      @ViewBuilder trailing: () -> Trailing) -> some View {
         HStack(spacing: WinMetrics.s16) {
@@ -381,6 +425,8 @@ struct OverviewView: View {
             trailing()
         }
         .frame(height: 56)
+        .padding(.horizontal, keyboard ? WinMetrics.s8 : 0)
+        .background(RoundedRectangle(cornerRadius: 8).fill(keyboard ? WinTheme.active : Color.clear))
         .overlay(alignment: .top) {
             if !first {
                 Rectangle().fill(WinTheme.line).frame(height: 1)

@@ -134,7 +134,8 @@ extension OnboardingView {
                     },
                     onMove: { time, minute in
                         model.editSchedule { try ScheduleEditor.moveTime($0, from: time, hour: minute / 60, minute: minute % 60) }
-                    }
+                    },
+                    selected: model.selectedPin
                 )
                 .padding(.top, WinMetrics.s32)
                 HStack(spacing: WinMetrics.s8) {

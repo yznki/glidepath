@@ -20,6 +20,7 @@ struct ScheduleView: View {
     @ObservedObject var store: Store
     @StateObject private var model = ScheduleModel()
     @FocusState private var stripFocused: Bool
+    @Environment(\.undoManager) private var undoManager
 
     private var config: Config? { store.snap.config }
 
@@ -41,44 +42,43 @@ struct ScheduleView: View {
         .padding(.trailing, WinMetrics.canvasRight)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(isPresented: $model.addingTime) { addTimeSheet }
-        .onAppear { model.refreshWeek(store) }
+        .onAppear {
+            model.refreshWeek(store)
+            model.undoManager = undoManager
+        }
+        .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
+            takeAction()
+        }
+        .onChange(of: model.selectedPin) { _, pin in ShortcutContext.shared.pinSelected = pin != nil }
+        .onDisappear { ShortcutContext.shared.pinSelected = false }
     }
 
-    // MARK: Keys
+    // MARK: Keys and actions
 
-    /// On the day strip: ← → select the previous or next pin; ↑ ↓ move it 15 min later or earlier, ⇧ or ⌥ for the
-    /// hour and the quarter hour as noted; ⌫ deletes it; ⌘Z undoes this session's schedule changes.
+    /// On the day strip, the table's Schedule keys: ← → select a pin, ↑ ↓ or ⌥← ⌥→ move it 15 min, ⇧ moves it an hour.
+    /// Remove Time and Add Time come from the menus; the Edit menu's undo does the rest.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        let mods = ShortcutModifiers(press.modifiers)
-        if mods == [.command], press.characters == "z" {
-            guard !TextFocus.isEditing else { return .ignored }
-            model.undo(store)
-            return .handled
-        }
-        guard !TextFocus.isEditing else { return .ignored }
-        switch press.key {
-        case .leftArrow where mods.isEmpty:
-            model.select(-1, times: displayed)
-        case .rightArrow where mods.isEmpty:
-            model.select(1, times: displayed)
-        case .leftArrow where mods == [.option]:
-            model.nudge(store, by: -PinNudge.quarter)
-        case .rightArrow where mods == [.option]:
-            model.nudge(store, by: PinNudge.quarter)
-        case .upArrow where mods.isEmpty:
-            model.nudge(store, by: PinNudge.quarter)
-        case .downArrow where mods.isEmpty:
-            model.nudge(store, by: -PinNudge.quarter)
-        case .upArrow where mods == [.shift]:
-            model.nudge(store, by: 60)
-        case .downArrow where mods == [.shift]:
-            model.nudge(store, by: -60)
-        case .delete where mods.isEmpty:
-            model.deletePin(store)
+        guard !TextFocus.isEditing, let key = ShortcutKey.from(press),
+              let action = Shortcuts.action(key: key, modifiers: ShortcutModifiers(press.modifiers), scope: .schedule)
+        else { return .ignored }
+        switch action {
+        case .selectPrevPin: model.select(-1, times: displayed)
+        case .selectNextPin: model.select(1, times: displayed)
         default:
-            return .ignored
+            guard let minutes = action.pinMinutes else { return .ignored }
+            model.nudge(store, by: minutes)
         }
         return .handled
+    }
+
+    /// Remove Time (Edit > Delete) and Add Time (File > New) arrive here as pending actions.
+    private func takeAction() {
+        guard let action = WindowRouter.shared.take([.deletePin, .addTime]) else { return }
+        switch action {
+        case .deletePin: model.deletePin(store)
+        case .addTime: model.addingTime = true
+        default: break
+        }
     }
 
     /// The pins as the strip shows them, with a pin mid-nudge already at its new time.
@@ -332,8 +332,10 @@ final class ScheduleModel: ObservableObject {
     @Published var selectedPin: ScheduleTime?
     /// A pin being nudged: its time on disk, and where it is now. Saved once the keys go quiet.
     @Published private(set) var draft: (from: ScheduleTime, to: ScheduleTime)?
-    /// The schedules before this session's changes, newest last. ⌘Z pops one.
-    private var history: [[ScheduleTime]] = []
+    /// The schedule before the current nudge burst: what one undo restores.
+    private var burstStart: [ScheduleTime]?
+    /// The window's undo manager. Schedule changes register with it, so Edit > Undo and Redo work.
+    weak var undoManager: UndoManager?
     private var saveTask: Task<Void, Never>?
     @Published var newTime = Date()
     @Published var rowErrors: [String: String] = [:]
@@ -346,20 +348,20 @@ final class ScheduleModel: ObservableObject {
     }
 
     func addTime(_ store: Store, hour: Int, minute: Int) {
-        commit("time", store) { try ScheduleEditor.addTime($0, hour: hour, minute: minute) }
+        commit("time", store, undoTo: store.snap.config?.schedule) { try ScheduleEditor.addTime($0, hour: hour, minute: minute) }
     }
 
     func addFromSheet(_ store: Store) {
         let cal = Calendar.current
         let hour = cal.component(.hour, from: newTime)
         let minute = cal.component(.minute, from: newTime)
-        commit("time", store, then: { [self] ok in if ok { addingTime = false } }) {
+        commit("time", store, undoTo: store.snap.config?.schedule, then: { [self] ok in if ok { addingTime = false } }) {
             try ScheduleEditor.addTime($0, hour: hour, minute: minute)
         }
     }
 
     func removeTime(_ store: Store, _ time: ScheduleTime) {
-        commit("time", store) { try ScheduleEditor.removeTime($0, time) }
+        commit("time", store, undoTo: store.snap.config?.schedule) { try ScheduleEditor.removeTime($0, time) }
     }
 
     /// The sweep times as the strip shows them: the saved times, with a pin mid-nudge at its new time.
@@ -375,16 +377,17 @@ final class ScheduleModel: ObservableObject {
         guard let config = store.snap.config, let current = draft?.to ?? selectedPin else { return }
         let origin = draft?.from ?? current
         guard let target = PinNudge.target(from: current, by: minutes, among: displayedTimes(config)) else { return }
-        if draft == nil { history.append(config.schedule) }
+        if draft == nil { burstStart = config.schedule }
         draft = (from: origin, to: target)
         selectedPin = target
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled, let self, let d = self.draft else { return }
-            self.commit("time", store, then: { [weak self] ok in
+            let before = self.burstStart
+            self.commit("time", store, undoTo: before, then: { [weak self] _ in
                 self?.draft = nil
-                if !ok { self?.history.removeLast() }
+                self?.burstStart = nil
             }) {
                 try ScheduleEditor.moveTime($0, from: d.from, hour: d.to.hour, minute: d.to.minute)
             }
@@ -408,20 +411,21 @@ final class ScheduleModel: ObservableObject {
         let sorted = config.schedule.sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
         let index = sorted.firstIndex(of: pin) ?? 0
         let neighbour = index + 1 < sorted.count ? sorted[index + 1] : (index > 0 ? sorted[index - 1] : nil)
-        history.append(config.schedule)
-        commit("time", store, then: { [weak self] ok in
-            if ok { self?.selectedPin = neighbour } else { self?.history.removeLast() }
+        commit("time", store, undoTo: config.schedule, then: { [weak self] ok in
+            if ok { self?.selectedPin = neighbour }
         }) { try ScheduleEditor.removeTime($0, pin) }
     }
 
-    /// Restores the schedule from before the last change this session.
-    func undo(_ store: Store) {
-        guard let previous = history.popLast() else { return }
-        commit("time", store) { try ScheduleEditor.setSchedule($0, previous) }
+    /// Puts the schedule back to `times`. Undo and Redo call this; the inverse is registered before the save, so the
+    /// undo manager files it on the right stack.
+    func restoreSchedule(_ times: [ScheduleTime], _ store: Store) {
+        let current = store.snap.config?.schedule ?? []
+        undoManager?.registerUndo(withTarget: self) { $0.restoreSchedule(current, store) }
+        commit("time", store) { try ScheduleEditor.setSchedule($0, times) }
     }
 
     func movePin(_ store: Store, _ time: ScheduleTime, hour: Int, minute: Int) {
-        commit("time", store) { try ScheduleEditor.moveTime($0, from: time, hour: hour, minute: minute) }
+        commit("time", store, undoTo: store.snap.config?.schedule) { try ScheduleEditor.moveTime($0, from: time, hour: hour, minute: minute) }
     }
 
     func chooseDays(_ store: Store, _ choice: ScheduleView.DayChoice) {
@@ -450,7 +454,8 @@ final class ScheduleModel: ObservableObject {
     /// Applies one edit to config.toml as it is on disk now, and saves it off the main actor. On success the store
     /// reloads, the stamp shows and the counts refresh. On failure the message goes to `row` and nothing is written.
     /// The store reloads either way. `done` gets the outcome.
-    private func commit(_ row: String, _ store: Store, then done: @escaping (Bool) -> Void = { _ in },
+    private func commit(_ row: String, _ store: Store, undoTo before: [ScheduleTime]? = nil,
+                        then done: @escaping (Bool) -> Void = { _ in },
                         _ change: @escaping @Sendable (Config) throws -> Config) {
         let paths = store.paths
         Task {
@@ -469,6 +474,11 @@ final class ScheduleModel: ObservableObject {
             } catch {
                 rowErrors[row] = "Could not save: \(error.localizedDescription)"
                 ok = false
+            }
+            // The change is undoable when the schedule really changed: the file is read back to compare.
+            if ok, let before, let after = (try? Config.load(paths))?.schedule, after != before {
+                undoManager?.registerUndo(withTarget: self) { $0.restoreSchedule(before, store) }
+                undoManager?.setActionName("Change Sweep Times")
             }
             store.reload()
             if ok { refreshWeek(store) }

@@ -9,6 +9,7 @@ struct ShortcutState: Equatable {
     var paused = false
     var configured = true
     var repoSelected = false
+    var pinSelected = false
     var reviewSelected = false
     var reviewCanPost = false
     var reviewCanDiscard = false
@@ -25,6 +26,14 @@ enum ShortcutAvailability {
             return !s.onboarding && s.section == .reviews
         case .find:
             return s.onboarding || s.section == .repos
+        case .addTime:
+            return !s.onboarding && s.section == .schedule
+        case .discardDraft:
+            return inReviews && s.reviewCanDiscard
+        case .removeRepo:
+            return !s.onboarding && s.section == .repos && s.repoSelected
+        case .deletePin:
+            return s.pinSelected && (s.onboarding || s.section == .schedule)
         case .runSweep:
             return !s.sweepRunning && !s.onboarding && s.configured
         case .stopSweep:
@@ -35,15 +44,10 @@ enum ShortcutAvailability {
             return s.section == .repos && s.repoSelected && s.configured && !s.onboarding && !s.sweepRunning
         case .postReview:
             return inReviews && s.reviewCanPost
-        case .discardDraft:
-            return inReviews && s.reviewCanDiscard
         case .reviewAnyway:
             return inReviews && s.reviewIsLarge
         case .openOnGitHub, .copyLink, .copyReviewText:
             return inReviews
-        case .openLog, .addRepo, .closeWindow, .settings, .about, .checkUpdates, .hide, .quit,
-             .minimize, .zoom, .bringAllToFront, .shortcuts:
-            return true
         default:
             return true
         }
@@ -55,6 +59,16 @@ enum ShortcutAvailability {
         case .togglePause: return s.paused ? "Resume Sweeps" : "Pause Sweeps"
         default: return Shortcuts.shortcut(action).title
         }
+    }
+
+    /// Edit > Delete: the action for the selection in the current section, or nil when none applies.
+    static func contextDelete(_ s: ShortcutState) -> ShortcutAction? {
+        [ShortcutAction.discardDraft, .removeRepo, .deletePin].first { enabled($0, s) }
+    }
+
+    /// File > New: Add Time in Schedule, Add Repo everywhere else.
+    static func contextNew(_ s: ShortcutState) -> ShortcutAction {
+        s.section == .schedule && !s.onboarding ? .addTime : .addRepo
     }
 }
 
@@ -73,17 +87,76 @@ extension ListKey {
     }
 }
 
+extension ShortcutKey {
+    /// The table's key for a key press: a named key, or a character lower-cased.
+    static func from(_ press: KeyPress) -> ShortcutKey? {
+        switch press.key {
+        case .upArrow: return .upArrow
+        case .downArrow: return .downArrow
+        case .leftArrow: return .leftArrow
+        case .rightArrow: return .rightArrow
+        case .return: return .returnKey
+        case .escape: return .escape
+        case .delete: return .delete
+        case .space: return .space
+        case .tab: return .tab
+        case .pageUp: return .pageUp
+        case .pageDown: return .pageDown
+        case .home: return .home
+        case .end: return .end
+        default:
+            guard press.characters.count == 1, let c = press.characters.lowercased().first else { return nil }
+            return .character(c)
+        }
+    }
+}
+
+/// Pages the main window's detail scroll view, for Space in a review body. The detail is the wide scroll view; the
+/// list beside it is narrow, so the widest one wins.
+@MainActor
+enum ScrollPager {
+    static func pageDown() {
+        guard let root = NSApp.keyWindow?.contentView else { return }
+        let scrolls = descendants(of: root).compactMap { $0 as? NSScrollView }.filter { $0.bounds.width > 400 }
+        guard let widest = scrolls.max(by: { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height })
+        else { return }
+        widest.pageDown(nil)
+    }
+
+    private static func descendants(of view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap { descendants(of: $0) }
+    }
+}
+
 /// Whether a text field has focus. Plain-key shortcuts stay out of the way while it does; ⌘ combos and Esc still work.
 @MainActor
 enum TextFocus {
     static var isEditing: Bool { NSApp.keyWindow?.firstResponder is NSText }
 }
 
-/// The Reviews and Repos views publish their selection here, so the menus can enable the right items.
+/// What the repo picker's list offers the Edit menu while it has focus: Select All and Select None.
+struct RepoPickerActions {
+    let selectAll: () -> Void
+    let selectNone: () -> Void
+}
+
+struct RepoPickerKey: FocusedValueKey {
+    typealias Value = RepoPickerActions
+}
+
+extension FocusedValues {
+    var repoPicker: RepoPickerActions? {
+        get { self[RepoPickerKey.self] }
+        set { self[RepoPickerKey.self] = newValue }
+    }
+}
+
+/// The Reviews, Repos and Schedule views publish their selection here, so the menus can enable the right items.
 @MainActor
 final class ShortcutContext: ObservableObject {
     static let shared = ShortcutContext()
     @Published var repoSelected = false
+    @Published var pinSelected = false
     @Published var reviewSelected = false
     @Published var reviewCanPost = false
     @Published var reviewCanDiscard = false
@@ -111,8 +184,10 @@ enum ShortcutDispatch {
             router.deliver(action, section: .reviews)
         case .addRepo:
             router.deliver(action, section: .repos)
+        case .addTime:
+            router.deliver(action, section: .schedule)
         case .find, .reviewRepoNow, .postReview, .discardDraft, .reviewAnyway, .openOnGitHub,
-             .copyLink, .copyReviewText, .editRules, .removeRepo:
+             .copyLink, .copyReviewText, .editRules, .removeRepo, .deletePin:
             router.deliver(action, section: nil)
         case .runSweep: store.runNow()
         case .stopSweep: store.stopRun()
@@ -132,20 +207,22 @@ enum ShortcutDispatch {
     }
 }
 
-/// The menu bar menus, built from `Shortcuts`. Menu enablement follows `ShortcutAvailability`.
+/// The menu bar menus, built from `Shortcuts`. Enablement follows `ShortcutAvailability`. File > New and Edit > Delete
+/// are context items: their title and action follow the section.
 @MainActor
 struct GlidepathCommands: Commands {
     @ObservedObject private var router = WindowRouter.shared
     @ObservedObject private var store = Store.shared
     @ObservedObject private var context = ShortcutContext.shared
+    @FocusedValue(\.repoPicker) private var picker: RepoPickerActions?
 
     private var state: ShortcutState {
         ShortcutState(section: router.section, onboarding: router.showOnboarding,
                       sweepRunning: store.snap.running, paused: store.snap.paused,
                       configured: store.snap.config?.repos.isEmpty == false,
-                      repoSelected: context.repoSelected, reviewSelected: context.reviewSelected,
-                      reviewCanPost: context.reviewCanPost, reviewCanDiscard: context.reviewCanDiscard,
-                      reviewIsLarge: context.reviewIsLarge)
+                      repoSelected: context.repoSelected, pinSelected: context.pinSelected,
+                      reviewSelected: context.reviewSelected, reviewCanPost: context.reviewCanPost,
+                      reviewCanDiscard: context.reviewCanDiscard, reviewIsLarge: context.reviewIsLarge)
     }
 
     var body: some Commands {
@@ -155,9 +232,29 @@ struct GlidepathCommands: Commands {
         CommandGroup(replacing: .appVisibility) { item(.hide) }
         CommandGroup(replacing: .appTermination) { item(.quit) }
 
-        CommandGroup(replacing: .newItem) { item(.addRepo) }
+        CommandGroup(replacing: .newItem) { contextNew }
         CommandGroup(replacing: .saveItem) { item(.closeWindow) }
 
+        // Standard Cut, Copy and Paste go to the responder chain; Select All is the picker's when the picker has focus.
+        CommandGroup(replacing: .pasteboard) {
+            Button("Cut") { NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil) }
+                .keyboardShortcut("x", modifiers: .command)
+            Button("Copy") { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) }
+                .keyboardShortcut("c", modifiers: .command)
+            Button("Paste") { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) }
+                .keyboardShortcut("v", modifiers: .command)
+        }
+        CommandGroup(after: .pasteboard) { contextDelete }
+        CommandGroup(after: .pasteboard) {
+            Button("Select All") {
+                if let picker { picker.selectAll() } else { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+            }
+            .keyboardShortcut("a", modifiers: .command)
+            if let picker {
+                Button("Select None") { picker.selectNone() }
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+            }
+        }
         CommandGroup(after: .textEditing) { item(.find) }
 
         CommandGroup(before: .sidebar) {
@@ -177,6 +274,24 @@ struct GlidepathCommands: Commands {
             ForEach(Shortcuts.items(in: .window), id: \.action) { item($0.action) }
         }
         CommandGroup(replacing: .help) { item(.shortcuts) }
+    }
+
+    /// File > New: one slot, "Add Repo…" or "Add Time…" by section.
+    @ViewBuilder
+    private var contextNew: some View {
+        item(ShortcutAvailability.contextNew(state))
+    }
+
+    /// Edit > Delete: "Discard Draft", "Remove Repo…" or "Remove Time" by section; disabled when none applies.
+    @ViewBuilder
+    private var contextDelete: some View {
+        if let action = ShortcutAvailability.contextDelete(state) {
+            item(action)
+        } else {
+            Button("Delete") {}
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(true)
+        }
     }
 
     /// One menu item: its title and key come from the table, its state from `state`.
