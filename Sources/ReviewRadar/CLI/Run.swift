@@ -3,37 +3,64 @@ import Foundation
 /// Clone management shared by `init` and `run`. Clones are detached at the default branch and are
 /// never used for work; a dirty clone stops the run instead of being reset.
 enum RepoClone {
+    /// Upper bound for clone and fetch. A stuck network should not hold the run lock for hours.
+    static let slowTimeout: TimeInterval = 30 * 60
+
     static func sync(_ repo: RepoConfig, env: [String: String]) throws {
         let fm = FileManager.default
         if !fm.fileExists(atPath: repo.clone + "/.git") {
+            var createdHere = false
             if fm.fileExists(atPath: repo.clone) {
                 let contents = (try? fm.contentsOfDirectory(atPath: repo.clone)) ?? []
-                guard contents.isEmpty else { throw RunError("\(repo.clone) exists and is not a git checkout") }
+                guard contents.isEmpty else {
+                    throw RunError("\(repo.clone) exists and is not a git checkout; move it aside or change clone")
+                }
+            } else {
+                createdHere = true
             }
-            let r = gh(["repo", "clone", repo.slug, repo.clone, "--", "--quiet"], env)
-            guard r.ok else { throw RunError("clone failed: \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))") }
+            let r = gh(["repo", "clone", repo.slug, repo.clone, "--", "--filter=blob:none", "--quiet"], env, slowTimeout)
+            guard r.ok else {
+                // Remove what this call created, so the next run starts clean instead of finding a half clone.
+                if createdHere { try? fm.removeItem(atPath: repo.clone) }
+                throw RunError("clone failed: \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+            }
         }
-        let status = git(["-C", repo.clone, "status", "--porcelain"], env)
-        guard status.ok, status.stdout.isEmpty else {
+        try excludeGitNexusIndex(repo.clone)
+
+        let status = git(["-C", repo.clone, "status", "--porcelain"], env, 120)
+        guard status.ok else {
+            throw RunError("clone is broken, delete \(repo.clone) and run again (git status failed)")
+        }
+        guard status.stdout.isEmpty else {
             throw RunError("clone at \(repo.clone) has local changes; refusing to run")
         }
-        let branch = gh(["repo", "view", repo.slug, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"], env)
+        let branch = gh(["repo", "view", repo.slug, "--json", "defaultBranchRef", "--jq", ".defaultBranchRef.name"], env, 120)
             .stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !branch.isEmpty else { throw RunError("could not read the default branch") }
-        guard git(["-C", repo.clone, "fetch", "--quiet", "--prune", "origin"], env).ok else {
+        guard git(["-C", repo.clone, "fetch", "--quiet", "--prune", "origin"], env, slowTimeout).ok else {
             throw RunError("git fetch failed")
         }
-        guard git(["-C", repo.clone, "checkout", "--quiet", "--detach", "origin/\(branch)"], env).ok else {
+        guard git(["-C", repo.clone, "checkout", "--quiet", "--detach", "origin/\(branch)"], env, 120).ok else {
             throw RunError("could not check out origin/\(branch)")
         }
     }
 
-    private static func gh(_ args: [String], _ env: [String: String]) -> ShellResult {
-        Shell.run("gh", args, env: env, timeout: 120)
+    /// GitNexus writes its index into the checkout. Excluding it keeps `git status` clean, so the
+    /// clean-clone check still passes.
+    static func excludeGitNexusIndex(_ clone: String) throws {
+        let path = clone + "/.git/info/exclude"
+        let existing = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+        guard !existing.split(separator: "\n").contains(".gitnexus/") else { return }
+        let prefix = existing.isEmpty || existing.hasSuffix("\n") ? "" : "\n"
+        try (existing + prefix + ".gitnexus/\n").write(toFile: path, atomically: true, encoding: .utf8)
     }
 
-    private static func git(_ args: [String], _ env: [String: String]) -> ShellResult {
-        Shell.run("git", args, env: env, timeout: 300)
+    private static func gh(_ args: [String], _ env: [String: String], _ timeout: TimeInterval) -> ShellResult {
+        Shell.run("gh", args, env: env, timeout: timeout)
+    }
+
+    private static func git(_ args: [String], _ env: [String: String], _ timeout: TimeInterval) -> ShellResult {
+        Shell.run("git", args, env: env, timeout: timeout)
     }
 }
 
