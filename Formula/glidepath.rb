@@ -1,5 +1,5 @@
 class Glidepath < Formula
-  desc "Scheduled Claude Code PR reviewer for GitHub repos, with a macOS menu bar radar"
+  desc "PRs reviewed before you're back: scheduled Claude Code reviews for GitHub PRs, with a menu bar app"
   homepage "https://github.com/yznki/glidepath"
   url "https://github.com/yznki/glidepath/archive/refs/tags/v1.0.0.tar.gz"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"

@@ -3,7 +3,9 @@
 The menu bar app shows a sweep as an approach profile. Each PR flies down a glide slope to a runway and lands with
 a verdict. Left to right is progress. The popover answers "do I need to act?" first.
 
-This is the final design (design pass 4 wins where earlier passes conflict). Gaps between the brief and the build are
+Tagline everywhere: "PRs reviewed before you're back."
+
+This is the final design (design pass 4 wins where earlier passes conflict; the pre-launch fixes come after it). Gaps between the brief and the build are
 listed at the end, with the reason.
 
 ## 1. Header
@@ -12,7 +14,7 @@ Every header line starts at x = 16. No coloured dots before a headline.
 
 | State | Line 1 (17/600) | Line 2 (13) | Line 3 (12, tertiary) |
 |---|---|---|---|
-| running | "Reviewing 3 of 7" (active of total) | "2 need changes" in changes text (13/500); with none, "4 landed" | "Started 10:12 AM" |
+| running | "3 in flight, 4 landed" (in flight: active PRs; landed: PRs with a verdict) | "2 need changes" in changes text (13/500); with none, no line 2 | "Started 10:12 AM" |
 | idle, changes | "2 need changes" | "Last sweep 10:12 AM · 7 PRs" | "Next sweep 1:00 PM, in 38 min" |
 | idle, clear | "All clear" | "Last sweep 10:12 AM · 3 PRs" | "Next sweep 1:00 PM, in 38 min" |
 | paused | "Paused" (changes text) | "Last sweep 10:12 AM · scheduled sweeps skipped" | "Paused since 10:35 AM" |
@@ -35,8 +37,8 @@ Shared rules:
 
 - **Runway**: 2 pt bar from x = 268 to 328, #D0D0D0 (light) / #4A4A4A (dark), in every state. Landed marks sit on it.
 - **Slope**: 2 pt line, #3A3A3C (light) / #D0D0D0 (dark).
-- **Landed marks** (10 pt), on the runway in list order, 16 pt apart (a 6 pt gap), the first aligned under the "land"
-  label's x. Past four marks the spacing tightens to fit the 60 pt runway, and past six the marks shrink.
+- **Landed marks** (10 pt), on the runway in list order, 16 pt apart (a 6 pt gap), the first starting at the runway's
+  left end (x = 268). Past four marks the spacing tightens to fit the 60 pt runway, and past six the marks shrink.
   - approved: filled circle, #1F8A52 (light) / #3DD68C (dark);
   - changes: filled triangle, #B86E00 / #FFB020;
   - skipped: dash, #6B6B6B / #9A9A9A;
@@ -50,11 +52,13 @@ Shared rules:
 Running (64 pt):
 
 - **Slope**: from (0, 36) to (268, 52), so the stage labels sit above it, clear of the tick row.
-- **Stage labels**: "gather", "review", "check", "land" at x = 0, 88, 176 and 268, y = 0. 11/500 tertiary.
+- **Stage labels**: "gather", "review", "check", "land", each centred over its stage x (see Stage columns), in the top
+  row (y = 0 to 12). 11/500 tertiary. The "land" label is over stage 4 (x = 234.5), so it sits left of the landed marks.
 - **Stage columns**: stage n is centred at x = (n - 0.5) / 4 * 268.
 - **In-flight PRs**: a 10 pt circle in the system blue, spread 11 pt apart along the slope within their stage. Each is
-  labelled with its number ("#1113", 11/500 tertiary), 11 pt above the dot. Where two dots sit together, only the
-  hovered one, or else the most advanced, shows its label.
+  labelled with its number ("#1113", 11/500 tertiary). Every number sits on one baseline (y = 29), above all the dots,
+  and centred on its dot's x. Where two dots sit together, only the hovered one, or else the most advanced, shows its
+  label.
 - **Queued PRs** (running, not started): a hollow grey circle at the top of the slope.
 - **Runway top**: y = 52.
 
@@ -62,8 +66,8 @@ Quiet (36 pt):
 
 - **Slope**: from (0, 6) to (268, 30). Runway top: y = 30.
 - **Empty and first run**: the slope is dashed (4 pt dash, 4 pt gap) at 50%, and the runway is empty.
-- **Failed**: a red cross, 10 pt, just short of the touchdown point (x = 262), clear of the first landed mark. The
-  runway stays grey.
+- **Failed**: a red cross, 10 pt, on the slope's end cap (centre x = 258), before the runway. It does not overlap any
+  landed mark. The runway stays grey.
 - **Paused**: the whole profile at 40%, and two pause bars (2 pt wide) at the runway's right end.
 
 ## 3. Rows
@@ -94,7 +98,8 @@ pills and no chip backgrounds.
 In-flight rows keep the four-dash meter before the label: done dashes ink at 35%, the current dash the system blue,
 future dashes ink at 12%. The current dash is the brightest in both modes.
 
-When paused, status labels and marks render at 60% opacity. Carried-over rows draw their mark in tertiary grey.
+When paused, status labels and marks render at 60% opacity. Carried-over rows dim both the mark and the label to
+tertiary, so a grey mark never sits beside a green label.
 
 Hover: the row fills with ink at 5%, inset 8 pt.
 
@@ -162,9 +167,10 @@ the sheet fits. The labels give the size.
   (already in the build), drop the 20 pt group space, or make changes rows 44 pt.
 - **Pause glyph**: the 12 pt pause glyph before "Paused" is not in the build. The headline is in the changes colour
   without it.
-- **Carried-over rows**: the annotation and the grey mark are built, and the failed fixture shows them. The run
-  engine does not yet set `carriedFrom` on a PR state, so live runs never show it.
+- **Carried-over rows**: after a failed sweep, a PR with no verdict in the run takes the newest earlier verdict and the
+  start of the run that decided it. The row shows "from 10:12 AM" on line 2.
 - **Menu bar cross**: placed just past the touchdown point rather than centred on it, so it does not sit on the runway.
+- **Popover height**: the popover is capped at 640 pt. Past that, the list scrolls.
 - **Not in this design**: the bold landing moment beyond the slide, and the appearance of the mark, wait for v1.1.
 
 ## 10. Behaviour kept from earlier passes
