@@ -218,4 +218,15 @@ final class SecurityTests: XCTestCase {
         XCTAssertThrowsError(try StrictFlags.parse(["--pattern", "--force"], allowed: ["--repo"]))
         XCTAssertEqual(try StrictFlags.parse(["--pattern", "--force"], allowed: ["--pattern"])["--pattern"], "--force")
     }
+
+    func testSearchOutputIsCappedPerLineAndInTotal() {
+        let long = String(repeating: "x", count: 1000)
+        let capped = CodeCommands.capped(long)
+        XCTAssertEqual(capped.count, CodeCommands.maxLineChars + 1)
+        let many = (0..<5000).map { "src/file\($0).swift:1:let value = \($0)" }.joined(separator: "\n")
+        let out = CodeCommands.capped(many)
+        XCTAssertLessThanOrEqual(out.utf8.count, CodeCommands.totalBytes + 100)
+        XCTAssertTrue(out.hasSuffix("narrow the pattern]"))
+        XCTAssertEqual(CodeCommands.capped("a\nb"), "a\nb")
+    }
 }

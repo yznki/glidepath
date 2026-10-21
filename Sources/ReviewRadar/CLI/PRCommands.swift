@@ -96,7 +96,9 @@ enum StrictFlags {
 /// `review-radar code grep|files`: read-only search of the run's checkout. These replace the Grep and Glob
 /// tools, which cannot be scoped: a bare Grep allow rule reads any path on the machine.
 enum CodeCommands {
-    static let maxLines = 200
+    /// Total output cap, and the cap per line. Past the total, the output stops with a note.
+    static let totalBytes = 30_000
+    static let maxLineChars = 300
 
     static func main(_ args: [String]) -> Int32 {
         do {
@@ -135,15 +137,29 @@ enum CodeCommands {
         let r = Shell.run("git", grepArguments(clone: clone, pattern: pattern), timeout: 120)
         if r.status == 1 { return "no matches" }
         guard r.ok else { throw CommandError("search failed: \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))") }
-        let lines = r.stdout.split(separator: "\n", omittingEmptySubsequences: false)
-        let shown = lines.prefix(maxLines).joined(separator: "\n")
-        return lines.count > maxLines ? shown + "\n[truncated at \(maxLines) lines]" : shown
+        return capped(r.stdout)
     }
 
     static func files(clone: String) throws -> String {
         let r = Shell.run("git", ["-C", clone, "ls-files"], timeout: 120)
         guard r.ok else { throw CommandError("file list failed") }
-        return r.stdout
+        return capped(r.stdout)
+    }
+
+    /// Each line cut to `maxLineChars`; the whole cut to `totalBytes`, with a note when it stops early.
+    static func capped(_ text: String) -> String {
+        var out: [String] = []
+        var size = 0
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+            let clipped = line.count > maxLineChars ? String(line.prefix(maxLineChars)) + "…" : String(line)
+            if size + clipped.utf8.count + 1 > totalBytes {
+                out.append("[truncated: output passed \(totalBytes / 1000) KB; narrow the pattern]")
+                break
+            }
+            out.append(clipped)
+            size += clipped.utf8.count + 1
+        }
+        return out.joined(separator: "\n")
     }
 }
 
