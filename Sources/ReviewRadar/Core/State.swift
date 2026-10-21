@@ -94,6 +94,10 @@ struct RunState: Codable, Equatable {
         }
     }
 
+    mutating func ensureRepo(_ slug: String) {
+        _ = repoIndex(slug)
+    }
+
     mutating func setRepoError(_ slug: String, _ message: String) {
         let ri = repoIndex(slug)
         repos[ri].error = message
