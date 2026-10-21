@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+/* hero: field 176 tall at the title line (52); text block centred under it on the canvas axis */
+.field{position:absolute;left:0;top:52px}
+.hero{margin-top:200px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.hero h1{font-size:32px;line-height:40px;letter-spacing:-.6px}
+.hero .acts{display:flex;align-items:center;gap:16px;margin-top:20px}
+.hero .when{font-size:13px;color:var(--faint)}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--gap);margin-top:32px;flex:1;min-height:0}
+.acts2{display:flex;gap:16px;flex:none}
+.acts2 .d{color:var(--faint)}
+.meter{display:flex;gap:4px;flex:none}.meter i{width:12px;height:4px;border-radius:2px;background:#2a2a2e}.meter i.d{background:#5a5a60}.meter i.c{background:var(--blue)}</style></head><body>
+<div class="win"><div class="lights"><i></i><i></i><i></i></div>
+<div data-side="overview"></div>
+<div class="main">
+  <div class="field" data-field="879" data-d="176" data-t="0.45"></div>
+  <div class="hero">
+    <h1>Reviewing 3 of 7</h1>
+    <div class="sub num">Started 1:00 PM · 4 landed, 2 need changes · 188k tokens so far</div>
+    <div class="acts"><button class="btn big">Stop sweep</button></div>
+  </div>
+  <div class="cols"><div class="panel" style="grid-column:1/-1"><div class="ph"><h2>On approach</h2><span>3 in flight · 4 landed</span></div>
+<div class="row"><div class="grow"><div class="t">Add retry to the webhook sender</div><div class="m">lumen/api #1231 · lea</div></div><div class="meter"><i class="d"></i><i class="d"></i><i class="c"></i><i></i></div><div class="st do">Check</div></div>
+<div class="row"><div class="grow"><div class="t">Cache org permissions per request in the audit log</div><div class="m">lumen/api #1212 · omar</div></div><div class="meter"><i class="d"></i><i class="c"></i><i></i><i></i></div><div class="st do">Review</div></div>
+<div class="row"><div class="grow"><div class="t">Move invoices to the new storage bucket</div><div class="m">lumen/web #94 · sam</div></div><div class="meter"><i class="c"></i><i></i><i></i><i></i></div><div class="st do">Gather</div></div>
+<div class="pfoot"><a class="link">Open the log</a></div></div></div>
+</div></div>
+<script src="kit.js"></script></body></html>

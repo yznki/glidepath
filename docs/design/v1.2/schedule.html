@@ -1,0 +1,53 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.day{margin-top:24px;background:var(--surface);border-radius:14px;padding:20px 24px 16px}
+.track{position:relative;height:72px}
+.rw{position:absolute;left:0;right:0;top:52px;height:2px;background:#3a3a3e}
+.night{position:absolute;top:40px;height:26px;background:#0E0E10;border-radius:4px}
+.tm{position:absolute;top:0;width:64px;margin-left:-32px;text-align:center}
+.tm .lab{font-size:13px;line-height:18px;font-weight:600}
+.tm .pin{width:2px;height:24px;background:var(--amber);margin:4px auto 0}
+.tm .pt{width:12px;height:12px;border-radius:50%;background:var(--amber);margin:0 auto}
+.now{position:absolute;top:40px;width:2px;height:26px;margin-left:-1px;background:var(--blue);border-radius:1px}
+.ticks{position:relative;height:16px;margin-top:8px;font-size:11px;line-height:16px;color:var(--faint)}
+.ticks span{position:absolute;transform:translateX(-50%)}
+.ticks span:first-child{transform:none}.ticks span:last-child{transform:translateX(-100%)}
+.secs{margin-top:8px}
+.stp{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.stp .box{display:flex;align-items:center;height:32px;border-radius:8px;border:1px solid var(--control);background:var(--surface)}
+.stp .box b{min-width:56px;text-align:right;padding:0 10px;font-weight:500;color:var(--text)}
+.stp .box i{width:28px;height:30px;display:flex;align-items:center;justify-content:center;border-left:1px solid var(--control);font-style:normal;color:var(--muted)}
+.kpi{display:flex;gap:40px}
+.kpi div{font-size:12px;line-height:16px;color:var(--faint)}
+.kpi b{display:block;font-size:24px;line-height:32px;font-weight:600;color:var(--text)}
+</style></head><body>
+<div class="win"><div class="lights"><i></i><i></i><i></i></div>
+<div data-side="schedule"></div>
+<div class="main">
+  <div class="titlerow"><div><h1>Schedule</h1><div class="sub">Three sweeps every weekday. Next at 7:00 PM, in 2 h 41 min.</div></div>
+    <div class="right">Pause sweeps<div class="toggle off"></div></div></div>
+  <div class="day">
+    <div class="track">
+      <div class="rw"></div>
+      <div class="night" style="left:0;width:25%"></div><div class="night" style="left:91.67%;width:8.33%"></div>
+      <div class="tm" style="left:29.17%"><div class="lab">7 AM</div><div class="pin"></div><div class="pt"></div></div>
+      <div class="tm" style="left:54.17%"><div class="lab">1 PM</div><div class="pin"></div><div class="pt"></div></div>
+      <div class="tm" style="left:79.17%"><div class="lab">7 PM</div><div class="pin"></div><div class="pt"></div></div>
+      <div class="now" style="left:68.06%"></div>
+    </div>
+    <div class="ticks num"><span style="left:0">12 AM</span><span style="left:25%">6 AM</span><span style="left:50%">12 PM</span><span style="left:75%">6 PM</span><span style="left:100%">12 AM</span></div>
+  </div>
+  <div class="secs">
+  <div class="sec" style="box-shadow:none"><div class="l"><b>Sweep times</b><span>Or click the day above.</span></div>
+    <div class="ctl"><span class="chip">7:00 AM ×</span><span class="chip">1:00 PM ×</span><span class="chip">7:00 PM ×</span><a class="link">Add time…</a></div></div>
+  <div class="sec"><div class="l"><b>Days</b><span>Sweeps skip the other days.</span></div>
+    <div class="ctl"><div class="seg"><span class="on">Weekdays</span><span>Every day</span><span>Custom…</span></div></div></div>
+  <div class="sec"><div class="l"><b>Limits per sweep</b><span>Keep the token bill predictable.</span></div>
+    <div class="ctl" style="gap:24px">
+      <div class="stp">PRs<div class="box"><b class="num">10</b><i>−</i><i>+</i></div></div>
+      <div class="stp">Lines per PR<div class="box"><b class="num">8,000</b><i>−</i><i>+</i></div></div></div></div>
+  <div class="sec"><div class="l"><b>This week</b><span>Since Monday.</span></div>
+    <div class="ctl kpi num"><div><b>31</b>reviews</div><div><b>9</b>need changes</div><div><b>2.1M</b>tokens</div></div></div>
+  </div>
+</div></div>
+<script src="kit.js"></script></body></html>

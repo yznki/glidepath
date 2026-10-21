@@ -248,3 +248,29 @@ struct SettingRow<Control: View>: View {
         }
     }
 }
+
+/// Set only by snapshot rendering. ImageRenderer draws ScrollView blank, so a snapshot draws the content inline.
+private struct OffscreenRenderKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var offscreenRender: Bool {
+        get { self[OffscreenRenderKey.self] }
+        set { self[OffscreenRenderKey.self] = newValue }
+    }
+}
+
+/// A vertical scroll view. Offscreen (snapshots) it is the content itself, since ImageRenderer draws ScrollView blank.
+struct WinScroll<Content: View>: View {
+    @Environment(\.offscreenRender) private var offscreen
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if offscreen {
+            content()
+        } else {
+            ScrollView { content() }
+        }
+    }
+}

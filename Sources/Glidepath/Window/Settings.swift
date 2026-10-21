@@ -11,7 +11,7 @@ struct SettingsView: View {
     private var config: Config? { store.snap.config }
 
     var body: some View {
-        ScrollView {
+        WinScroll {
             VStack(alignment: .leading, spacing: 0) {
                 TitleRow(saved: model.saved)
                 SettingRow(title: "Notifications", detail: "Posts a notification when a sweep finishes.",
@@ -236,6 +236,10 @@ final class SettingsModel: ObservableObject {
     /// Reads the live login item and runs the tool checks.
     func refresh(_ store: Store) {
         loginOn = store.loginItemOn
+        if store.isFixture {
+            tools = store.snap.tools ?? []
+            return
+        }
         runChecks(store.paths)
     }
 

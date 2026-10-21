@@ -61,7 +61,7 @@ struct ReposView: View {
                 .foregroundStyle(WinTheme.text)
                 .frame(height: 32, alignment: .leading)
                 .padding(.horizontal, WinMetrics.s20)
-            ScrollView {
+            WinScroll {
                 VStack(spacing: 0) {
                     ForEach(repos, id: \.slug) { repo in
                         listRow(repo)
@@ -149,7 +149,7 @@ struct RepoDetail: View {
     private enum AuthorChoice: Hashable { case collaborators, anyone, people }
 
     var body: some View {
-        ScrollView {
+        WinScroll {
             VStack(alignment: .leading, spacing: 0) {
                 titleRow
                 postingSection

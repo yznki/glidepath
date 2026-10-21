@@ -71,6 +71,81 @@ enum Snapshotter {
         }
         writeMenuBar(to: dir.appendingPathComponent("menubar.png"))
         writeDashboard(to: dir.appendingPathComponent("index.html"), now: now)
+        writeWindowShots(to: dir.appendingPathComponent("app", isDirectory: true), now: now)
+    }
+
+    /// Every window section and onboarding step, light and dark, from `WindowFixtures`. Each store is a fixture store,
+    /// so nothing here reads the config, the state folders or launchd. Sections draw their scroll lists inline
+    /// (`offscreenRender`), since ImageRenderer draws ScrollView blank.
+    static func writeWindowShots(to dir: URL, now: Date) {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let sections: [(String, WindowSection)] = [
+            ("overview", .overview), ("running", .overview), ("reviews", .reviews),
+            ("repos", .repos), ("schedule", .schedule), ("settings", .settings),
+        ]
+        for (name, section) in sections {
+            let store = Store(snapshot: WindowFixtures.section(name, now: now))
+            let screen = WindowScreen(store: store, router: WindowRouter(section: section, showOnboarding: false))
+            for dark in [true, false] {
+                writeWindow(screen, dark: dark, to: dir.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png"))
+            }
+        }
+        let steps: [(String, OnboardingStep)] = [
+            ("onb-welcome", .welcome), ("onb-tools", .tools), ("onb-repos", .repos),
+            ("onb-review", .review), ("onb-schedule", .schedule), ("onb-sweep", .firstSweep),
+        ]
+        let paths = Paths()
+        for (name, step) in steps {
+            let store = Store(snapshot: Snapshot())
+            let model = WindowFixtures.onboarding(step, now: now, paths: paths)
+            let screen = WindowScreen(store: store, router: WindowRouter(showOnboarding: true), onboarding: model)
+            for dark in [true, false] {
+                writeWindow(screen, dark: dark, to: dir.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png"))
+            }
+        }
+    }
+
+    /// One window screen in the mockup frame: 1100x720, radius 12, a drop shadow, a 1 pt edge, the three fake traffic
+    /// lights at (20, 20), and a 40 pt #2a2a2d backdrop. Drawn at 2x, so the PNG is 2360x1600 like the mockups.
+    static func writeWindow<V: View>(_ view: V, dark: Bool, to url: URL) {
+        let shape = RoundedRectangle(cornerRadius: 12)
+        let framed = view
+            .frame(width: WinMetrics.windowWidth, height: WinMetrics.windowHeight)
+            .clipShape(shape)
+            .overlay(alignment: .topLeading) {
+                HStack(spacing: WinMetrics.s8) {
+                    ForEach(["FF5F57", "FEBC2E", "28C840"], id: \.self) { hex in
+                        Circle().fill(Color(hex: hex)).frame(width: 12, height: 12)
+                    }
+                }
+                .padding(.leading, 20)
+                .padding(.top, 20)
+            }
+            .overlay { shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1) }
+            .shadow(color: .black.opacity(0.5), radius: 40, y: 30)
+            .padding(40)
+            .frame(width: WinMetrics.windowWidth + 80, height: WinMetrics.windowHeight + 80)
+            .background(Color(hex: "2A2A2D"))
+            .environment(\.colorScheme, dark ? .dark : .light)
+            .environment(\.offscreenRender, true)
+        // The window's colours are dynamic NSColors, which resolve against the drawing appearance.
+        let renderer = ImageRenderer(content: framed)
+        renderer.scale = 2
+        var image: CGImage?
+        (NSAppearance(named: dark ? .darkAqua : .aqua) ?? NSAppearance.currentDrawing())
+            .performAsCurrentDrawingAppearance { image = renderer.cgImage }
+        guard let cg = image,
+              let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else {
+            print("render failed: \(url.lastPathComponent)")
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try png.write(to: url)
+            print("wrote \(url.path)")
+        } catch {
+            print("write failed: \(url.path): \(error.localizedDescription)")
+        }
     }
 
     /// The dashboard page for the fixture runs and one held draft. Written as HTML only; the browser screenshot is

@@ -218,7 +218,7 @@ extension OnboardingView {
             if showsRun {
                 sweepField
                     .padding(.top, WinMetrics.s24)
-                ScrollView {
+                WinScroll {
                     VStack(spacing: 0) {
                         ForEach(Array(model.liveStrips.enumerated()), id: \.element.id) { index, strip in
                             sweepRow(strip, first: index == 0)

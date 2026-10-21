@@ -10,9 +10,10 @@ struct OnboardingView: View {
     @StateObject var model: OnboardingModel
     @Environment(\.accessibilityReduceMotion) var reduceMotion
 
-    init(store: Store) {
+    /// `model` is nil in the app; snapshot rendering passes a fixture model.
+    init(store: Store, model: OnboardingModel? = nil) {
         self.store = store
-        _model = StateObject(wrappedValue: OnboardingModel(paths: store.paths))
+        _model = StateObject(wrappedValue: model ?? OnboardingModel(paths: store.paths))
     }
 
     var body: some View {
@@ -248,7 +249,7 @@ struct OnboardingView: View {
                     .font(.system(size: 13))
                     .foregroundStyle(WinTheme.faint)
             } else {
-                ScrollView {
+                WinScroll {
                     VStack(spacing: 0) {
                         ForEach(Array(rows.enumerated()), id: \.element.slug) { index, repo in
                             repoRow(repo, first: index == 0)
@@ -555,6 +556,19 @@ final class OnboardingModel: ObservableObject {
         let existing = try? Config.load(paths)
         base = existing
         state = OnboardingState.initial(existing: existing)
+    }
+
+    /// Snapshot rendering: a model with the given fields and nothing read from disk, run or launched.
+    init(fixture: OnboardingState, paths: Paths, tools: [ToolRow] = [], repos: [DiscoveredRepo] = [],
+         repoList: RepoListState = .loaded, liveStrips: [Strip] = [], backupNote: String? = nil) {
+        self.paths = paths
+        base = nil
+        state = fixture
+        toolRows = tools
+        self.repos = repos
+        self.repoList = repoList
+        self.liveStrips = liveStrips
+        self.backupNote = backupNote
     }
 
     /// True once the first sweep has landed: the rail dot rests on the runway.

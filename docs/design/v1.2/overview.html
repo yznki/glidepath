@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+/* hero: field 176 tall at the title line (52); text block centred under it on the canvas axis */
+.field{position:absolute;left:0;top:52px}
+.hero{margin-top:200px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.hero h1{font-size:32px;line-height:40px;letter-spacing:-.6px}
+.hero .acts{display:flex;align-items:center;gap:16px;margin-top:20px}
+.hero .when{font-size:13px;color:var(--faint)}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:var(--gap);margin-top:32px;flex:1;min-height:0}
+.acts2{display:flex;gap:16px;flex:none}
+.acts2 .d{color:var(--faint)}
+</style></head><body>
+<div class="win"><div class="lights"><i></i><i></i><i></i></div>
+<div data-side="overview"></div>
+<div class="main">
+  <div class="field" data-field="879" data-d="176" data-t="1"></div>
+  <div class="hero">
+    <h1>2 PRs need changes</h1>
+    <div class="sub num">Last sweep today at 1:00 PM · 7 PRs in 9 min · 412k tokens</div>
+    <div class="acts"><button class="btn primary big">Run sweep now</button></div>
+  </div>
+  <div class="cols"><div class="panel"><div class="ph"><h2>Waiting on you</h2><span>3</span></div>
+<div class="row"><div class="grow"><div class="t">Cache org permissions per request in the audit log</div><div class="m">lumen/api #1212 · draft, changes requested</div></div><div class="acts2"><a class="link">Post</a><a class="link d">Discard</a></div></div>
+<div class="row"><div class="grow"><div class="t">Bump Postgres driver to 3.4</div><div class="m">lumen/api #1229 · draft, approve</div></div><div class="acts2"><a class="link">Post</a><a class="link d">Discard</a></div></div>
+<div class="row"><div class="grow"><div class="t">Rewrite the invoice ledger as append-only</div><div class="m num">lumen/web #1219 · too large, 12,480 lines</div></div><div class="acts2"><a class="link">Review</a></div></div>
+<div class="pfoot"><a class="link">Open all in Reviews</a></div></div>
+<div class="panel"><div class="ph"><h2>Last sweep</h2><span>1:00 PM</span></div>
+<div class="row"><div class="grow"><div class="t">Fix the date picker timezone on CSV export</div><div class="m"><span class="reason">dates shift by a day</span> · lumen/web #88</div></div><div class="st ch">Changes<i class="tri"></i></div></div>
+<div class="row"><div class="grow"><div class="t">Add retry to the webhook sender</div><div class="m"><span class="reason">retries are not idempotent</span> · lumen/api #1231</div></div><div class="st ch">Changes<i class="tri"></i></div></div>
+<div class="row"><div class="grow"><div class="t">Redesign the empty states for projects</div><div class="m">lumen/web #91 · kai</div></div><div class="st ok">Approved<i class="dot"></i></div></div>
+<div class="pfoot"><a class="link">See all 7</a></div></div></div>
+</div></div>
+<script src="kit.js"></script></body></html>

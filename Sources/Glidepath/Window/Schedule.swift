@@ -23,7 +23,7 @@ struct ScheduleView: View {
     private var config: Config? { store.snap.config }
 
     var body: some View {
-        ScrollView {
+        WinScroll {
             VStack(alignment: .leading, spacing: 0) {
                 titleRow
                 dayStrip
@@ -290,7 +290,7 @@ final class ScheduleModel: ObservableObject {
     let saved = SavedFlash()
 
     func refreshWeek(_ store: Store) {
-        let runs = RunStore(paths: store.paths).loadAll()
+        let runs = store.allRuns()
         week = WeekStats.compute(runs: runs, since: WeekStats.weekStart(of: Date()) ?? .distantPast)
     }
 

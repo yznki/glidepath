@@ -1,0 +1,56 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+/* master-detail: list 340 (title row at 52 like every screen), detail fills the rest */
+.main{flex-direction:row;padding:0}
+.list{width:340px;flex:none;border-right:1px solid var(--line);padding-top:var(--top);display:flex;flex-direction:column}
+.list .top{padding:0 20px 16px}
+.list .seg{margin-top:16px}
+.grp{font-size:12px;line-height:16px;color:var(--faint);padding:12px 20px 4px}
+.it{display:flex;gap:12px;align-items:center;height:56px;padding:0 20px}
+.it.on{background:var(--active)}
+.it .grow{flex:1;min-width:0}
+.det{flex:1;min-width:0;padding:var(--top) var(--gut) var(--gut);display:flex;flex-direction:column}
+.crumb{font-size:12px;line-height:16px;color:var(--faint)}
+.det h1{margin-top:4px}
+.meta{display:flex;gap:16px;margin-top:8px;font-size:12px;line-height:16px;color:var(--muted)}
+.verdict{display:flex;align-items:center;gap:12px;margin-top:20px;background:var(--amber-bg);border-radius:12px;height:56px;padding:0 12px 0 16px}
+.verdict b{color:var(--amber-ink);font-size:13px;white-space:nowrap}
+.verdict span{font-size:13px;color:var(--muted);white-space:nowrap}
+.verdict .acts{margin-left:auto;display:flex;gap:8px}
+.body{margin-top:20px;font-size:13px;line-height:20px;max-width:600px}
+.body p+p{margin-top:8px}
+.cm{margin-top:12px;background:var(--surface);border-radius:12px;padding:12px 16px;max-width:600px}
+.cm .f{color:var(--blue);line-height:16px}
+.cm .x{font-size:13px;line-height:20px;margin-top:4px}
+.foot2{display:flex;gap:16px;margin-top:auto;padding-top:16px;font-size:12px;line-height:16px;color:var(--faint);align-items:center}
+.foot2 .link{margin-left:auto}
+</style></head><body>
+<div class="win"><div class="lights"><i></i><i></i><i></i></div>
+<div data-side="reviews"></div>
+<div class="main">
+  <div class="list">
+    <div class="top"><h1>Reviews</h1>
+      <div class="seg"><span class="on">All</span><span>Changes 3</span><span>Drafts 2</span><span>Skipped 2</span></div></div>
+    <div class="grp">Today, 1:00 PM sweep</div>
+    <div class="it on"><div class="grow"><div class="t">Cache org permissions per request in the audit log</div><div class="m">lumen/api #1212 · draft</div></div><div class="st ch">Changes<i class="tri"></i></div></div>
+    <div class="it"><div class="grow"><div class="t">Bump Postgres driver to 3.4</div><div class="m">lumen/api #1229 · draft</div></div><div class="st ok">Approve<i class="dot"></i></div></div>
+    <div class="it"><div class="grow"><div class="t">Fix the date picker timezone on CSV export</div><div class="m">lumen/web #88 · posted</div></div><div class="st ch">Changes<i class="tri"></i></div></div>
+    <div class="it"><div class="grow"><div class="t">Rewrite the invoice ledger as append-only</div><div class="m num">lumen/web #1219 · 12,480 lines</div></div><div class="st sk">Too large<i class="dash"></i></div></div>
+    <div class="grp">Today, 7:00 AM sweep</div>
+    <div class="it"><div class="grow"><div class="t">Add retry to the webhook sender</div><div class="m">lumen/api #1231 · posted</div></div><div class="st ch">Changes<i class="tri"></i></div></div>
+    <div class="it"><div class="grow"><div class="t">Bump next to 15.1</div><div class="m">lumen/web #84 · bot, skipped</div></div><div class="st sk">Skipped<i class="dash"></i></div></div>
+  </div>
+  <div class="det">
+    <div class="crumb">lumen/api · #1212 · omar</div>
+    <h1>Cache org permissions per request</h1>
+    <div class="meta num"><span>head a3f09c1</span><span>+412 −88 in 9 files</span><span>Touches infra/</span></div>
+    <div class="verdict"><b>Changes requested</b><span>Draft, not posted</span><div class="acts"><button class="btn">Discard</button><button class="btn primary">Post review</button></div></div>
+    <div class="body"><p>Two things to fix before this lands.</p>
+    <p>The rate limit is checked after the cache lookup, so a cached response skips it. Move the check above the lookup.</p>
+    <p>The new query has no test for a caller from another org, which is the case the cache must never leak.</p></div>
+    <div class="cm"><div class="f mono">internal/audit/cache.go:42</div><div class="x">The lookup runs before the limit check; a cached hit returns at line 47 without counting.</div></div>
+    <div class="cm"><div class="f mono">internal/audit/cache_test.go:118</div><div class="x">Add a case where a caller from org B reads org A's cached entry; it should miss.</div></div>
+    <div class="foot2 num"><span>Reviewed in 3 min 12 s</span><span>61k tokens</span><a class="link">Open on GitHub</a></div>
+  </div>
+</div></div>
+<script src="kit.js"></script></body></html>

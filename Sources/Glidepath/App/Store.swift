@@ -81,6 +81,14 @@ struct Snapshot {
     var updatePhase: UpdatePhase = .idle
     /// The result of "Check for updates…", shown for 4 s.
     var updateNote: String?
+    /// Snapshot rendering only: the runs the window reads in place of the run files. Nil in the live app.
+    var runs: [RunState]?
+    /// Snapshot rendering only: review text by "runId|repo#n", in place of the text store.
+    var reviewTexts: [String: ReviewTextRecord] = [:]
+    /// Snapshot rendering only: the tool checks Settings shows, in place of running them.
+    var tools: [Checks.Item]?
+    /// Snapshot rendering only: the login item state, in place of reading it.
+    var loginOn = false
 }
 
 /// Watches the state folders with DispatchSource, so the popover updates on each write without polling.
@@ -130,6 +138,8 @@ final class Store: ObservableObject {
     static let ackKey = "acknowledgedRunID"
 
     @Published private(set) var snap: Snapshot
+    /// True when the store was built from a snapshot. Fixture stores never read or write disk, run checks or touch launchd.
+    let isFixture: Bool
     /// Errors from actions in this app (run now, login item), shown until the next reload.
     @Published var actionError: String?
     /// Stamps that landed while the popover was open. The stamp settles once, then this clears.
@@ -154,6 +164,7 @@ final class Store: ObservableObject {
     /// frames one after another with one motion, so landings animate across frames).
     init(snapshot: Snapshot? = nil, justLanded: Set<String> = [], motion: ProfileMotion = ProfileMotion()) {
         profileMotion = motion
+        isFixture = snapshot != nil
         if let snapshot {
             snap = snapshot
             hovered = snapshot.hovered
@@ -555,7 +566,19 @@ final class Store: ObservableObject {
         }
     }
 
-    var loginItemOn: Bool { SMAppService.mainApp.status == .enabled }
+    var loginItemOn: Bool { isFixture ? snap.loginOn : SMAppService.mainApp.status == .enabled }
+
+    /// Every run the window reads: the fixture's runs in snapshot mode, the run files otherwise.
+    func allRuns() -> [RunState] {
+        if isFixture { return snap.runs ?? [] }
+        return RunStore(paths: paths).loadAll()
+    }
+
+    /// The review text for one PR in one run: the fixture's in snapshot mode, the text store otherwise.
+    func reviewText(runId: String, slug: String, n: Int) -> ReviewTextRecord? {
+        if isFixture { return snap.reviewTexts["\(runId)|\(slug)#\(n)"] }
+        return ReviewText.read(paths, runId: runId, slug: slug, n: n)
+    }
 
     /// Login items are keyed by bundle path. Re-register when the app runs from a new path,
     /// so the item never points at a build folder.

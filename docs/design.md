@@ -207,3 +207,31 @@ most 760 pt wide, with the same colours and status idiom as the rows: changes in
 approved with a disc, skipped with a dash, no result with a hollow circle. It has no script and no gradients, and
 follows light and dark mode. Top to bottom: the header line (the popover's header copy), the open drafts with their
 full text, and the run history. Each run is one block with its date, duration and tokens, then its rows per repo.
+
+## 12. Window (v1.2)
+
+The main window is a real macOS window (`Window` scene, id "main") beside the menu bar popover. The popover stays
+the quick glance; the window holds setup, settings and the review history. The mockups and their build copies are in
+[docs/design/v1.2/](design/v1.2/), and the rendered screens in [docs/shots/app/](shots/app/).
+
+- Size 1100 x 720 by default, 960 x 640 minimum, full-size content view with a hidden title. Traffic lights sit over
+  the sidebar. Every title row starts at y 52, level with the sidebar's brand row.
+- Sidebar 220 wide: Overview, Reviews, Repos, Schedule, Settings. Nav rows are 32 tall, 4 apart; the active row is a
+  neutral pill, never accent-coloured.
+- Canvas inset 32 left and right, 52 top, 32 bottom. Panels radius 14, rows 56 tall, rules drawn inside the row.
+- Onboarding replaces the sidebar: a 400 pt rail with the glide slope and six steps, and a 520 pt pane with a footer
+  bar. Back sits bottom left, the one primary bottom right.
+- Colour: amber only for "needs you", green for approved, blue for links and in-flight work. Both palettes are dynamic
+  colours in `Theme.swift`, so the window follows the system appearance.
+- Type: five sizes (32/40 display, 24/32 title, 15/20 section, 13/20 body, 12/16 meta), system font, tabular figures on
+  numbers. Spacing is the scale 4 8 12 16 20 24 32 48 only.
+
+Tokens live in `Sources/Glidepath/App/Theme.swift`:
+
+- `WinTheme` holds the colours (ground, surface, raised, active, line, control, text, muted, faint, amber, green, blue,
+  night, red, and the onboarding rail). Each is one light and one dark hex.
+- `WinMetrics` holds the layout numbers: the spacing scale, window and minimum sizes, the titlebar zone, sidebar and nav
+  sizes, and the canvas insets.
+
+Snapshot mode renders every section and onboarding step in both appearances from `WindowFixtures`, so the look can be
+checked against the mockups without touching a real config or state folder.

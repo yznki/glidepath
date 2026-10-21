@@ -167,3 +167,25 @@ endpoint (`api.github.com/repos/yznki/glidepath/releases/latest`), with a 10 s t
 sent, and the reply is kept in `update.json` in the state folder. `check_updates = false` turns the automatic checks off.
 Installing an update runs `brew`, which fetches from Homebrew and GitHub as it always does.
 
+
+## Review text store
+
+When `post` sends a review, or saves a draft, the validated payload is also written to
+`<stateDir>/reviews/<runId>/<owner>-<name>/<n>.json`: the event, body, inline comments, head SHA and the posted time
+(null while a draft). The window reads it to show what was sent. The store keeps 90 days: each run prunes the runs
+older than that. A failure to write it goes to stderr and never fails a post.
+
+The window draws review text as plain text only. It does not render Markdown, does not load images, and does not follow
+links in the text. The one link it opens is the PR's own page, built from a validated `owner/name` and a number, and
+only `https://github.com/` addresses are opened.
+
+## Config writes from the app
+
+The window edits `config.toml` through `ConfigEditor` and `ScheduleEditor`. Each change is validated before anything is
+written: slugs match `owner/name`, paths are relative and contain no `..`, and logins match `[A-Za-z0-9-]`. The new file
+is rendered, parsed again with the same parser the CLI uses, written to a temp file in the same folder, and renamed over
+the old one. An invalid edit writes nothing and shows its message on the row.
+
+Onboarding's "Use my config file" replaces an existing config. Before it does, the current `config.toml` is copied to
+`config.toml.bak-YYYYMMDD-HHMMSS` (with `-2`, `-3` appended if that name is taken), and the window names the backup on
+the last step.

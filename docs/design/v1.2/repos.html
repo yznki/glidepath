@@ -1,0 +1,39 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css">
+<style>
+.main{flex-direction:row;padding:0}
+.list{width:260px;flex:none;border-right:1px solid var(--line);padding:var(--top) 12px 0}
+.list h1{padding:0 8px 16px}
+.rp{display:flex;gap:12px;align-items:center;height:56px;padding:0 8px;border-radius:10px}
+.rp.on{background:var(--active)}
+.av{width:32px;height:32px;border-radius:8px;background:#26262a;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:var(--muted);flex:none}
+.add{height:40px;display:flex;align-items:center;padding:0 8px;margin-top:4px}
+.set{flex:1;min-width:0;padding:var(--top) var(--gut) var(--gut)}
+.secs{margin-top:16px}
+.field{height:32px;border-radius:8px;background:var(--surface);border:1px solid var(--control);padding:0 12px;display:flex;align-items:center;color:var(--muted);flex:1;min-width:0}
+</style></head><body>
+<div class="win"><div class="lights"><i></i><i></i><i></i></div>
+<div data-side="repos"></div>
+<div class="main">
+  <div class="list"><h1>Repos</h1>
+    <div class="rp on"><div class="av">la</div><div class="grow"><div class="t">lumen/api</div><div class="m">Full review</div></div></div>
+    <div class="rp"><div class="av">lw</div><div class="grow"><div class="t">lumen/web</div><div class="m">Draft first</div></div></div>
+    <div class="add"><a class="link">Add a repo…</a></div>
+  </div>
+  <div class="set">
+    <div class="titlerow"><div><h1>lumen/api</h1><div class="sub">14 open PRs · last reviewed 1:04 PM</div></div><div class="right"><button class="btn">Review now</button></div></div>
+    <div class="secs">
+    <div class="sec"><div class="l"><b>How reviews post</b><span>What lands on the pull request.</span></div>
+      <div><div class="ctl"><div class="seg"><span>Comment</span><span class="on">Full review</span><span>Draft first</span></div></div>
+      <div class="prev">Approves or requests changes, with comments on the lines. Shown as <b>Changes requested</b> by yznki.</div></div></div>
+    <div class="sec"><div class="l"><b>Whose PRs</b><span>Your own PRs are never reviewed.</span></div>
+      <div class="ctl"><div class="seg"><span class="on">Collaborators</span><span>Anyone</span><span>These people…</span></div></div></div>
+    <div class="sec"><div class="l"><b>Review rules</b><span>Your team's bar, on top of the built-in rubric.</span></div>
+      <div class="ctl"><div class="field mono">~/.config/glidepath/rules/lumen.md</div><button class="btn">Edit</button></div></div>
+    <div class="sec"><div class="l"><b>Code graph</b><span>Shows reviewers who calls the changed code.</span></div>
+      <div><div class="ctl"><div class="toggle"></div><span style="font-size:13px">Refresh the GitNexus index before each sweep</span></div><div class="note num">Indexed at 1:02 PM · 163,779 symbols</div></div></div>
+    <div class="sec"><div class="l"><b>Flagged paths</b><span>Reviews that touch these ask for an extra approval.</span></div>
+      <div><div class="ctl"><span class="chip mono">infra/</span><span class="chip mono">.github/workflows/</span><a class="link">Add path…</a></div><div class="note">Note added: "Needs a devops code-owner approval."</div></div></div>
+    </div>
+  </div>
+</div></div>
+<script src="kit.js"></script></body></html>

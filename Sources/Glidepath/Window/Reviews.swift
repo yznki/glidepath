@@ -18,8 +18,8 @@ struct ReviewsView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .onAppear { model.load(store.paths) }
-        .onReceive(store.$snap) { _ in model.load(store.paths) }
+        .onAppear { model.load(store) }
+        .onReceive(store.$snap) { _ in model.load(store) }
     }
 
     // MARK: List
@@ -35,7 +35,7 @@ struct ReviewsView: View {
             WinSegmented(segments: ReviewFilter.allCases.map { segment($0) }, selected: model.filter) { model.filter = $0 }
                 .padding(.top, WinMetrics.s16)
                 .padding(.horizontal, WinMetrics.s20)
-            ScrollView {
+            WinScroll {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(model.visible) { sweep in
                         Text(sweep.title)
@@ -135,7 +135,7 @@ struct ReviewDetail: View {
     }
 
     var body: some View {
-        ScrollView {
+        WinScroll {
             VStack(alignment: .leading, spacing: 0) {
                 Text(crumb)
                     .font(.system(size: 12))
@@ -486,7 +486,8 @@ struct ReviewSweep: Identifiable {
     let duration: TimeInterval?
     var rows: [ReviewRow]
 
-    init(run: RunState, paths: Paths) {
+    /// `text` looks up the review text for a PR in this run: the text store in the app, the fixture in snapshots.
+    init(run: RunState, text: (_ slug: String, _ n: Int) -> ReviewTextRecord?) {
         let length = run.finished.map { $0.timeIntervalSince(run.started) }
         id = run.id
         started = run.started
@@ -502,7 +503,7 @@ struct ReviewSweep: Identifiable {
                     reason: pr.reason, verdict: pr.verdict, draft: pr.draft == true, skipReason: pr.skipReason,
                     changedLines: pr.changedLines, head: pr.head, flagged: pr.flagged == true, tokens: pr.tokens,
                     duration: length,
-                    text: ReviewText.read(paths, runId: run.id, slug: repo.slug, n: pr.n))
+                    text: text(repo.slug, pr.n))
             }
         }
     }
@@ -545,9 +546,11 @@ final class ReviewsModel: ObservableObject {
 
     /// Reads every run file and keeps the newest 50 sweeps.
     /// ponytail: decodes every run file on each state change; index the runs if the folder grows large.
-    func load(_ paths: Paths) {
-        let runs = RunStore(paths: paths).loadAll().sorted { $0.started > $1.started }.prefix(Self.sweepLimit)
-        sweeps = runs.map { ReviewSweep(run: $0, paths: paths) }
+    func load(_ store: Store) {
+        let runs = store.allRuns().sorted { $0.started > $1.started }.prefix(Self.sweepLimit)
+        sweeps = runs.map { run in
+            ReviewSweep(run: run) { slug, n in store.reviewText(runId: run.id, slug: slug, n: n) }
+        }
     }
 
     /// The sweeps with the filter applied. Sweeps left empty are dropped.

@@ -25,9 +25,15 @@ final class WindowRouter: ObservableObject {
     @Published var section: WindowSection = .overview
     /// The window shows onboarding instead of the sections. Set while there is no config file, and by the popover's
     /// "Set up Glidepath…". Cleared when onboarding finishes.
-    @Published var showOnboarding = WindowRouter.needsSetup()
+    @Published var showOnboarding: Bool
     var openAction: ((String) -> Void)?
     private var launchChecked = false
+
+    /// Defaults to onboarding while there is no config file.
+    init(section: WindowSection = .overview, showOnboarding: Bool? = nil) {
+        self.section = section
+        self.showOnboarding = showOnboarding ?? WindowRouter.needsSetup()
+    }
 
     /// True when there is no config file yet, so the window opens on onboarding.
     static func needsSetup(paths: Paths = Paths()) -> Bool {

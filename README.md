@@ -133,6 +133,17 @@ The app is the same binary as the CLI. Launched with no arguments, or with `app`
 runs: a second start prints "Glidepath is already running in the menu bar" and exits.
 
 
+## Window
+
+The menu bar popover is the quick glance. The window (Overview, Reviews, Repos, Schedule, Settings) is for setup,
+settings and the review history, and opens from the popover's "Open Glidepath". With no config file, it opens on
+onboarding. Light and dark:
+
+| Overview | Reviews |
+| --- | --- |
+| ![Overview, light](docs/shots/app/overview-light.png) | ![Reviews, light](docs/shots/app/reviews-light.png) |
+| ![Overview, dark](docs/shots/app/overview-dark.png) | ![Reviews, dark](docs/shots/app/reviews-dark.png) |
+
 ## Drafts
 
 With `posting = "draft"`, a sweep runs the whole pipeline and checks each review exactly as `comment` or `review`

@@ -1,16 +1,36 @@
 import SwiftUI
 import AppKit
 
-/// The main window: sidebar beside the canvas. Every section is built.
+/// The main window: sidebar beside the canvas. Every section is built. The window's AppKit hooks live here; the layout
+/// is in `WindowScreen`, which snapshot rendering draws on its own.
 struct MainWindowView: View {
-    @ObservedObject var router = WindowRouter.shared
-    @ObservedObject var store = Store.shared
+    @ObservedObject var router: WindowRouter
+    @ObservedObject var store: Store
+
+    init(store: Store? = nil, router: WindowRouter? = nil) {
+        self.store = store ?? Store.shared
+        self.router = router ?? WindowRouter.shared
+    }
+
+    var body: some View {
+        WindowScreen(store: store, router: router)
+            .background(WindowAccessor())
+            .onAppear { MainWindowLifecycle.shared.windowAppeared() }
+    }
+}
+
+/// The window's layout: onboarding (no sidebar), or the sidebar beside the section. `onboarding` lets snapshot
+/// rendering supply a fixture model; the app leaves it nil.
+struct WindowScreen: View {
+    @ObservedObject var store: Store
+    @ObservedObject var router: WindowRouter
+    var onboarding: OnboardingModel?
 
     var body: some View {
         Group {
             if router.showOnboarding {
                 // Onboarding has no sidebar: the rail and the pane fill the window.
-                OnboardingView(store: store)
+                OnboardingView(store: store, model: onboarding)
             } else {
                 HStack(spacing: 0) {
                     Sidebar(router: router)
@@ -20,8 +40,6 @@ struct MainWindowView: View {
         }
         .frame(minWidth: WinMetrics.minWidth, minHeight: WinMetrics.minHeight)
         .background(WinTheme.ground)
-        .background(WindowAccessor())
-        .onAppear { MainWindowLifecycle.shared.windowAppeared() }
     }
 
     private var canvas: some View {
