@@ -18,7 +18,10 @@ enum RepoClone {
             } else {
                 createdHere = true
             }
-            let r = gh(["repo", "clone", repo.slug, repo.clone, "--", "--filter=blob:none", "--quiet"], env, slowTimeout)
+            // HTTPS with gh as the credential helper. `gh repo clone` follows the user's git_protocol, which can be
+            // SSH, and an SSH clone can hang for the whole timeout on a machine without working SSH keys.
+            let r = git(["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential",
+                         "clone", "--filter=blob:none", "--quiet", cloneURL(repo.slug), repo.clone], env, slowTimeout)
             guard r.ok else {
                 // Remove what this call created, so the next run starts clean instead of finding a half clone.
                 if createdHere { try? fm.removeItem(atPath: repo.clone) }
@@ -26,6 +29,7 @@ enum RepoClone {
             }
         }
         try excludeGitNexusIndex(repo.clone)
+        _ = git(["-C", repo.clone, "config", "credential.helper", "!gh auth git-credential"], env, 30)
 
         let status = git(["-C", repo.clone, "status", "--porcelain"], env, 120)
         guard status.ok else {
@@ -53,6 +57,10 @@ enum RepoClone {
         guard !existing.split(separator: "\n").contains(".gitnexus/") else { return }
         let prefix = existing.isEmpty || existing.hasSuffix("\n") ? "" : "\n"
         try (existing + prefix + ".gitnexus/\n").write(toFile: path, atomically: true, encoding: .utf8)
+    }
+
+    static func cloneURL(_ slug: String) -> String {
+        "https://github.com/\(slug).git"
     }
 
     private static func gh(_ args: [String], _ env: [String: String], _ timeout: TimeInterval) -> ShellResult {
@@ -286,7 +294,8 @@ final class Runner {
             "Review run.",
             "repo=\(repo.slug)", "prs=\(numbers.map(String.init).joined(separator: ","))",
             "run=\(id)", "scratch=\(scratch)", "gitnexus=\(gitnexus ? "on" : "off")",
-            "rules_mode=\(repo.rulesMode.rawValue)", "split_over=\(config.limits.splitOverLines)",
+            "rules=\(repo.rules == nil ? "none" : "included")", "rules_mode=\(repo.rulesMode.rawValue)",
+            "split_over=\(config.limits.splitOverLines)",
             "dry_run=\(dryRun)",
         ].joined(separator: " ")
         let binding = RunBinding(runId: id, repo: repo.slug, scratch: scratch, dryRun: dryRun)

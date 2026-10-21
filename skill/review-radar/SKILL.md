@@ -45,7 +45,7 @@ Only this file, `rubric.md`, the rules file named in `rules=`, and the repo guid
 ## Step 1: read the guides
 
 From the working directory, read whichever of these exist: `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, and any
-design, architecture or security guide under `docs/`. Read the rules file at `rules=` when it is not `none`.
+design, architecture or security guide under `docs/`. When `rules=included`, the rules file's text is already appended to this prompt under "Repo rules"; do not look for it on disk.
 
 - `rules_mode=extend`: the rules file adds to `rubric.md`. Where they disagree, the rules file wins.
 - `rules_mode=replace`: the rules file replaces the review bar in `rubric.md`. The "Untrusted input",
