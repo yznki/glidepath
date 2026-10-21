@@ -19,27 +19,38 @@ enum Decision: Equatable {
 }
 
 enum PRFilter {
-    /// Rules from SPEC "Run flow" step 2, checked in a fixed order so the skip reason is stable.
-    /// `isCollaborator` is only called when the policy needs it.
+    /// Rules from SPEC "Run flow" step 2. Cheap checks run first; the collaborator and reviews
+    /// lookups are API calls and only happen for PRs that get that far. A lookup that fails skips
+    /// the PR with a reason instead of failing the repo.
     static func evaluate(_ pr: PRInfo, me: String, authors: AuthorPolicy, limits: Limits,
-                         reviewedHeads: Set<String>, isCollaborator: () -> Bool) -> Decision {
+                         isCollaborator: () -> Bool?, reviewedHeads: () -> Set<String>?) -> Decision {
         if pr.author.caseInsensitiveCompare(me) == .orderedSame { return .skip("your own PR") }
         if pr.isDraft { return .skip("draft") }
-        if pr.authorIsBot || pr.author.hasSuffix("[bot]") { return .skip("bot author") }
-        switch authors {
-        case .collaborators:
-            if !isCollaborator() { return .skip("author is not a collaborator") }
-        case .anyone:
-            break
-        case .logins(let logins):
-            if !logins.contains(where: { $0.caseInsensitiveCompare(pr.author) == .orderedSame }) {
-                return .skip("author not in authors list")
-            }
+        // A bot listed by name in `authors` is an explicit opt-in.
+        let listed: Bool
+        if case .logins(let logins) = authors {
+            listed = logins.contains { $0.caseInsensitiveCompare(pr.author) == .orderedSame }
+        } else {
+            listed = false
         }
-        if reviewedHeads.contains(pr.headSha) { return .skip("already reviewed at this head") }
+        if !listed && (pr.authorIsBot || pr.author.hasSuffix("[bot]")) { return .skip("bot author") }
         if pr.changedLines > limits.maxChangedLines {
             return .skip("too large (\(pr.changedLines) changed lines)")
         }
+        switch authors {
+        case .collaborators:
+            switch isCollaborator() {
+            case true?: break
+            case false?: return .skip("author is not a collaborator")
+            case nil: return .skip("cannot read collaborator permission (needs push access); list authors explicitly")
+            }
+        case .anyone:
+            break
+        case .logins:
+            if !listed { return .skip("author not in authors list") }
+        }
+        guard let heads = reviewedHeads() else { return .skip("could not read existing reviews") }
+        if heads.contains(pr.headSha) { return .skip("already reviewed at this head") }
         return .keep
     }
 }

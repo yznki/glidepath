@@ -169,10 +169,10 @@ final class Runner {
         var kept: [PRInfo] = []
         var skipped: [(PRInfo, String)] = []
         for pr in prs {
-            let heads = try reviewedHeads(repo, pr.n)
             let decision = PRFilter.evaluate(
-                pr, me: me, authors: repo.authors, limits: config.limits, reviewedHeads: heads,
-                isCollaborator: { self.isCollaborator(repo, login: pr.author) })
+                pr, me: me, authors: repo.authors, limits: config.limits,
+                isCollaborator: { self.isCollaborator(repo, login: pr.author) },
+                reviewedHeads: { self.reviewedHeads(repo, pr.n) })
             switch decision {
             case .keep where kept.count < config.limits.maxPRsPerRun:
                 kept.append(pr)
@@ -312,10 +312,11 @@ final class Runner {
     }
 
     /// Commit SHAs this user has already reviewed on a PR.
-    private func reviewedHeads(_ repo: RepoConfig, _ n: Int) throws -> Set<String> {
+    /// nil when the lookup fails; the PR is then skipped, not the repo.
+    private func reviewedHeads(_ repo: RepoConfig, _ n: Int) -> Set<String>? {
         let r = gh(["api", "repos/\(repo.slug)/pulls/\(n)/reviews", "--paginate",
                     "--jq", ".[] | [.user.login, .commit_id] | @tsv"])
-        guard r.ok else { throw RunError("gh api reviews failed for #\(n)") }
+        guard r.ok else { return nil }
         var heads = Set<String>()
         for line in r.stdout.split(separator: "\n") {
             let cols = line.split(separator: "\t").map(String.init)
@@ -324,11 +325,14 @@ final class Runner {
         return heads
     }
 
-    private func isCollaborator(_ repo: RepoConfig, login: String) -> Bool {
+    /// nil when the permission cannot be read (no push access, or a non-200). That is not cached as
+    /// "not a collaborator": the PR is skipped with a reason that says to list authors explicitly.
+    private func isCollaborator(_ repo: RepoConfig, login: String) -> Bool? {
         let key = repo.slug + "/" + login
         if let cached = collaboratorCache[key] { return cached }
         let r = gh(["api", "repos/\(repo.slug)/collaborators/\(login)/permission", "--jq", ".permission"])
-        let value = r.ok && ["admin", "maintain", "write"].contains(r.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard r.ok else { return nil }
+        let value = ["admin", "maintain", "write"].contains(r.stdout.trimmingCharacters(in: .whitespacesAndNewlines))
         collaboratorCache[key] = value
         return value
     }
