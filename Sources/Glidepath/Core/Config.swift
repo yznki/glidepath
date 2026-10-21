@@ -194,6 +194,9 @@ struct Config: Equatable {
             }
             if let rules = r.rules {
                 out += "rules = \(tomlQuoted(rules))\n"
+            }
+            // Written whenever it differs from the default, so an edit to it reads back without a rules file.
+            if r.rules != nil || r.rulesMode != .extend {
                 out += "rules_mode = \(tomlQuoted(r.rulesMode.rawValue))\n"
             }
             out += "gitnexus = \(tomlQuoted(r.gitnexus.rawValue))\n"
@@ -201,6 +204,8 @@ struct Config: Equatable {
             out += "gitnexus_refresh = \(r.gitnexusRefresh)\n"
             if !r.flagPaths.isEmpty {
                 out += "flag_paths = [" + r.flagPaths.map { tomlQuoted($0) }.joined(separator: ", ") + "]\n"
+            }
+            if !r.flagPaths.isEmpty || r.flagNote != RepoConfig.defaultFlagNote {
                 out += "flag_note = \(tomlQuoted(r.flagNote))\n"
             }
         }

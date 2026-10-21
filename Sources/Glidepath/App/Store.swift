@@ -69,6 +69,8 @@ struct Snapshot {
     var postsReviews = false
     var schedule: [ScheduleTime] = []
     var repoCount = 0
+    /// The parsed config, for the Repos section. Nil when there is no config or it does not parse.
+    var config: Config?
     /// `max_changed_lines`, for the Review warning.
     var maxChangedLines = 3000
     var hovered: String?
@@ -239,6 +241,7 @@ final class Store: ObservableObject {
         s.postsReviews = config?.repos.contains { $0.posting == .review } ?? false
         s.schedule = config?.schedule ?? []
         s.repoCount = config?.repos.count ?? 0
+        s.config = config
         s.hovered = snap.hovered
         s.update = Updates.cached(paths)
         s.checkUpdates = config?.checkUpdates ?? true
@@ -422,15 +425,15 @@ final class Store: ObservableObject {
         reload()
     }
 
-    /// Starts `glidepath run` with the PATH the job uses, output appended to the log.
-    func runNow() {
+    /// Starts `glidepath run` with the PATH the job uses, output appended to the log. With a slug, only that repo.
+    func runNow(repo: String? = nil) {
         guard let binary = Bundle.main.executablePath else {
             actionError = "cannot find the glidepath binary"
             return
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = ["run"]
+        process.arguments = repo.map { ["run", "--repo", $0] } ?? ["run"]
         process.environment = Runner.environment(paths)
         attachLog(process)
         do {

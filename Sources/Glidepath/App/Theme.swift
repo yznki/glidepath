@@ -89,6 +89,10 @@ enum WinTheme {
     static let green = token(0x1B7A47, dark: 0x3DD68C)
     static let greenBg = token(0xDDF3E5, dark: 0x12301F)
     static let blue = token(0x0062D1, dark: 0x4DA3FF)
+    /// The error colour (Palette.error): destructive text.
+    static let red = token(0xC4242A, dark: 0xFF6B6B)
+    /// A repo's square avatar: #e4e4e8 light, #26262a dark.
+    static let avatar = token(0xE4E4E8, dark: 0x26262A)
     /// The ring around the selected segment: #d6d6db light, #34343a dark.
     static let segRing = token(0xD6D6DB, dark: 0x34343A)
 

@@ -150,3 +150,21 @@ struct StatusTriangle: Shape {
         return path
     }
 }
+
+/// The on/off switch (base.css `.toggle`): 32 by 20, green when on, the control stroke when off, a white knob.
+struct WinToggle: View {
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule().fill(isOn ? WinTheme.green : WinTheme.control)
+                Circle().fill(Color.white).frame(width: 16, height: 16).padding(2)
+            }
+            .frame(width: 32, height: 20)
+            .animation(.easeOut(duration: 0.14), value: isOn)
+        }
+        .buttonStyle(.plain)
+    }
+}

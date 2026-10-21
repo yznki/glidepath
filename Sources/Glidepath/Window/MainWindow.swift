@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// The main window: sidebar beside the canvas. Overview and Reviews are built; other section bodies are placeholders
+/// The main window: sidebar beside the canvas. Overview, Reviews and Repos are built; the other section bodies are placeholders
 /// until their phases land.
 struct MainWindowView: View {
     @ObservedObject var router = WindowRouter.shared
@@ -23,6 +23,9 @@ struct MainWindowView: View {
             if router.section == .reviews {
                 // Reviews is master-detail and runs edge to edge, so it lays out its own insets.
                 ReviewsView(store: store)
+            } else if router.section == .repos {
+                // Repos is master-detail too, with the same edge-to-edge layout.
+                ReposView(store: store)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     if router.section == .overview {
