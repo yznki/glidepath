@@ -268,7 +268,9 @@ struct WinScroll<Content: View>: View {
 
     var body: some View {
         if offscreen {
+            // ScrollView content sits at the top; drawn inline it would centre in a full-height frame.
             content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
             ScrollView { content() }
         }

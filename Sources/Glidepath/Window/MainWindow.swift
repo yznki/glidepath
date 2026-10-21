@@ -33,7 +33,7 @@ struct WindowScreen: View {
                 OnboardingView(store: store, model: onboarding)
             } else {
                 HStack(spacing: 0) {
-                    Sidebar(router: router)
+                    Sidebar(router: router, store: store)
                     canvas
                 }
             }

@@ -18,7 +18,7 @@ struct OverviewView: View {
             VStack(spacing: 0) {
                 field
                 VStack(spacing: 0) {
-                    Text(copy.headline)
+                    Text(windowHeadline(kind, copy))
                         .font(.system(size: 32, weight: .bold))
                         .tracking(-0.6)
                         .foregroundStyle(tone(copy.headlineTone))
@@ -77,6 +77,18 @@ struct OverviewView: View {
             if case .failed = kind {
                 WinButton(title: "Open log", style: .outline) { store.openLog() }
             }
+        }
+    }
+
+    /// The window's headline. The popover's `HeaderCopy` reads "2 need changes"; the window names the PRs.
+    private func windowHeadline(_ kind: HeaderKind, _ copy: HeaderCopy) -> String {
+        switch kind {
+        case .idle(let changes, _, _, _) where changes > 0:
+            return "\(changes) PR\(changes == 1 ? "" : "s") need\(changes == 1 ? "s" : "") changes"
+        case .running:
+            return "Reviewing \(inFlight.count) of \(rows.count)"
+        default:
+            return copy.headline
         }
     }
 

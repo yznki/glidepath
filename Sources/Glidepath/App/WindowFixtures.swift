@@ -14,10 +14,12 @@ enum WindowFixtures {
     /// One PR row. `draft` is a held review; `skip` is "size" for a PR too large to review.
     static func row(_ repo: String, _ n: Int, _ author: String, _ title: String, verdict: Verdict?, reason: String? = nil,
                     draft: Bool = false, flagged: Bool = false, skip: String? = nil, lines: Int? = nil,
-                    stage: Stage = .post, active: Bool = false) -> (String, PRState) {
+                    stage: Stage = .post, active: Bool = false, posted: Date? = nil,
+                    tokens: Int = 0) -> (String, PRState) {
         var pr = PRState(n: n, author: author, title: title, stage: stage, active: active && verdict == nil,
-                         verdict: verdict, reason: reason, tokens: 0)
+                         verdict: verdict, reason: reason, tokens: tokens)
         pr.head = head
+        pr.posted = posted
         if draft { pr.draft = true }
         if flagged { pr.flagged = true }
         pr.skipReason = skip
@@ -35,21 +37,23 @@ enum WindowFixtures {
     static func sweepAfternoon(_ now: Date) -> RunState {
         run("fixture-1pm", at(13, 0, now), minutes: 9, prs: [
             row("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", verdict: .changes,
-                reason: "missing RLS test", draft: true, flagged: true),
+                reason: "missing RLS test", draft: true, flagged: true, tokens: 61_000),
             row("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve, draft: true),
             row("lumen/web", 1219, "tom", "Rewrite the invoice ledger as append-only", verdict: .skipped,
                 reason: "too large (12480 changed lines)", skip: "size", lines: 12_480),
             row("lumen/web", 88, "lea", "Fix the date picker timezone on CSV export", verdict: .changes,
                 reason: "dates shift by a day"),
-            row("lumen/web", 91, "kai", "Redesign the empty states for the projects list", verdict: .approve),
+            row("lumen/api", 1231, "lea", "Add retry to the webhook sender", verdict: .changes,
+                reason: "retries are not idempotent"),
+            row("lumen/web", 91, "kai", "Redesign the empty states for projects", verdict: .approve),
+            row("lumen/api", 1225, "tom", "Drop the legacy webhook retry table", verdict: .approve,
+                posted: at(13, 4, now)),
         ], tokens: 412_000)
     }
 
     /// The 7:00 AM sweep, for the Reviews list's second group.
     static func sweepMorning(_ now: Date) -> RunState {
         run("fixture-7am", at(7, 0, now), minutes: 6, prs: [
-            row("lumen/api", 1231, "lea", "Add retry to the webhook sender", verdict: .changes,
-                reason: "retries are not idempotent"),
             row("lumen/web", 84, "sam", "Bump next to 15.1", verdict: .skipped, reason: "bot"),
         ], tokens: 198_000)
     }
@@ -65,7 +69,7 @@ enum WindowFixtures {
             row("lumen/api", 1225, "tom", "Drop the legacy webhook retry table", verdict: .approve),
             row("lumen/web", 88, "lea", "Fix the date picker timezone on CSV export", verdict: .changes,
                 reason: "dates shift by a day"),
-            row("lumen/web", 91, "kai", "Redesign the empty states for the projects list", verdict: .approve),
+            row("lumen/web", 91, "kai", "Redesign the empty states for projects", verdict: .approve),
         ], tokens: 188_000)
     }
 
@@ -97,7 +101,7 @@ enum WindowFixtures {
                 comments: [PayloadComment(path: "src/export/csv.ts", line: 27, side: "RIGHT",
                                           body: "toISOString() drops the local offset here.")],
                 head: head, posted: posted),
-            "fixture-7am|lumen/api#1231": ReviewTextRecord(
+            "fixture-1pm|lumen/api#1231": ReviewTextRecord(
                 event: "REQUEST_CHANGES", body: "The retry runs on every delivery, so a slow partner gets the same event twice.",
                 comments: [], head: head, posted: posted),
         ]
@@ -105,7 +109,9 @@ enum WindowFixtures {
 
     /// The repos as the Repos mockup shows them: lumen/api on Full review (flagged paths), lumen/web on Draft first.
     static func config() -> Config {
-        var config = Config(schedule: times, limits: Limits(), repos: [])
+        var limits = Limits()
+        limits.maxChangedLines = 8000
+        var config = Config(schedule: times, limits: limits, repos: [])
         config.days = .weekdays
         var api = RepoConfig(slug: "lumen/api", clone: "/Users/you/code/lumen/api")
         api.posting = .review
@@ -131,10 +137,12 @@ enum WindowFixtures {
     static func section(_ name: String, now: Date) -> Snapshot {
         let runs = [sweepAfternoon(now), sweepMorning(now)]
         var snap = Snapshot(run: runs[0], jobInstalled: true,
-                            nextRun: Store.nextSweep(schedule: times, days: .weekdays, after: now),
+                            // The footer's fixture: 2 h 41 min out, as the mockup shows it.
+                            nextRun: now.addingTimeInterval(161 * 60),
                             schedule: times)
         snap.config = config()
         snap.repoCount = repos.count
+        snap.maxChangedLines = 8000
         snap.runs = runs
         snap.reviewTexts = reviewTexts(now)
         snap.tools = checks

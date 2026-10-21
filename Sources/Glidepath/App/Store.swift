@@ -198,6 +198,9 @@ final class Store: ObservableObject {
         }
     }
 
+    /// What waits on the user: drafts to post, and PRs too large to review. The Overview's "Waiting on you" count.
+    var waitingCount: Int { strips.filter { $0.draft || ($0.skipReason == "size" && $0.verdict == .skipped) }.count }
+
     /// Reviews held as drafts, from every run.
     var draftCount: Int { strips.filter(\.draft).count }
 

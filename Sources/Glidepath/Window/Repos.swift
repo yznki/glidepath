@@ -468,6 +468,7 @@ struct RepoDetail: View {
         }
         .padding(.horizontal, WinMetrics.s12)
         .frame(height: 28)
+        .fixedSize()
         .background(Capsule().fill(WinTheme.raised))
     }
 

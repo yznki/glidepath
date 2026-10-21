@@ -42,7 +42,7 @@ struct ReviewsView: View {
                             .font(.system(size: 12))
                             .foregroundStyle(WinTheme.faint)
                             .padding(.horizontal, WinMetrics.s20)
-                            .padding(.top, WinMetrics.s12)
+                            .padding(.top, WinMetrics.s16)
                             .padding(.bottom, WinMetrics.s4)
                         ForEach(sweep.rows) { row in
                             listRow(row)
@@ -58,7 +58,6 @@ struct ReviewsView: View {
                 .padding(.bottom, WinMetrics.canvasBottom)
             }
             .frame(maxHeight: .infinity)
-            .padding(.top, WinMetrics.s16)
         }
         .padding(.top, WinMetrics.titlebarZone)
     }
@@ -135,8 +134,20 @@ struct ReviewDetail: View {
     }
 
     var body: some View {
-        WinScroll {
-            VStack(alignment: .leading, spacing: 0) {
+        VStack(spacing: 0) {
+            WinScroll {
+                content
+            }
+            .frame(maxHeight: .infinity)
+            footer
+                .padding(.horizontal, WinMetrics.canvasLeft)
+                .padding(.top, WinMetrics.s16)
+                .padding(.bottom, WinMetrics.canvasBottom)
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 0) {
                 Text(crumb)
                     .font(.system(size: 12))
                     .foregroundStyle(WinTheme.faint)
@@ -157,7 +168,7 @@ struct ReviewDetail: View {
                     .padding(.top, WinMetrics.s8)
                 }
                 verdictBar
-                    .padding(.top, WinMetrics.s20)
+                    .padding(.top, WinMetrics.s16)
                 if let error = store.draftErrors[row.stripID] {
                     Text(error)
                         .font(.system(size: 12))
@@ -169,14 +180,10 @@ struct ReviewDetail: View {
                 ForEach(Array((row.text?.comments ?? []).enumerated()), id: \.offset) { _, comment in
                     commentCard(comment)
                 }
-                footer
-                    .padding(.top, WinMetrics.s16)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, WinMetrics.titlebarZone)
-            .padding(.horizontal, WinMetrics.canvasLeft)
-            .padding(.bottom, WinMetrics.canvasBottom)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, WinMetrics.titlebarZone)
+        .padding(.horizontal, WinMetrics.canvasLeft)
     }
 
     private var crumb: String {
@@ -190,8 +197,14 @@ struct ReviewDetail: View {
         var parts: [String] = []
         if let head = row.head { parts.append("head \(String(head.prefix(7)))") }
         if let lines = row.changedLines { parts.append("\(lines.formatted()) lines changed") }
-        if row.flagged { parts.append("touches flagged paths") }
+        if row.flagged { parts.append("Touches \(flaggedPaths)") }
         return parts
+    }
+
+    /// The repo's flagged paths, as configured (`infra/, .github/workflows/`).
+    private var flaggedPaths: String {
+        let paths = store.snap.config?.repos.first { $0.slug == row.repo }?.flagPaths ?? []
+        return paths.isEmpty ? "flagged paths" : paths.joined(separator: ", ")
     }
 
     // MARK: Verdict bar
@@ -232,11 +245,13 @@ struct ReviewDetail: View {
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(barInk)
                 .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
             if let stateWord {
                 Text(stateWord)
                     .font(.system(size: 13))
                     .foregroundStyle(WinTheme.muted)
                     .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             Spacer(minLength: WinMetrics.s8)
             barActions
@@ -262,6 +277,7 @@ struct ReviewDetail: View {
                     WinButton(title: "Discard", style: .outline, small: true) { store.discardDraft(strip) }
                     WinButton(title: "Post review", style: .primary, small: true) { confirmAndPost() }
                 }
+                .fixedSize(horizontal: true, vertical: false)
                 .disabled(store.snap.running)
             }
         } else if let postedAt = row.postedAt {
@@ -284,6 +300,7 @@ struct ReviewDetail: View {
                     .font(.system(size: 13))
                     .lineSpacing(4)
                     .foregroundStyle(WinTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 600, alignment: .leading)
                     .padding(.top, WinMetrics.s8)
             }
@@ -312,6 +329,7 @@ struct ReviewDetail: View {
                 .font(.system(size: 13))
                 .lineSpacing(4)
                 .foregroundStyle(WinTheme.text)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, WinMetrics.s12)
         .padding(.horizontal, WinMetrics.s16)
