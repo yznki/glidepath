@@ -1,8 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// The main window: sidebar beside the canvas. Overview, Reviews, Repos and Schedule are built; Settings is a placeholder
-/// until its phase lands.
+/// The main window: sidebar beside the canvas. Every section is built.
 struct MainWindowView: View {
     @ObservedObject var router = WindowRouter.shared
     @ObservedObject var store = Store.shared
@@ -28,21 +27,13 @@ struct MainWindowView: View {
                 ReposView(store: store)
             } else if router.section == .schedule {
                 ScheduleView(store: store)
+            } else if router.section == .settings {
+                // Settings lays out its own title row and scrolls as one column.
+                SettingsView(store: store)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
-                    if router.section == .overview {
-                        // The hero starts on the title line, so Overview has no title row of its own.
-                        OverviewView(store: store)
-                    } else {
-                        Text(router.section.title)
-                            .font(.system(size: 24, weight: .bold))
-                            .tracking(-0.4)
-                            .foregroundStyle(WinTheme.text)
-                            .frame(height: 32, alignment: .leading)
-                            .id(router.section)
-                            .transition(.opacity)
-                        Spacer(minLength: 0)
-                    }
+                    // The hero starts on the title line, so Overview has no title row of its own.
+                    OverviewView(store: store)
                 }
                 .padding(.leading, WinMetrics.canvasLeft)
                 .padding(.trailing, WinMetrics.canvasRight)

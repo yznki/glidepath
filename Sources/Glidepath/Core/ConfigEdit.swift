@@ -116,6 +116,20 @@ enum ConfigEditor {
         return out
     }
 
+    /// The "Notifications" switch: `notify` at the top level of the config.
+    static func setNotify(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.notify = on
+        return out
+    }
+
+    /// The "Check for updates automatically" switch: `check_updates` at the top level of the config.
+    static func setCheckUpdates(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.checkUpdates = on
+        return out
+    }
+
     static func addRepo(_ config: Config, _ repo: RepoConfig) throws -> Config {
         try validateRepo(repo)
         guard !config.repos.contains(where: { $0.slug == repo.slug }) else {

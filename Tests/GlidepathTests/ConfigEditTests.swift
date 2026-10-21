@@ -148,6 +148,13 @@ final class ConfigEditTests: XCTestCase {
         XCTAssertEqual(repo(start).flagNote, RepoConfig.defaultFlagNote)
     }
 
+    func testGlobalSwitchesRoundTrip() throws {
+        let c = ConfigEditor.setCheckUpdates(ConfigEditor.setNotify(try base(), false), false)
+        XCTAssertFalse(c.notify)
+        XCTAssertFalse(c.checkUpdates)
+        try assertRoundTrips(c)
+    }
+
     func testUnknownRepoRejected() throws {
         XCTAssertThrowsError(try ConfigEditor.setPosting(base(), slug: "nope/none", .review))
     }
