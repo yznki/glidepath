@@ -35,6 +35,7 @@ struct GlidepathApp: App {
         .defaultSize(width: WinMetrics.windowWidth, height: WinMetrics.windowHeight)
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
+        .commands { GlidepathCommands() }
     }
 }
 

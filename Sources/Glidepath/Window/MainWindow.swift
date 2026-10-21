@@ -15,6 +15,7 @@ struct MainWindowView: View {
     var body: some View {
         WindowScreen(store: store, router: router)
             .background(WindowAccessor())
+            .sheet(isPresented: $router.showShortcuts) { ShortcutsSheet() }
             .onAppear { MainWindowLifecycle.shared.windowAppeared() }
     }
 }

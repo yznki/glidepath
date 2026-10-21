@@ -27,6 +27,10 @@ final class WindowRouter: ObservableObject {
     /// "Set up Glidepath…". Cleared when onboarding finishes.
     @Published var showOnboarding: Bool
     var openAction: ((String) -> Void)?
+    /// The ⌘/ sheet.
+    @Published var showShortcuts = false
+    /// An action a view must carry out (filters, Add Repo, the review actions). The view that owns it takes it.
+    @Published var pending: ShortcutAction?
     private var launchChecked = false
 
     /// Defaults to onboarding while there is no config file.
@@ -60,6 +64,19 @@ final class WindowRouter: ObservableObject {
         if WindowRouter.needsSetup(forSection: section != nil) { showOnboarding = true }
         openAction?("main")
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Hands a view-owned action to the view. Selects `section` first when given.
+    func deliver(_ action: ShortcutAction, section: WindowSection?) {
+        if let section { self.section = section }
+        pending = action
+    }
+
+    /// The pending action, when it is one of `actions`. Taking it clears it.
+    func take(_ actions: Set<ShortcutAction>) -> ShortcutAction? {
+        guard let p = pending, actions.contains(p) else { return nil }
+        pending = nil
+        return p
     }
 
     /// The popover's "Set up Glidepath…": opens the window on onboarding.
