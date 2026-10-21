@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300">
+  <style>
+    .w{font-family:-apple-system,"SF Pro Display",system-ui;font-weight:650;font-size:168px;letter-spacing:-7px;fill:#F2F4F7}
+    
+  </style>
+  <!-- mark: runway on approach + landing light -->
+  <g transform="translate(40 40)">
+    <polygon class="r" points="92,40 128,40 214,220 6,220" fill="#2A5278"/>
+    <rect x="102" y="92" width="16" height="34" rx="8" fill="#E9EEF4"/>
+    <rect x="99" y="156" width="22" height="58" rx="11" fill="#E9EEF4"/>
+    <circle cx="110" cy="30" r="30" fill="#FFB020"/>
+  </g>
+  <text class="w" x="288" y="214">glidepath</text>
+</svg>
