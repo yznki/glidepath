@@ -16,7 +16,7 @@ extension Posting {
         switch self {
         case .comment: return "Leaves comments on the lines, with no verdict. Shown as a comment by yznki."
         case .review: return "Approves or requests changes, with comments on the lines. Shown as Changes requested by yznki."
-        case .draft: return "Saves a draft you post from Glidepath or Reviews. Nothing reaches GitHub until you post it."
+        case .draft: return "Saves a draft you post from Glidepath or Reviews. Nothing posts until you do."
         }
     }
 }

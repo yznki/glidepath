@@ -244,14 +244,14 @@ struct ReviewDetail: View {
             Text(verdictWord)
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(barInk)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(-1)
             if let stateWord {
+                // Never truncated: the verdict title is the side that shrinks or wraps.
                 Text(stateWord)
                     .font(.system(size: 13))
                     .foregroundStyle(WinTheme.muted)
-                    .lineLimit(1)
-                    .layoutPriority(-1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
             }
             Spacer(minLength: WinMetrics.s8)
             barActions

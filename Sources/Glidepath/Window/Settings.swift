@@ -11,31 +11,33 @@ struct SettingsView: View {
     private var config: Config? { store.snap.config }
 
     var body: some View {
-        WinScroll {
-            VStack(alignment: .leading, spacing: 0) {
-                TitleRow(saved: model.saved)
-                SettingRow(title: "Notifications", detail: "Posts a notification when a sweep finishes.",
-                           error: model.rowErrors["notify"]) {
-                    WinToggle(isOn: config?.notify ?? true) {
-                        model.commit("notify", store: store) { ConfigEditor.setNotify($0, !($0.notify)) }
+        VStack(alignment: .leading, spacing: 0) {
+            TitleRow(saved: model.saved)
+            WinScroll {
+                VStack(alignment: .leading, spacing: 0) {
+                    SettingRow(title: "Notifications", detail: "Posts a notification when a sweep finishes.",
+                               error: model.rowErrors["notify"]) {
+                        WinToggle(isOn: config?.notify ?? true) {
+                            model.commit("notify", store: store) { ConfigEditor.setNotify($0, !($0.notify)) }
+                        }
                     }
-                }
-                updatesRow
-                SettingRow(title: "Automatic checks", detail: "Check for updates automatically in the background.",
-                           error: model.rowErrors["autoUpdates"]) {
-                    WinToggle(isOn: config?.checkUpdates ?? true) {
-                        model.commit("autoUpdates", store: store) { ConfigEditor.setCheckUpdates($0, !($0.checkUpdates)) }
+                    updatesRow
+                    SettingRow(title: "Automatic checks", detail: "Check for updates automatically in the background.",
+                               error: model.rowErrors["autoUpdates"]) {
+                        WinToggle(isOn: config?.checkUpdates ?? true) {
+                            model.commit("autoUpdates", store: store) { ConfigEditor.setCheckUpdates($0, !($0.checkUpdates)) }
+                        }
                     }
+                    SettingRow(title: "Open at login", detail: "Starts Glidepath when you log in.",
+                               error: model.rowErrors["login"]) {
+                        WinToggle(isOn: model.loginOn) { model.toggleLogin(store) }
+                    }
+                    toolsRow
+                    advancedRow
+                    uninstallSection
                 }
-                SettingRow(title: "Open at login", detail: "Starts Glidepath when you log in.",
-                           error: model.rowErrors["login"]) {
-                    WinToggle(isOn: model.loginOn) { model.toggleLogin(store) }
-                }
-                toolsRow
-                advancedRow
-                uninstallSection
+                .padding(.bottom, WinMetrics.canvasBottom)
             }
-            .padding(.bottom, WinMetrics.canvasBottom)
         }
         .padding(.top, WinMetrics.titlebarZone)
         .padding(.leading, WinMetrics.canvasLeft)
@@ -130,16 +132,16 @@ struct SettingsView: View {
                     .foregroundStyle(WinTheme.text)
                     .fixedSize(horizontal: false, vertical: true)
                 if !item.ok {
-                    Text(item.fix)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(WinTheme.muted)
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
+                    // Copy sits right after the command, 12 pt on, so it reads as the command's button.
+                    HStack(alignment: .center, spacing: WinMetrics.s12) {
+                        Text(item.fix)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(WinTheme.muted)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        WinButton(title: "Copy", style: .outline, small: true) { model.copy(item.fix) }
+                    }
                 }
-            }
-            Spacer(minLength: WinMetrics.s12)
-            if !item.ok {
-                WinButton(title: "Copy", style: .outline, small: true) { model.copy(item.fix) }
             }
         }
     }
@@ -218,7 +220,7 @@ private struct TitleRow: View {
                 .frame(height: 32, alignment: .leading)
             SavedStamp(shown: saved.shown)
         }
-        .padding(.bottom, WinMetrics.s16)
+        .padding(.bottom, WinMetrics.s24)
     }
 }
 

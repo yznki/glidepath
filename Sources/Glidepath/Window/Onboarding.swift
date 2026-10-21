@@ -190,13 +190,12 @@ struct OnboardingView: View {
 
     /// The fix command in a mono box with a Copy button (48 tall, surface fill).
     private func fixBox(_ command: String) -> some View {
-        HStack(spacing: WinMetrics.s8) {
+        HStack(spacing: WinMetrics.s12) {
             Text(command)
                 .font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(WinTheme.text)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Spacer(minLength: 0)
             WinButton(title: model.copied == command ? "Copied" : "Copy", style: .outline) { model.copy(command) }
         }
         .padding(.leading, WinMetrics.s12)
