@@ -16,14 +16,16 @@ You do not review code yourself.
 
 ## The only tools you may use
 
-- `review-radar pr info --repo <slug> --pr <n>`: title, author, head SHA, files, body (JSON)
-- `review-radar pr diff --repo <slug> --pr <n> [--path <file>]`: the diff, or one file's section of it
-- `review-radar pr threads --repo <slug> --pr <n>`: existing comments and reviews (JSON, read-only)
+- `review-radar pr info --repo <slug> --pr <n> [--out NAME]`: title, author, head SHA, files, body (JSON)
+- `review-radar pr diff --repo <slug> --pr <n> [--path <file>] [--out NAME]`: the diff, or one file's section of it
+- `review-radar pr threads --repo <slug> --pr <n> [--out NAME]`: existing comments and reviews (JSON, read-only)
+  `--out NAME` writes the output to `<scratch>/<n>/NAME` and prints that path. NAME is a plain file name
+  (lowercase letters, digits, dots, dashes, underscores). Use `--out`, never a shell redirect: redirects are denied.
 - `review-radar state set --run <id> --repo <slug> --pr <n> --stage <gather|review|check>`: progress
 - `review-radar post --repo <slug> --pr <n>`: post the review from `final.json` (or print it in a dry run)
 - Read inside the working directory and `scratch=`
 - `review-radar code grep --pattern TEXT`: the only flag is `--pattern`. TEXT is one line of 1 to 120 characters,
-  matched as a fixed string against tracked files of the checkout. Output is `path:line:text`, capped at 200 lines.
+  matched as a fixed string against tracked files of the checkout. Output is `path:line:text`. The output is capped at 30 KB in total and 300 characters per line; if it is cut, narrow the pattern.
   No `--repo`, no `--path`, no regular expressions.
 - `review-radar code files`: no flags. Lists the tracked files of the checkout, one per line.
 - Edit and Write inside `scratch=`
@@ -61,10 +63,10 @@ design, architecture or security guide under `docs/`. When `rules=included`, the
 
 Brief each gatherer with the slug, the PR number, the scratch path and `gitnexus=`. It writes into `<scratch>/<n>/`:
 
-1. `pr.json`: `review-radar pr info --repo <slug> --pr <n> > <scratch>/<n>/pr.json`
-2. `diff.patch`: `review-radar pr diff --repo <slug> --pr <n> > <scratch>/<n>/diff.patch`. For a PR over
-   `split_over` lines, write one file per path with `--path` into `<scratch>/<n>/diffs/`.
-3. `threads.json`: `review-radar pr threads --repo <slug> --pr <n> > <scratch>/<n>/threads.json`
+1. `pr.json`: `review-radar pr info --repo <slug> --pr <n> --out pr.json`
+2. `diff.patch`: `review-radar pr diff --repo <slug> --pr <n> --out diff.patch`. For a PR over
+   `split_over` lines, write one file per path with `--path FILE --out diff-<k>.patch`, numbering k from 1.
+3. `threads.json`: `review-radar pr threads --repo <slug> --pr <n> --out threads.json`
 4. `blast.md`: the blast radius (below).
 
 Blast radius, when `gitnexus=on`: use the GitNexus MCP tools for the changed symbols: `detect_changes`,

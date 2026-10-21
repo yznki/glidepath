@@ -198,4 +198,18 @@ final class SecurityTests: XCTestCase {
         XCTAssertEqual(Claude.pathPrepending("/opt/rr/bin", to: "/usr/bin:/opt/rr/bin"), "/opt/rr/bin:/usr/bin")
         XCTAssertEqual(Claude.pathPrepending("/opt/rr/bin", to: nil), "/opt/rr/bin")
     }
+
+    func testOutNameIsAPlainFileName() throws {
+        let binding = RunBinding(runId: "r", repo: "a/b", scratch: FileManager.default.temporaryDirectory.path + "/rr-out-\(UUID().uuidString)",
+                                 clone: "/c", dryRun: true)
+        XCTAssertEqual(try PRCommands.output("hello", [:], binding, 3), "hello")
+        let path = try PRCommands.output("hello", ["--out": "pr.json"], binding, 3)
+        XCTAssertEqual(path, binding.scratch + "/3/pr.json")
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), "hello")
+        for bad in ["../x", "a/b", ".hidden", "A.json", "", String(repeating: "x", count: 81)] {
+            XCTAssertThrowsError(try PRCommands.output("x", ["--out": bad], binding, 3), bad)
+        }
+        XCTAssertThrowsError(try StrictFlags.parse(["--pattern", "--force"], allowed: ["--repo"]))
+        XCTAssertEqual(try StrictFlags.parse(["--pattern", "--force"], allowed: ["--pattern"])["--pattern"], "--force")
+    }
 }

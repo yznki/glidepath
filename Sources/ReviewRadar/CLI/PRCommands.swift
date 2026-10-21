@@ -61,7 +61,10 @@ enum StrictFlags {
         while i < args.count {
             let flag = args[i]
             guard allowed.contains(flag) else { throw CommandError("unexpected argument \(flag)") }
-            guard i + 1 < args.count, !args[i + 1].hasPrefix("--") else { throw CommandError("\(flag) needs a value") }
+            // The guard only lets a dash-prefixed value through when it was quoted, and only --pattern takes one.
+            guard i + 1 < args.count, !args[i + 1].hasPrefix("--") || (flag == "--pattern" && args[i + 1].count > 2) else {
+                throw CommandError("\(flag) needs a value")
+            }
             guard out[flag] == nil else { throw CommandError("\(flag) given twice") }
             out[flag] = args[i + 1]
             i += 2
@@ -160,9 +163,15 @@ enum PRCommands {
             let binding = try RunBinding.current()
             let store = RunStore(paths: Paths())
             switch sub {
-            case "info": print(try info(binding, store, try StrictFlags.parse(rest, allowed: ["--repo", "--pr"])))
-            case "diff": print(try diff(binding, store, try StrictFlags.parse(rest, allowed: ["--repo", "--pr", "--path"])))
-            case "threads": print(try threads(binding, store, try StrictFlags.parse(rest, allowed: ["--repo", "--pr"])))
+            case "info":
+                let f = try StrictFlags.parse(rest, allowed: ["--repo", "--pr", "--out"])
+                print(try output(try info(binding, store, f), f, binding, try StrictFlags.pr(f)))
+            case "diff":
+                let f = try StrictFlags.parse(rest, allowed: ["--repo", "--pr", "--path", "--out"])
+                print(try output(try diff(binding, store, f), f, binding, try StrictFlags.pr(f)))
+            case "threads":
+                let f = try StrictFlags.parse(rest, allowed: ["--repo", "--pr", "--out"])
+                print(try output(try threads(binding, store, f), f, binding, try StrictFlags.pr(f)))
             default: throw CommandError("unknown pr command \(sub)")
             }
             return 0
@@ -170,6 +179,20 @@ enum PRCommands {
             eprint("\(error)")
             return 1
         }
+    }
+
+    /// Prints the text, or with `--out NAME` writes it to `<scratch>/<n>/NAME` and prints that path. The name is a
+    /// plain file name, so the output can only land in the PR's own scratch folder.
+    static func output(_ text: String, _ f: [String: String], _ binding: RunBinding, _ n: Int) throws -> String {
+        guard let name = f["--out"] else { return text }
+        guard name.range(of: #"^[a-z0-9][a-z0-9._-]*$"#, options: .regularExpression) != nil, name.count <= 80 else {
+            throw CommandError("--out takes a file name of lowercase letters, digits, dots, dashes and underscores")
+        }
+        let dir = binding.scratch + "/\(n)"
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let path = dir + "/" + name
+        try text.write(toFile: path, atomically: true, encoding: .utf8)
+        return path
     }
 
     static func post(_ args: [String]) -> Int32 {
