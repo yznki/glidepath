@@ -241,17 +241,19 @@ struct ReviewDetail: View {
 
     private var verdictBar: some View {
         HStack(spacing: WinMetrics.s12) {
+            // The verdict keeps its full width on one line; the state word gives way first when the bar is narrow.
             Text(verdictWord)
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(barInk)
-                .layoutPriority(-1)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
             if let stateWord {
-                // Never truncated: the verdict title is the side that shrinks or wraps.
                 Text(stateWord)
                     .font(.system(size: 13))
                     .foregroundStyle(WinTheme.muted)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .layoutPriority(1)
+                    .lineLimit(1)
+                    .layoutPriority(0)
             }
             Spacer(minLength: WinMetrics.s8)
             barActions

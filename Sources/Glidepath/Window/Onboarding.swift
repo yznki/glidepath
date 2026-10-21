@@ -356,7 +356,7 @@ struct CheckShape: Shape {
     }
 }
 
-/// The rail (onb.css `.path`, kit.js approach()): the glide slope from (48,148) to (248,628), one point per step, done
+/// The rail (onb.css `.path`, kit.js approach()): the glide slope from (48,148) to (248, height - 92), one point per step, done
 /// points ink, the current point an amber dot with a soft halo, and the runway under the last step. Labels sit at x+20.
 /// The done trail and the dot move with an ease-out when the step changes; both settle on the runway at landing.
 struct OnboardingRail: View {
@@ -365,42 +365,42 @@ struct OnboardingRail: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     static let start = CGPoint(x: 48, y: 148)
-    static let end = CGPoint(x: 248, y: 628)
     static let last = OnboardingStep.allCases.count - 1
-    /// Where the dot rests at landing: the middle of the runway.
-    static let runwayRest = CGPoint(x: 300, y: 647.5)
     static let amber = Color(hex: "FFB020")
 
-    static func point(_ index: Int) -> CGPoint {
+    /// The slope's foot, 92 above the rail's bottom edge, so the runway (18 below it) stays in view at any height.
+    static func slopeEnd(_ height: CGFloat) -> CGPoint { CGPoint(x: 248, y: height - 92) }
+    /// Where the dot rests at landing: the middle of the runway.
+    static func runwayRest(_ height: CGFloat) -> CGPoint { CGPoint(x: 300, y: height - 72.5) }
+
+    static func point(_ index: Int, height: CGFloat) -> CGPoint {
+        let end = slopeEnd(height)
         let t = CGFloat(index) / CGFloat(last)
         return CGPoint(x: start.x + (end.x - start.x) * t, y: start.y + (end.y - start.y) * t)
     }
 
     var body: some View {
         let cur = step.rawValue
-        let dot = landed ? OnboardingRail.runwayRest : OnboardingRail.point(cur)
         let trail: CGFloat = landed ? 1 : CGFloat(cur) / CGFloat(OnboardingRail.last)
-        // The rail's points are fixed at the 720 pt design, but they sit in an overlay on a frame that takes the window's
-        // height, so a shorter window clips the rail instead of growing the whole window.
-        Color.clear
-            .frame(width: 400)
-            .frame(maxHeight: .infinity)
-            .overlay(alignment: .topLeading) {
+        // The rail takes the window's height and scales its slope to it, so a shorter window keeps the runway in view.
+        GeometryReader { geo in
+        let h = geo.size.height
+        let dot = landed ? OnboardingRail.runwayRest(h) : OnboardingRail.point(cur, height: h)
         ZStack(alignment: .topLeading) {
             Path { p in
                 p.move(to: OnboardingRail.start)
-                p.addLine(to: OnboardingRail.end)
+                p.addLine(to: OnboardingRail.slopeEnd(h))
             }
             .stroke(WinTheme.track, lineWidth: 2)
-            GlideTrail(fraction: trail)
+            GlideTrail(fraction: trail, height: h)
                 .stroke(WinTheme.text, lineWidth: 2)
             RoundedRectangle(cornerRadius: 1.5)
                 .fill(cur == OnboardingRail.last || landed ? WinTheme.text : WinTheme.track)
                 .frame(width: 120, height: 3)
-                .offset(x: 240, y: 646)
+                .offset(x: 240, y: h - 74)
             ForEach(OnboardingStep.allCases, id: \.self) { item in
                 if item.rawValue != cur {
-                    let p = OnboardingRail.point(item.rawValue)
+                    let p = OnboardingRail.point(item.rawValue, height: h)
                     Circle()
                         .fill(item.rawValue < cur ? WinTheme.text : WinTheme.track)
                         .frame(width: 8, height: 8)
@@ -416,7 +416,7 @@ struct OnboardingRail: View {
                 .frame(width: 14, height: 14)
                 .offset(x: dot.x - 7, y: dot.y - 7)
             ForEach(OnboardingStep.allCases, id: \.self) { item in
-                let p = OnboardingRail.point(item.rawValue)
+                let p = OnboardingRail.point(item.rawValue, height: h)
                 Text(item.label)
                     .font(.system(size: 13, weight: item.rawValue == cur ? .semibold : .regular))
                     .foregroundStyle(item.rawValue == cur ? WinTheme.text : item.rawValue < cur ? WinTheme.muted : WinTheme.faint)
@@ -435,8 +435,9 @@ struct OnboardingRail: View {
             .frame(height: 32)
             .offset(x: 20, y: 52)
         }
-        .frame(width: 400, height: 720, alignment: .topLeading)
+        .frame(width: 400, height: h, alignment: .topLeading)
             }
+            .frame(width: 400)
             .clipped()
             .background(WinTheme.rail)
         .overlay(alignment: .trailing) {
@@ -451,6 +452,7 @@ struct OnboardingRail: View {
 /// the trail grows with the step rather than jumping.
 struct GlideTrail: Shape, Animatable {
     var fraction: CGFloat
+    let height: CGFloat
 
     var animatableData: CGFloat {
         get { fraction }
@@ -460,9 +462,10 @@ struct GlideTrail: Shape, Animatable {
     func path(in rect: CGRect) -> Path {
         var path = Path()
         let t = fraction
+        let end = OnboardingRail.slopeEnd(height)
         path.move(to: OnboardingRail.start)
-        path.addLine(to: CGPoint(x: OnboardingRail.start.x + (OnboardingRail.end.x - OnboardingRail.start.x) * t,
-                                 y: OnboardingRail.start.y + (OnboardingRail.end.y - OnboardingRail.start.y) * t))
+        path.addLine(to: CGPoint(x: OnboardingRail.start.x + (end.x - OnboardingRail.start.x) * t,
+                                 y: OnboardingRail.start.y + (end.y - OnboardingRail.start.y) * t))
         return path
     }
 }

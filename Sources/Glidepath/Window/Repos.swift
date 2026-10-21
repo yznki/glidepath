@@ -93,7 +93,8 @@ struct ReposView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(WinTheme.muted)
                     .frame(width: 32, height: 32)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(WinTheme.avatar))
+                    // The selected row's fill is the avatar's colour in light theme, so its avatar takes the ground.
+                    .background(RoundedRectangle(cornerRadius: 8).fill(on ? WinTheme.ground : WinTheme.avatar))
                 VStack(alignment: .leading, spacing: 0) {
                     Text(repo.slug)
                         .font(.system(size: 13, weight: .medium))
