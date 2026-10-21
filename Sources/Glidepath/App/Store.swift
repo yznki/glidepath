@@ -403,7 +403,9 @@ final class Store: ObservableObject {
             return
         }
         _ = kill(-pid, SIGTERM)
-        try? RunStore(paths: paths).mutate(snap.run?.id ?? "") { run in
+        // A dry run is not the current run, so the run to record is the dry run's own file.
+        let id = (snap.dryRunning ? snap.dryRun?.id : snap.run?.id) ?? ""
+        try? RunStore(paths: paths).mutate(id) { run in
             if run.finished == nil { run.finish(at: Date(), error: nil) }
         }
         actionError = nil

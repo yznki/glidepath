@@ -70,10 +70,9 @@ struct OverviewView: View {
 
     @ViewBuilder
     private func heroActions(_ kind: HeaderKind) -> some View {
-        // A dry run has nothing to stop or start: it runs to its end in the background.
         HStack(spacing: WinMetrics.s16) {
             if store.snap.dryRunning {
-                EmptyView()
+                WinButton(title: "Stop dry run", style: .outline, large: true) { confirmAndStop() }
             } else if store.snap.running {
                 WinButton(title: "Stop sweep", style: .outline, large: true) { confirmAndStop() }
             } else if store.snap.paused {
@@ -268,9 +267,14 @@ struct OverviewView: View {
 
     private var onApproach: some View {
         let items = inFlight
+        // A dry run also lists the PRs it has landed, under the ones in flight.
+        let landedHere = store.snap.dryRunning ? reviewed.filter { $0.strip.verdict != nil } : []
         return panel("On approach", meta: "\(items.count) in flight · \(reviewed.filter { $0.strip.verdict != nil }.count) landed", rows: {
             ForEach(Array(items.enumerated()), id: \.offset) { index, row in
                 approachRow(row, first: index == 0)
+            }
+            ForEach(Array(landedHere.enumerated()), id: \.offset) { index, row in
+                landedRow(row, first: items.isEmpty && index == 0)
             }
         }, footer: {
             WinButton(title: "Open the log", style: .link) { store.openLog() }
@@ -382,7 +386,7 @@ struct OverviewView: View {
 
     private func confirmAndStop() {
         let alert = NSAlert()
-        alert.messageText = "Stop the current sweep?"
+        alert.messageText = store.snap.dryRunning ? "Stop the dry run?" : "Stop the current sweep?"
         alert.informativeText = "Reviews already posted stay posted."
         alert.addButton(withTitle: "Stop")
         alert.addButton(withTitle: "Keep running")
