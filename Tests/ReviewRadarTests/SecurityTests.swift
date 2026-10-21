@@ -179,6 +179,10 @@ final class SecurityTests: XCTestCase {
         XCTAssertThrowsError(try StrictFlags.reason(["--reason": "a\nb"]))
     }
 
+    func testClonesUseHTTPS() {
+        XCTAssertEqual(RepoClone.cloneURL("acme/api"), "https://github.com/acme/api.git")
+    }
+
     func testChildPathStartsWithRunningBinaryDirectory() {
         XCTAssertEqual(Claude.pathPrepending("/opt/rr/bin", to: "/usr/bin:/bin"), "/opt/rr/bin:/usr/bin:/bin")
         XCTAssertEqual(Claude.pathPrepending("/opt/rr/bin", to: "/usr/bin:/opt/rr/bin"), "/opt/rr/bin:/usr/bin")
