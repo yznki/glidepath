@@ -77,6 +77,7 @@ enum Snapshotter {
         writeMenuBar(to: dir.appendingPathComponent("menubar.png"))
         writeDashboard(to: dir.appendingPathComponent("index.html"), now: now)
         writeWindowShots(to: dir.appendingPathComponent("app", isDirectory: true), now: now)
+        writeShortcutsSheet(to: dir.appendingPathComponent("app", isDirectory: true))
     }
 
     /// Every window section and onboarding step, light and dark, from `WindowFixtures`. Each store is a fixture store,
@@ -117,6 +118,15 @@ enum Snapshotter {
         for dark in [true, false] {
             writeWindow(minimal, dark: dark, to: dir.appendingPathComponent("onb-sweep-640-\(dark ? "dark" : "light").png"),
                         width: WinMetrics.minWidth, height: WinMetrics.minHeight)
+        }
+    }
+
+    /// The ⌘/ sheet, light and dark, at its own size: the same table the menus read.
+    static func writeShortcutsSheet(to dir: URL) {
+        for dark in [true, false] {
+            writeWindow(ShortcutsSheet(), dark: dark,
+                        to: dir.appendingPathComponent("shortcuts-\(dark ? "dark" : "light").png"),
+                        width: 640, height: 720)
         }
     }
 

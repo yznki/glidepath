@@ -5,6 +5,7 @@ import SwiftUI
 struct ShortcutsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var model = ShortcutsModel()
+    @Environment(\.offscreenRender) private var offscreen
 
     var body: some View {
         let groups = Shortcuts.filter(model.query)
@@ -14,10 +15,24 @@ struct ShortcutsSheet: View {
                 .font(.system(size: 24, weight: .bold))
                 .tracking(-0.4)
                 .foregroundStyle(WinTheme.text)
-            TextField("Search shortcuts", text: $model.query)
-                .textFieldStyle(.roundedBorder)
-                .padding(.top, WinMetrics.s16)
-            ScrollView {
+            // Snapshot rendering draws AppKit text fields as placeholders, so it gets a stand-in with the same look.
+            Group {
+                if offscreen {
+                    Text(model.query.isEmpty ? "Search shortcuts" : model.query)
+                        .font(.system(size: 13))
+                        .foregroundStyle(WinTheme.faint)
+                        .padding(.horizontal, WinMetrics.s12)
+                        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(WinTheme.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(WinTheme.control, lineWidth: 1))
+                } else {
+                    TextField("Search shortcuts", text: $model.query)
+                        .winField()
+                }
+            }
+            .padding(.top, WinMetrics.s16)
+            // WinScroll, not ScrollView: snapshot rendering draws ScrollView blank.
+            WinScroll {
                 if groups.isEmpty {
                     Text("No shortcuts match \"\(model.query)\".")
                         .font(.system(size: 13))
@@ -37,8 +52,10 @@ struct ShortcutsSheet: View {
             }
             .padding(.top, WinMetrics.s16)
         }
-        .padding(WinMetrics.s24)
-        .frame(width: 640, height: 560, alignment: .topLeading)
+        .padding(.horizontal, WinMetrics.s24)
+        .padding(.top, 48)
+        .padding(.bottom, WinMetrics.s24)
+        .frame(width: 640, height: 720, alignment: .topLeading)
         .background(WinTheme.ground)
         .onExitCommand { dismiss() }
     }
@@ -58,7 +75,8 @@ struct ShortcutsSheet: View {
                                 .foregroundStyle(WinTheme.text)
                             Spacer(minLength: WinMetrics.s8)
                             Text(item.glyphs)
-                                .font(.system(size: 13, design: .monospaced))
+                                .font(.system(size: 13))
+                                .monospacedDigit()
                                 .foregroundStyle(WinTheme.muted)
                         }
                         .frame(height: 28)
