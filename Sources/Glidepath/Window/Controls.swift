@@ -269,13 +269,14 @@ struct WinScroll<Content: View>: View {
     var body: some View {
         if offscreen {
             // ScrollView content sits at the top; drawn inline it would centre in a full-height frame.
-            // Taller than the window, the content would centre its overflow; a frame of the offered height keeps the top.
-            GeometryReader { geo in
-                content()
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .frame(height: geo.size.height, alignment: .top)
-                    .clipped()
-            }
+            // Taller than the frame, the content would centre its overflow. As an overlay on a view that takes only the
+            // offered space, it reports no height of its own, so it stays at the top and is clipped to the frame.
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .topLeading) {
+                    content().frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+                .clipped()
         } else {
             ScrollView { content() }
         }

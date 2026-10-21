@@ -36,12 +36,14 @@ struct OnboardingView: View {
     /// pane width from the environment this sets.
     private var pane: some View {
         GeometryReader { geo in
+            // The step gets exactly the height between the title zone and the bottom inset, so its footer lands on the
+            // bottom edge whatever the body measures.
             VStack(alignment: .leading, spacing: WinMetrics.s24) {
                 stepBody
-                    .frame(maxWidth: 520, maxHeight: .infinity, alignment: .topLeading)
+                    .frame(maxWidth: 520, alignment: .topLeading)
+                    .frame(height: max(0, geo.size.height - 136 - WinMetrics.canvasBottom), alignment: .topLeading)
             }
             .padding(.top, 136)
-            .padding(.bottom, WinMetrics.canvasBottom)
             .padding(.horizontal, 64)
             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             .environment(\.paneWidth, geo.size.width)
@@ -98,55 +100,81 @@ struct OnboardingView: View {
         FooterBar(back: model.state.canGoBackFrom(model.state.step) ? { model.goBack() } : nil, trailing: trailing())
     }
 
+    /// A step's layout: the body fills the pane between the title area and the footer, and scrolls inside that space
+    /// (`scrolls`), so a short window never pushes the footer off screen. A body that scrolls itself, such as a list,
+    /// passes `scrolls: false`. The footer stays pinned at the bottom.
+    func stepLayout<Body: View, Footer: View>(scrolls: Bool = true, @ViewBuilder body: () -> Body,
+                                              @ViewBuilder footer: () -> Footer) -> some View {
+        // The footer is 44 tall and sits on the bottom edge. The body stops 24 above it and is clipped, so overflow
+        // scrolls or is cut inside the body and never moves the footer.
+        let content = body()
+            .frame(maxWidth: .infinity, maxHeight: scrolls ? nil : .infinity, alignment: .topLeading)
+            .padding(.bottom, 44 + WinMetrics.s24)
+        return ZStack(alignment: .bottom) {
+            if scrolls {
+                WinScroll { content }
+            } else {
+                content
+            }
+            footer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .clipped()
+    }
+
     // MARK: 1. Welcome
 
     private var welcome: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            GlidepathMark(size: 120, n: 11)
-            heading("PRs reviewed\nbefore you're back.")
-                .padding(.top, WinMetrics.s32)
-            lead("Glidepath runs Claude Code reviews of your team's pull requests on a schedule, checks every finding against the code, and posts one review per PR.")
-                .padding(.top, WinMetrics.s8)
-            lead("Setup takes about three minutes. Nothing is posted until you say so.")
-                .padding(.top, WinMetrics.s12)
-            amberMessage(model.message)
-            Spacer(minLength: 0)
+        stepLayout(body: {
+            VStack(alignment: .leading, spacing: 0) {
+                GlidepathMark(size: 120, n: 11)
+                heading("PRs reviewed\nbefore you're back.")
+                    .padding(.top, WinMetrics.s32)
+                lead("Glidepath runs Claude Code reviews of your team's pull requests on a schedule, checks every finding against the code, and posts one review per PR.")
+                    .padding(.top, WinMetrics.s8)
+                lead("Setup takes about three minutes. Nothing is posted until you say so.")
+                    .padding(.top, WinMetrics.s12)
+                amberMessage(model.message)
+            }
+        }, footer: {
             HStack(spacing: WinMetrics.s12) {
                 WinButton(title: "Use my config file", style: .quiet) { model.useConfigFile() }
                 Spacer(minLength: 0)
                 WinButton(title: "Get started", style: .primary) { model.advance() }
             }
             .modifier(FooterFrame())
-        }
+        })
     }
 
     // MARK: 2. Your tools
 
     private var tools: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            heading("Your tools")
-            lead(toolsLead)
-                .padding(.top, WinMetrics.s8)
-            VStack(spacing: 0) {
-                ForEach(Array(model.toolRows.enumerated()), id: \.element.id) { index, row in
-                    toolRow(row, first: index == 0)
+        stepLayout(body: {
+            VStack(alignment: .leading, spacing: 0) {
+                heading("Your tools")
+                lead(toolsLead)
+                    .padding(.top, WinMetrics.s8)
+                VStack(spacing: 0) {
+                    ForEach(Array(model.toolRows.enumerated()), id: \.element.id) { index, row in
+                        toolRow(row, first: index == 0)
+                    }
+                }
+                .padding(.top, WinMetrics.s32)
+                if model.toolRows.isEmpty {
+                    Text("Checking your tools…")
+                        .font(.system(size: 13))
+                        .foregroundStyle(WinTheme.faint)
+                        .padding(.top, WinMetrics.s32)
                 }
             }
-            .padding(.top, WinMetrics.s32)
-            if model.toolRows.isEmpty {
-                Text("Checking your tools…")
-                    .font(.system(size: 13))
-                    .foregroundStyle(WinTheme.faint)
-                    .padding(.top, WinMetrics.s32)
-            }
-            Spacer(minLength: 0)
+        }, footer: {
             bar {
                 WinButton(title: "Check again", style: .outline) { model.checkTools() }
                     .disabled(model.checkingTools)
                 WinButton(title: "Continue", style: .primary) { model.advance() }
                     .disabled(!model.state.canContinue(from: .tools))
             }
-        }
+        })
     }
 
     /// The lead names what is missing only when it is: GitNexus is optional, the required three block Continue.
@@ -207,16 +235,20 @@ struct OnboardingView: View {
     // MARK: 3. Repos
 
     private var repos: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            heading("Which repos?")
-            lead("From your GitHub account and orgs. You can add more later.")
-                .padding(.top, WinMetrics.s8)
-            TextField(model.repoList == .loaded ? "Search \(model.allRows.count) repos" : "Search repos", text: $model.search)
-                .winField()
-                .padding(.top, WinMetrics.s32)
-            repoList
-                .padding(.top, WinMetrics.s8)
-                .frame(maxHeight: .infinity, alignment: .top)
+        // The repo list scrolls inside its own frame, so the body does not wrap it in another scroll view.
+        stepLayout(scrolls: false, body: {
+            VStack(alignment: .leading, spacing: 0) {
+                heading("Which repos?")
+                lead("From your GitHub account and orgs. You can add more later.")
+                    .padding(.top, WinMetrics.s8)
+                TextField(model.repoList == .loaded ? "Search \(model.allRows.count) repos" : "Search repos", text: $model.search)
+                    .winField()
+                    .padding(.top, WinMetrics.s32)
+                repoList
+                    .padding(.top, WinMetrics.s8)
+                    .frame(maxHeight: .infinity, alignment: .top)
+            }
+        }, footer: {
             bar {
                 Text("\(model.state.repos.count) selected")
                     .font(.system(size: 12))
@@ -224,7 +256,7 @@ struct OnboardingView: View {
                 WinButton(title: "Continue", style: .primary) { model.advance() }
                     .disabled(!model.state.canContinue(from: .repos))
             }
-        }
+        })
     }
 
     @ViewBuilder
@@ -348,6 +380,12 @@ struct OnboardingRail: View {
         let cur = step.rawValue
         let dot = landed ? OnboardingRail.runwayRest : OnboardingRail.point(cur)
         let trail: CGFloat = landed ? 1 : CGFloat(cur) / CGFloat(OnboardingRail.last)
+        // The rail's points are fixed at the 720 pt design, but they sit in an overlay on a frame that takes the window's
+        // height, so a shorter window clips the rail instead of growing the whole window.
+        Color.clear
+            .frame(width: 400)
+            .frame(maxHeight: .infinity)
+            .overlay(alignment: .topLeading) {
         ZStack(alignment: .topLeading) {
             Path { p in
                 p.move(to: OnboardingRail.start)
@@ -398,7 +436,9 @@ struct OnboardingRail: View {
             .offset(x: 20, y: 52)
         }
         .frame(width: 400, height: 720, alignment: .topLeading)
-        .background(WinTheme.rail)
+            }
+            .clipped()
+            .background(WinTheme.rail)
         .overlay(alignment: .trailing) {
             Rectangle().fill(WinTheme.line).frame(width: 1)
         }
@@ -786,7 +826,7 @@ final class OnboardingModel: ObservableObject {
         let poller = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
-                refreshLive(since: started)
+                await refreshLive(since: started)
             }
         }
         Task {
@@ -800,7 +840,7 @@ final class OnboardingModel: ObservableObject {
                 }
             }.value
             poller.cancel()
-            refreshLive(since: started)
+            await refreshLive(since: started)
             switch outcome {
             case .failure(let error):
                 state.firstSweep = .failed(error.message)
@@ -815,11 +855,10 @@ final class OnboardingModel: ObservableObject {
         }
     }
 
-    /// Reads the newest run started since the dry run began, and shows its PRs.
-    private func refreshLive(since started: Date) {
-        let run = RunStore(paths: paths).loadAll()
-            .filter { $0.started >= started.addingTimeInterval(-1) }
-            .max { $0.started < $1.started }
+    /// Reads the current sweep's run file off the main thread, then shows its PRs here.
+    private func refreshLive(since started: Date) async {
+        let paths = self.paths
+        let run = await Task.detached(priority: .utility) { currentSweepRun(paths: paths, since: started) }.value
         liveStrips = Store.strips(from: run)
     }
 
@@ -848,6 +887,24 @@ final class OnboardingModel: ObservableObject {
         WindowRouter.shared.showOnboarding = false
         WindowRouter.shared.section = .overview
     }
+}
+
+/// The run file of the sweep that started at or after `started`. Only the run files written since then are candidates
+/// (by modification time, from the directory listing), and only the newest of them is read. Runs on a background thread.
+func currentSweepRun(paths: Paths, since started: Date) -> RunState? {
+    let fm = FileManager.default
+    let cutoff = started.addingTimeInterval(-1)
+    let newest = ((try? fm.contentsOfDirectory(atPath: paths.runsDir)) ?? [])
+        .filter { $0.hasSuffix(".json") }
+        .compactMap { name -> (id: String, written: Date)? in
+            let id = String(name.dropLast(5))
+            guard let written = (try? fm.attributesOfItem(atPath: paths.runFile(id)))?[.modificationDate] as? Date,
+                  written >= cutoff else { return nil }
+            return (id, written)
+        }
+        .max { $0.written < $1.written }
+    guard let id = newest?.id, let run = try? RunStore(paths: paths).load(id), run.started >= cutoff else { return nil }
+    return run
 }
 
 /// The pane's width, set by `OnboardingView.pane` so the footer bar can span it.

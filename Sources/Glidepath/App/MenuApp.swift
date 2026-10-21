@@ -105,14 +105,22 @@ enum Snapshotter {
                 writeWindow(screen, dark: dark, to: dir.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png"))
             }
         }
+        // The first sweep at the 960x640 minimum: its footer must stay on screen.
+        let minimal = WindowScreen(store: Store(snapshot: Snapshot()), router: WindowRouter(showOnboarding: true),
+                                   onboarding: WindowFixtures.onboarding(.firstSweep, now: now, paths: paths))
+        for dark in [true, false] {
+            writeWindow(minimal, dark: dark, to: dir.appendingPathComponent("onb-sweep-640-\(dark ? "dark" : "light").png"),
+                        width: WinMetrics.minWidth, height: WinMetrics.minHeight)
+        }
     }
 
     /// One window screen in the mockup frame: 1100x720, radius 12, a 1 pt edge, the three fake traffic
     /// lights at (20, 20), and a 40 pt #2a2a2d backdrop. Drawn at 2x, so the PNG is 2360x1600 like the mockups.
-    static func writeWindow<V: View>(_ view: V, dark: Bool, to url: URL) {
+    static func writeWindow<V: View>(_ view: V, dark: Bool, to url: URL,
+                                     width: CGFloat = WinMetrics.windowWidth, height: CGFloat = WinMetrics.windowHeight) {
         let shape = RoundedRectangle(cornerRadius: 12)
         let framed = view
-            .frame(width: WinMetrics.windowWidth, height: WinMetrics.windowHeight)
+            .frame(width: width, height: height)
             .clipShape(shape)
             .overlay(alignment: .topLeading) {
                 HStack(spacing: WinMetrics.s8) {
@@ -125,7 +133,7 @@ enum Snapshotter {
             }
             .overlay { shape.strokeBorder(Color.white.opacity(0.08), lineWidth: 1) }
             .padding(40)
-            .frame(width: WinMetrics.windowWidth + 80, height: WinMetrics.windowHeight + 80)
+            .frame(width: width + 80, height: height + 80)
             .background(Color(hex: "2A2A2D"))
             .environment(\.colorScheme, dark ? .dark : .light)
             .environment(\.offscreenRender, true)

@@ -12,61 +12,63 @@ extension OnboardingView {
 
     var review: some View {
         let count = model.state.repos.count
-        return VStack(alignment: .leading, spacing: 0) {
-            heading("How to review")
-            lead("These settings apply to the \(count) repo\(count == 1 ? "" : "s") you picked. Each repo can change later in Repos.")
-                .padding(.top, WinMetrics.s8)
+        return stepLayout(body: {
             VStack(alignment: .leading, spacing: 0) {
-                reviewRow("How reviews post", "What lands on the pull request.") {
-                    WinSegmented(
-                        segments: [Posting.comment, .review, .draft].map {
-                            WinSegmented<Posting>.Segment(value: $0, title: $0.modeLabel)
-                        },
-                        selected: model.state.posting
-                    ) { model.state.posting = $0 }
-                    Text(model.state.posting.preview)
-                        .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.muted)
-                        .padding(.horizontal, WinMetrics.s12)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(WinTheme.surface))
-                }
-                reviewRow("Whose PRs", "Your own PRs are never reviewed.") {
-                    WinSegmented(
-                        segments: [
-                            WinSegmented<AuthorChoice>.Segment(value: .collaborators, title: "Collaborators"),
-                            WinSegmented<AuthorChoice>.Segment(value: .anyone, title: "Anyone"),
-                            WinSegmented<AuthorChoice>.Segment(value: .people, title: "These people…"),
-                        ],
-                        selected: authorChoice
-                    ) { choice in
-                        model.message = nil
-                        switch choice {
-                        case .collaborators: model.state.authors = .collaborators
-                        case .anyone: model.state.authors = .anyone
-                        case .people:
-                            if case .logins = model.state.authors {} else { model.state.authors = .logins([]) }
+                heading("How to review")
+                lead("These settings apply to the \(count) repo\(count == 1 ? "" : "s") you picked. Each repo can change later in Repos.")
+                    .padding(.top, WinMetrics.s8)
+                VStack(alignment: .leading, spacing: 0) {
+                    reviewRow("How reviews post", "What lands on the pull request.") {
+                        WinSegmented(
+                            segments: [Posting.comment, .review, .draft].map {
+                                WinSegmented<Posting>.Segment(value: $0, title: $0.modeLabel)
+                            },
+                            selected: model.state.posting
+                        ) { model.state.posting = $0 }
+                        Text(model.state.posting.preview)
+                            .font(.system(size: 12))
+                            .foregroundStyle(WinTheme.muted)
+                            .padding(.horizontal, WinMetrics.s12)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(WinTheme.surface))
+                    }
+                    reviewRow("Whose PRs", "Your own PRs are never reviewed.") {
+                        WinSegmented(
+                            segments: [
+                                WinSegmented<AuthorChoice>.Segment(value: .collaborators, title: "Collaborators"),
+                                WinSegmented<AuthorChoice>.Segment(value: .anyone, title: "Anyone"),
+                                WinSegmented<AuthorChoice>.Segment(value: .people, title: "These people…"),
+                            ],
+                            selected: authorChoice
+                        ) { choice in
+                            model.message = nil
+                            switch choice {
+                            case .collaborators: model.state.authors = .collaborators
+                            case .anyone: model.state.authors = .anyone
+                            case .people:
+                                if case .logins = model.state.authors {} else { model.state.authors = .logins([]) }
+                            }
+                        }
+                        if authorChoice == .people {
+                            loginEditor
                         }
                     }
-                    if authorChoice == .people {
-                        loginEditor
+                    reviewRow("Review rules", "Optional.") {
+                        Text("Add review rules later in Repos.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(WinTheme.muted)
                     }
                 }
-                reviewRow("Review rules", "Optional.") {
-                    Text("Add review rules later in Repos.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(WinTheme.muted)
-                }
+                .padding(.top, WinMetrics.s32)
+                amberMessage(model.message)
             }
-            .padding(.top, WinMetrics.s32)
-            amberMessage(model.message)
-            Spacer(minLength: 0)
+        }, footer: {
             bar {
                 WinButton(title: "Continue", style: .primary) { model.advance() }
                     .disabled(!model.state.canContinue(from: .review))
             }
-        }
+        })
     }
 
     private var authorChoice: AuthorChoice {
@@ -120,36 +122,38 @@ extension OnboardingView {
     // MARK: 5. Schedule
 
     var schedule: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            heading("Schedule")
-            lead("Sweeps run at these times on these days. Click the day to add a time, drag a pin to move it.")
-                .padding(.top, WinMetrics.s8)
-            DayStrip(
-                times: model.state.schedule,
-                onAdd: { minute in
-                    model.editSchedule { try ScheduleEditor.addTime($0, hour: minute / 60, minute: minute % 60) }
-                },
-                onMove: { time, minute in
-                    model.editSchedule { try ScheduleEditor.moveTime($0, from: time, hour: minute / 60, minute: minute % 60) }
-                }
-            )
-            .padding(.top, WinMetrics.s32)
-            HStack(spacing: WinMetrics.s8) {
-                ForEach(model.state.schedule, id: \.self) { time in
-                    chip(time.clock, mono: false) {
-                        model.editSchedule { try ScheduleEditor.removeTime($0, time) }
+        stepLayout(body: {
+            VStack(alignment: .leading, spacing: 0) {
+                heading("Schedule")
+                lead("Sweeps run at these times on these days. Click the day to add a time, drag a pin to move it.")
+                    .padding(.top, WinMetrics.s8)
+                DayStrip(
+                    times: model.state.schedule,
+                    onAdd: { minute in
+                        model.editSchedule { try ScheduleEditor.addTime($0, hour: minute / 60, minute: minute % 60) }
+                    },
+                    onMove: { time, minute in
+                        model.editSchedule { try ScheduleEditor.moveTime($0, from: time, hour: minute / 60, minute: minute % 60) }
+                    }
+                )
+                .padding(.top, WinMetrics.s32)
+                HStack(spacing: WinMetrics.s8) {
+                    ForEach(model.state.schedule, id: \.self) { time in
+                        chip(time.clock, mono: false) {
+                            model.editSchedule { try ScheduleEditor.removeTime($0, time) }
+                        }
                     }
                 }
+                .padding(.top, WinMetrics.s16)
+                daysRow
+                amberMessage(model.message)
             }
-            .padding(.top, WinMetrics.s16)
-            daysRow
-            amberMessage(model.message)
-            Spacer(minLength: 0)
+        }, footer: {
             bar {
                 WinButton(title: "Continue", style: .primary) { model.advance() }
                     .disabled(!model.state.canContinue(from: .schedule))
             }
-        }
+        })
     }
 
     @ViewBuilder
@@ -204,34 +208,38 @@ extension OnboardingView {
     var firstSweep: some View {
         let first = model.state.repos.first ?? "your repo"
         let showsRun = model.state.firstSweep == .running || model.isLanded
-        return VStack(alignment: .leading, spacing: 0) {
-            heading(model.isLanded ? "You're set" : "First sweep")
-            lead(sweepLead(first))
-                .padding(.top, WinMetrics.s8)
-            if let note = model.backupNote {
-                Text(note)
-                    .font(.system(size: 12))
-                    .foregroundStyle(WinTheme.faint)
+        // The result list scrolls inside its own frame, so the body is not wrapped in another scroll view.
+        return stepLayout(scrolls: false, body: {
+            VStack(alignment: .leading, spacing: 0) {
+                heading(model.isLanded ? "You're set" : "First sweep")
+                lead(sweepLead(first))
                     .padding(.top, WinMetrics.s8)
-            }
-            amberMessage(failureText)
-            if showsRun {
-                sweepField
-                    .padding(.top, WinMetrics.s24)
-                WinScroll {
-                    VStack(spacing: 0) {
-                        ForEach(Array(model.liveStrips.enumerated()), id: \.element.id) { index, strip in
-                            sweepRow(strip, first: index == 0)
+                if let note = model.backupNote {
+                    Text(note)
+                        .font(.system(size: 12))
+                        .foregroundStyle(WinTheme.faint)
+                        .padding(.top, WinMetrics.s8)
+                }
+                amberMessage(failureText)
+                if showsRun {
+                    sweepField
+                        .padding(.top, WinMetrics.s24)
+                    WinScroll {
+                        VStack(spacing: 0) {
+                            ForEach(Array(model.liveStrips.enumerated()), id: \.element.id) { index, strip in
+                                sweepRow(strip, first: index == 0)
+                            }
                         }
                     }
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, WinMetrics.s8)
+                } else {
+                    Spacer(minLength: 0)
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
-                .padding(.top, WinMetrics.s8)
-            } else {
-                Spacer(minLength: 0)
             }
+        }, footer: {
             sweepBar
-        }
+        })
     }
 
     private var failureText: String? {
