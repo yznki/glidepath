@@ -118,14 +118,64 @@ final class ScheduleTests: XCTestCase {
 
     // MARK: Next sweep
 
-    func testNextSweepSkipsDaysNotInTheSet() throws {
+    /// A fixed zone, so the tests do not depend on the machine's clock setting.
+    private func calendar(_ zone: String) throws -> Calendar {
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = .current
-        // 2026-10-19 is a Monday. The next Saturday sweep after Monday 08:00 is 24 Oct at 07:00.
-        let monday = try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: 10, day: 19, hour: 8)))
-        let next = try XCTUnwrap(Store.nextSweep(schedule: [ScheduleTime("07:00")!], days: .custom([.sat]), after: monday))
-        XCTAssertEqual(cal.component(.day, from: next), 24)
+        cal.timeZone = try XCTUnwrap(TimeZone(identifier: zone))
+        return cal
+    }
+
+    private func at(_ cal: Calendar, _ day: Int, _ hour: Int, _ minute: Int = 0, month: Int = 10) throws -> Date {
+        try XCTUnwrap(cal.date(from: DateComponents(year: 2026, month: month, day: day, hour: hour, minute: minute)))
+    }
+
+    func testNextSweepIsTheNextTimeStrictlyAfterNow() throws {
+        let cal = try calendar("Europe/London")
+        // 21 Oct 2026 is a Wednesday. The times are unsorted on purpose.
+        let times = [ScheduleTime("19:00")!, ScheduleTime("07:00")!, ScheduleTime("13:00")!]
+        XCTAssertEqual(ScheduleTimes.nextSweep(after: try at(cal, 21, 10), times: times, days: .all, calendar: cal),
+                       try at(cal, 21, 13))
+        XCTAssertEqual(ScheduleTimes.nextSweep(after: try at(cal, 21, 19, 30), times: times, days: .all, calendar: cal),
+                       try at(cal, 22, 7))
+        // A sweep at exactly `now` is not the next one.
+        XCTAssertEqual(ScheduleTimes.nextSweep(after: try at(cal, 21, 13), times: times, days: .all, calendar: cal),
+                       try at(cal, 21, 19))
+    }
+
+    func testWeekdaysOnSaturdayGoToMondayMorning() throws {
+        let cal = try calendar("Europe/London")
+        // 24 Oct 2026 is a Saturday.
+        XCTAssertEqual(ScheduleTimes.nextSweep(after: try at(cal, 24, 9), times: [ScheduleTime("07:00")!],
+                                               days: .weekdays, calendar: cal),
+                       try at(cal, 26, 7))
+    }
+
+    func testCustomDaysFollowTheWeekOrderAndSunday() throws {
+        let cal = try calendar("Europe/London")
+        let times = [ScheduleTime("07:00")!, ScheduleTime("13:00")!]
+        // Wednesday 10:00 with Monday and Wednesday set: 13:00 the same day.
+        XCTAssertEqual(ScheduleTimes.nextSweep(after: try at(cal, 21, 10), times: times, days: .custom([.mon, .wed]),
+                                               calendar: cal),
+                       try at(cal, 21, 13))
+        // Thursday: the next set day is Monday.
+        XCTAssertEqual(ScheduleTimes.nextSweep(after: try at(cal, 22, 10), times: times, days: .custom([.mon, .wed]),
+                                               calendar: cal),
+                       try at(cal, 26, 7))
+        // Sunday is its own day, not Monday's neighbour in the week.
+        XCTAssertEqual(ScheduleTimes.nextSweep(after: try at(cal, 24, 9), times: times, days: .custom([.sun]),
+                                               calendar: cal),
+                       try at(cal, 25, 7))
+    }
+
+    func testNextSweepAcrossTheDaylightSavingSwitch() throws {
+        let cal = try calendar("America/New_York")
+        // The US clocks go forward on 8 March 2026, so the night is 23 hours long.
+        let before = try at(cal, 7, 7, month: 3)
+        let next = try XCTUnwrap(ScheduleTimes.nextSweep(after: try at(cal, 7, 19, 30, month: 3),
+                                                         times: [ScheduleTime("07:00")!], days: .all, calendar: cal))
+        XCTAssertEqual(cal.component(.day, from: next), 8)
         XCTAssertEqual(cal.component(.hour, from: next), 7)
+        XCTAssertEqual(next.timeIntervalSince(before), 23 * 3600)
     }
 
     // MARK: This week

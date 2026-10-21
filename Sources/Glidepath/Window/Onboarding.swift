@@ -31,15 +31,21 @@ struct OnboardingView: View {
         }
     }
 
-    /// The pane: the step's body, then the footer bar pinned to the bottom. Title row at 136, 64 side insets.
+    /// The pane: the step's body, then the footer bar pinned to the bottom. Title row at 136, 64 side insets. The body
+    /// is 520 wide; the footer bar takes the pane's full width inside the 64 insets (`FooterBar`), so it reads the
+    /// pane width from the environment this sets.
     private var pane: some View {
-        VStack(alignment: .leading, spacing: WinMetrics.s24) {
-            stepBody
-                .frame(maxWidth: 520, maxHeight: .infinity, alignment: .topLeading)
+        GeometryReader { geo in
+            VStack(alignment: .leading, spacing: WinMetrics.s24) {
+                stepBody
+                    .frame(maxWidth: 520, maxHeight: .infinity, alignment: .topLeading)
+            }
+            .padding(.top, 136)
+            .padding(.bottom, WinMetrics.canvasBottom)
+            .padding(.horizontal, 64)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+            .environment(\.paneWidth, geo.size.width)
         }
-        .padding(.top, 136)
-        .padding(.bottom, WinMetrics.canvasBottom)
-        .padding(.horizontal, 64)
     }
 
     @ViewBuilder
@@ -89,14 +95,7 @@ struct OnboardingView: View {
 
     /// The footer bar (44 tall): Back on the left when the step allows it, then the step's actions on the right.
     func bar<Trailing: View>(@ViewBuilder trailing: () -> Trailing) -> some View {
-        HStack(spacing: WinMetrics.s12) {
-            if model.state.canGoBackFrom(model.state.step) {
-                WinButton(title: "Back", style: .quiet) { model.goBack() }
-            }
-            Spacer(minLength: 0)
-            trailing()
-        }
-        .frame(maxWidth: 520, minHeight: 44, maxHeight: 44)
+        FooterBar(back: model.state.canGoBackFrom(model.state.step) ? { model.goBack() } : nil, trailing: trailing())
     }
 
     // MARK: 1. Welcome
@@ -117,7 +116,7 @@ struct OnboardingView: View {
                 Spacer(minLength: 0)
                 WinButton(title: "Get started", style: .primary) { model.advance() }
             }
-            .frame(maxWidth: 520, minHeight: 44, maxHeight: 44)
+            .modifier(FooterFrame())
         }
     }
 
@@ -394,6 +393,8 @@ struct OnboardingRail: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(WinTheme.text)
             }
+            // The rail's 20 pt inset plus the brand row's 12 pt: the mark sits at 32, as onb.css's .obrand + .brand.
+            .padding(.horizontal, WinMetrics.s12)
             .frame(height: 32)
             .offset(x: 20, y: 52)
         }
@@ -847,5 +848,43 @@ final class OnboardingModel: ObservableObject {
         Store.shared.reload()
         WindowRouter.shared.showOnboarding = false
         WindowRouter.shared.section = .overview
+    }
+}
+
+/// The pane's width, set by `OnboardingView.pane` so the footer bar can span it.
+private struct PaneWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 700
+}
+
+extension EnvironmentValues {
+    var paneWidth: CGFloat {
+        get { self[PaneWidthKey.self] }
+        set { self[PaneWidthKey.self] = newValue }
+    }
+}
+
+/// The footer bar's frame: the pane's width less its 64 pt insets, 44 tall.
+struct FooterFrame: ViewModifier {
+    @Environment(\.paneWidth) private var paneWidth
+
+    func body(content: Content) -> some View {
+        content.frame(width: max(0, paneWidth - 128), height: 44)
+    }
+}
+
+/// The footer bar: Back flush left when there is one, the step's actions flush right, across the pane's full width.
+struct FooterBar<Trailing: View>: View {
+    let back: (() -> Void)?
+    let trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: WinMetrics.s12) {
+            if let back {
+                WinButton(title: "Back", style: .quiet, action: back)
+            }
+            Spacer(minLength: 0)
+            trailing
+        }
+        .modifier(FooterFrame())
     }
 }

@@ -9,6 +9,10 @@ enum WindowFixtures {
     /// The sweep times and days the Schedule and onboarding mockups show.
     static let times = ["07:00", "13:00", "19:00"].compactMap(ScheduleTime.init)
 
+    /// The clock every window render reads: Wednesday 21 Oct at 4:19 PM, so the next sweep is 7:00 PM, 2 h 41 min out.
+    static let clock: Date = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: 16, minute: 19))
+        ?? Date(timeIntervalSince1970: 0)
+
     static func at(_ h: Int, _ m: Int, _ now: Date) -> Date { Fixtures.clockToday(h, m, now) }
 
     /// One PR row. `draft` is a held review; `skip` is "size" for a PR too large to review.
@@ -136,10 +140,11 @@ enum WindowFixtures {
     /// The snapshot for every window section. Overview shows the 1:00 PM sweep; Running shows one in flight.
     static func section(_ name: String, now: Date) -> Snapshot {
         let runs = [sweepAfternoon(now), sweepMorning(now)]
+        // The next sweep comes from the same function the app uses, so the footer and the Schedule subtitle agree.
         var snap = Snapshot(run: runs[0], jobInstalled: true,
-                            // The footer's fixture: 2 h 41 min out, as the mockup shows it.
-                            nextRun: now.addingTimeInterval(161 * 60),
+                            nextRun: ScheduleTimes.nextSweep(after: now, times: times, days: .weekdays),
                             schedule: times)
+        snap.now = now
         snap.config = config()
         snap.repoCount = repos.count
         snap.maxChangedLines = 8000

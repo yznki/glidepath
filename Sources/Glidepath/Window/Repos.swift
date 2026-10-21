@@ -62,19 +62,21 @@ struct ReposView: View {
                 .frame(height: 32, alignment: .leading)
                 .padding(.horizontal, WinMetrics.s20)
             WinScroll {
+                // The add link follows the last row, 4 below it, rather than pinning to the bottom.
                 VStack(spacing: 0) {
                     ForEach(repos, id: \.slug) { repo in
                         listRow(repo)
                     }
+                    WinButton(title: "Add a repo…", style: .link) { model.openAddRepo() }
+                        .frame(height: 40, alignment: .leading)
+                        .padding(.top, WinMetrics.s4)
+                        .padding(.horizontal, WinMetrics.s20)
                 }
                 .padding(.horizontal, WinMetrics.s12)
+                .padding(.bottom, WinMetrics.canvasBottom)
             }
             .frame(maxHeight: .infinity)
             .padding(.top, WinMetrics.s16)
-            WinButton(title: "Add a repo…", style: .link) { model.openAddRepo() }
-                .frame(height: 40, alignment: .leading)
-                .padding(.horizontal, WinMetrics.s20)
-                .padding(.bottom, WinMetrics.canvasBottom)
         }
         .padding(.top, WinMetrics.titlebarZone)
     }
@@ -224,11 +226,12 @@ struct RepoDetail: View {
             ) { mode in
                 model.commit("posting", store: store) { try ConfigEditor.setPosting($0, slug: repo.slug, mode) }
             }
-            Text(repo.posting.preview)
+            previewText(repo.posting.preview)
                 .font(.system(size: 12))
                 .foregroundStyle(WinTheme.muted)
                 .padding(.horizontal, WinMetrics.s12)
                 .padding(.vertical, 10)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 10).fill(WinTheme.surface))
                 .padding(.top, WinMetrics.s8)
@@ -376,9 +379,18 @@ struct RepoDetail: View {
         }
     }
 
+    /// The preview with "Changes requested" in semibold amber, as the mockup's `.prev b`.
+    private func previewText(_ text: String) -> Text {
+        let parts = text.components(separatedBy: "Changes requested")
+        guard parts.count == 2 else { return Text(text) }
+        return Text(parts[0])
+            + Text("Changes requested").fontWeight(.semibold).foregroundColor(WinTheme.amberInk)
+            + Text(parts[1])
+    }
+
     private var flagsSection: some View {
         section("Flagged paths", "Reviews that touch these ask for an extra approval.", error: model.rowErrors["flags"]) {
-            HStack(spacing: WinMetrics.s8) {
+            AnyLayout(FlowRow()) {
                 ForEach(repo.flagPaths, id: \.self) { path in
                     chip(path, mono: true) {
                         model.commit("flags", store: store) { try ConfigEditor.removeFlaggedPath($0, slug: repo.slug, path: path) }
@@ -589,5 +601,42 @@ final class ReposModel: ObservableObject {
 
     private func flashSaved() {
         saved.flash()
+    }
+}
+
+/// Lays its children left to right and wraps a full row onto the next, so chips and the add link never truncate.
+struct FlowRow: Layout {
+    var spacing: CGFloat = WinMetrics.s8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return CGSize(width: proposal.width ?? widest, height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
+        for view in subviews {
+            let size = view.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            view.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }

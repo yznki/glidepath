@@ -53,6 +53,29 @@ enum ScheduleDays: Equatable {
     }
 }
 
+/// The next sweep. The sidebar footer, the Schedule subtitle, the popover and the dashboard all ask this one function.
+enum ScheduleTimes {
+    /// The first sweep time strictly after `now`, on one of `days`. The times are sorted here. The calendar decides
+    /// the day boundaries, so DST is handled by it. Looks eight days ahead, the longest gap a single day allows.
+    static func nextSweep(after now: Date, times: [ScheduleTime], days: ScheduleDays = .all,
+                          calendar: Calendar = .current) -> Date? {
+        let sorted = times.sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
+        let launchdDays = Set(days.active.map(\.launchd))
+        for dayOffset in 0...7 {
+            guard let day = calendar.date(byAdding: .day, value: dayOffset, to: now) else { continue }
+            // Calendar's weekday runs Sunday = 1; launchd's runs Sunday = 0.
+            guard launchdDays.contains(calendar.component(.weekday, from: day) - 1) else { continue }
+            for t in sorted {
+                if let candidate = calendar.date(bySettingHour: t.hour, minute: t.minute, second: 0, of: day),
+                   candidate > now {
+                    return candidate
+                }
+            }
+        }
+        return nil
+    }
+}
+
 struct Limits: Equatable {
     var maxPRsPerRun = 10
     var maxChangedLines = 3000

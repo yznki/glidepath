@@ -77,7 +77,9 @@ enum Snapshotter {
     /// Every window section and onboarding step, light and dark, from `WindowFixtures`. Each store is a fixture store,
     /// so nothing here reads the config, the state folders or launchd. Sections draw their scroll lists inline
     /// (`offscreenRender`), since ImageRenderer draws ScrollView blank.
-    static func writeWindowShots(to dir: URL, now: Date) {
+    static func writeWindowShots(to dir: URL, now _: Date) {
+        // Every window render reads the fixture clock, not the real one, so the renders match their mockups on any day.
+        let now = WindowFixtures.clock
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let sections: [(String, WindowSection)] = [
             ("overview", .overview), ("running", .overview), ("reviews", .reviews),
@@ -279,7 +281,7 @@ enum Fixtures {
     }
 
     static func nextThirteen(_ now: Date) -> Date {
-        Store.nextSweep(schedule: [ScheduleTime("13:00")!], after: now) ?? now
+        ScheduleTimes.nextSweep(after: now, times: [ScheduleTime("13:00")!]) ?? now
     }
 
     static func running(_ now: Date) -> Snapshot {

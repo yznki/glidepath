@@ -33,8 +33,11 @@ struct WindowScreen: View {
                 OnboardingView(store: store, model: onboarding)
             } else {
                 HStack(spacing: 0) {
+                    // The sidebar keeps its width whatever the canvas asks for, so no section moves it.
                     Sidebar(router: router, store: store)
+                        .layoutPriority(1)
                     canvas
+                        .clipped()
                 }
             }
         }

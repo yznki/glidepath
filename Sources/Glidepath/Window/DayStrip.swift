@@ -20,6 +20,8 @@ final class DayStripDrag: ObservableObject {
 /// the drag ends; the owner saves the change. Used by Schedule and by the onboarding schedule step.
 struct DayStrip: View {
     let times: [ScheduleTime]
+    /// The clock for the "now" marker. Nil reads the real clock; snapshot renders pass the fixture clock.
+    var now: Date?
     /// A click that is not on a pin: the minute of the day, 0 to 1439.
     let onAdd: (Int) -> Void
     /// A pin dragged to a new minute of the day.
@@ -80,7 +82,7 @@ struct DayStrip: View {
                 .offset(x: width * 22.0 / 24, y: 40)
             Rectangle().fill(WinTheme.blue)
                 .frame(width: 2, height: 26)
-                .offset(x: fraction(of: Date()) * width - 1, y: 40)
+                .offset(x: fraction(of: now ?? Date()) * width - 1, y: 40)
             ForEach(times, id: \.self) { time in
                 pin(time, width: width)
             }

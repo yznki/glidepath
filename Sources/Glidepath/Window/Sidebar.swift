@@ -32,10 +32,10 @@ struct Sidebar: View {
             Spacer(minLength: WinMetrics.s24)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text("Next sweep")
+                Text(nextTitle)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(WinTheme.muted)
-                Text("\(untilNext) · v\(Version.current)")
+                Text(nextDetail)
                     .font(.system(size: 12))
                     .foregroundStyle(WinTheme.faint)
             }
@@ -51,12 +51,16 @@ struct Sidebar: View {
         }
     }
 
-    /// "in 2 h 41 min" to the next sweep. The store's next run when known, else the fixture's.
-    private var untilNext: String {
-        guard let next = store.snap.nextRun else { return "no sweep scheduled" }
-        let minutes = max(0, Int(next.timeIntervalSinceNow / 60))
-        let h = minutes / 60, m = minutes % 60
-        return h > 0 ? "in \(h) h \(m) min" : "in \(m) min"
+    /// "Next sweep 7:00 PM": the time of the next sweep, from the same function the Schedule subtitle reads.
+    private var nextTitle: String {
+        guard let next = store.snap.nextRun else { return "No sweep scheduled" }
+        return "Next sweep \(HeaderCopy.clock(next))"
+    }
+
+    /// "in 2 h 41 min · v1.2.0".
+    private var nextDetail: String {
+        guard let next = store.snap.nextRun else { return "v\(Version.current)" }
+        return "in \(HeaderCopy.untilText(next, store.snap.now ?? Date())) · v\(Version.current)"
     }
 
     private func navRow(_ section: WindowSection) -> some View {

@@ -23,15 +23,18 @@ struct OverviewView: View {
                         .tracking(-0.6)
                         .foregroundStyle(tone(copy.headlineTone))
                         .lineLimit(1)
+                        .frame(height: 40)
                         .padding(.top, WinMetrics.s24)
                     if let line = subline(kind, copy) {
                         Text(line)
                             .font(.system(size: 13))
                             .foregroundStyle(WinTheme.muted)
                             .lineLimit(1)
+                            .frame(height: 20)
                             .padding(.top, WinMetrics.s4)
                     }
                     heroActions(kind)
+                        .frame(height: 44)
                         .padding(.top, WinMetrics.s20)
                 }
                 .frame(maxWidth: .infinity)

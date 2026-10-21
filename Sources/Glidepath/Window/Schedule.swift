@@ -88,9 +88,7 @@ struct ScheduleView: View {
             parts.append("\(words) sweeps \(days).")
         }
         if let next = store.snap.nextRun {
-            let minutes = max(0, Int(next.timeIntervalSinceNow / 60))
-            let away = minutes >= 60 ? "\(minutes / 60) h \(minutes % 60) min" : "\(minutes) min"
-            parts.append("Next at \(next.formatted(date: .omitted, time: .shortened)), in \(away).")
+            parts.append("Next at \(HeaderCopy.clock(next)), in \(HeaderCopy.untilText(next, store.snap.now ?? Date())).")
         }
         return parts.joined(separator: " ")
     }
@@ -100,6 +98,7 @@ struct ScheduleView: View {
     private var dayStrip: some View {
         DayStrip(
             times: config?.schedule ?? [],
+            now: store.snap.now,
             onAdd: { minute in model.addTime(store, hour: minute / 60, minute: minute % 60) },
             onMove: { time, minute in model.movePin(store, time, hour: minute / 60, minute: minute % 60) }
         )

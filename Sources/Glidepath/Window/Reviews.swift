@@ -251,7 +251,7 @@ struct ReviewDetail: View {
                     .font(.system(size: 13))
                     .foregroundStyle(WinTheme.muted)
                     .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(-1)
             }
             Spacer(minLength: WinMetrics.s8)
             barActions
@@ -295,14 +295,16 @@ struct ReviewDetail: View {
         if row.tooLarge {
             note("Too large: \((row.changedLines ?? 0).formatted()) lines, limit \(store.snap.maxChangedLines)")
         } else if let text = row.text {
-            ForEach(Array(Self.paragraphs(text.body).enumerated()), id: \.offset) { _, paragraph in
-                Text(verbatim: paragraph)
-                    .font(.system(size: 13))
-                    .lineSpacing(4)
-                    .foregroundStyle(WinTheme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 600, alignment: .leading)
-                    .padding(.top, WinMetrics.s8)
+            // Paragraphs are 8 apart (13/20 text, as the mockup's p + p).
+            VStack(alignment: .leading, spacing: WinMetrics.s8) {
+                ForEach(Array(Self.paragraphs(text.body).enumerated()), id: \.offset) { _, paragraph in
+                    Text(verbatim: paragraph)
+                        .font(.system(size: 13))
+                        .lineSpacing(4)
+                        .foregroundStyle(WinTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 600, alignment: .leading)
+                }
             }
         } else if row.verdict == .skipped {
             note(row.reason ?? "Skipped")

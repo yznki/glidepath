@@ -318,14 +318,14 @@ extension OnboardingView {
                 WinButton(title: "Running…", style: .primary) {}
                     .disabled(true)
             }
-            .frame(maxWidth: 520, minHeight: 44, maxHeight: 44)
+            .modifier(FooterFrame())
         case .finished:
             HStack(spacing: WinMetrics.s12) {
                 Spacer(minLength: 0)
                 WinButton(title: "Post nothing yet", style: .outline, large: true) { model.postNothingYet() }
                 WinButton(title: "Turn on the schedule", style: .primary) { model.turnOnSchedule() }
             }
-            .frame(maxWidth: 520, minHeight: 44, maxHeight: 44)
+            .modifier(FooterFrame())
         }
     }
 }
