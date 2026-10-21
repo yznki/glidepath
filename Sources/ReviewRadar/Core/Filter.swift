@@ -22,9 +22,9 @@ enum PRFilter {
     /// Rules from SPEC "Run flow" step 2. Cheap checks run first; the collaborator and reviews
     /// lookups are API calls and only happen for PRs that get that far. A lookup that fails skips
     /// the PR with a reason instead of failing the repo.
-    static func evaluate(_ pr: PRInfo, me: String, authors: AuthorPolicy, limits: Limits,
+    static func evaluate(_ pr: PRInfo, me: String, includeOwn: Bool = false, authors: AuthorPolicy, limits: Limits,
                          isCollaborator: () -> Bool?, reviewedHeads: () -> Set<String>?) -> Decision {
-        if pr.author.caseInsensitiveCompare(me) == .orderedSame { return .skip("your own PR") }
+        if !includeOwn && pr.author.caseInsensitiveCompare(me) == .orderedSame { return .skip("your own PR") }
         if pr.isDraft { return .skip("draft") }
         // A bot listed by name in `authors` is an explicit opt-in.
         let listed: Bool

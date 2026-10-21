@@ -232,7 +232,7 @@ final class Runner {
         var skipped: [(PRInfo, String)] = []
         for pr in prs {
             let decision = PRFilter.evaluate(
-                pr, me: me, authors: repo.authors, limits: config.limits,
+                pr, me: me, includeOwn: repo.includeOwn, authors: repo.authors, limits: config.limits,
                 isCollaborator: { self.isCollaborator(repo, login: pr.author) },
                 reviewedHeads: { self.reviewedHeads(repo, pr.n) })
             switch decision {

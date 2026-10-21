@@ -96,6 +96,7 @@ authors = "collaborators"     # collaborators | anyone | ["login", ...]
 rules = "~/.config/review-radar/rules/acme-api.md"   # optional
 rules_mode = "extend"         # extend | replace
 gitnexus = "auto"             # auto | on | off
+include_own = false           # true to review your own PRs too
 ```
 
 | Key | Default | Meaning |
@@ -110,7 +111,8 @@ gitnexus = "auto"             # auto | on | off
 | `repo.authors` | `collaborators` | `collaborators` means write, maintain or admin access on the repo. `anyone` means any author. A list means only those logins. |
 | `repo.rules` | none | A Markdown file with extra review rules for this repo. |
 | `repo.rules_mode` | `extend` | `extend` adds the file to the built-in rubric. `replace` swaps out the rubric's review bar. Safety and output sections always apply. |
-| `repo.gitnexus` | `auto` | Use the GitNexus MCP tools for blast radius. `auto` uses them when the `gitnexus` command is on your PATH. Otherwise the skill uses grep. |
+| `repo.gitnexus` | `auto` | Use the GitNexus MCP tools for blast radius. `auto` uses them when the `gitnexus` command is on your PATH and `authors` is not `"anyone"`. Otherwise the skill uses grep. |
+| `repo.include_own` | `false` | Review PRs you opened too. Off by default. GitHub accepts only a COMMENT review on your own PR, so `post` sends COMMENT for those whatever `posting` says. |
 
 Edits take effect on the next run. `review-radar doctor` checks the file.
 
@@ -191,6 +193,9 @@ query across repos are not.
 
 **Rules file.** The rules file is visible to the reviewer and may be quoted in public comments. Never put
 secrets, tokens, internal hostnames or private data in it.
+
+**Your own PRs.** Skipped unless `include_own = true`. When they are reviewed, the review is a COMMENT with the
+verdict in its first line, because GitHub does not accept APPROVE or REQUEST_CHANGES on your own PR.
 
 **Collaborators only, by default.** A PR author is reviewed only when they have write, maintain or admin
 access, and that permission must be readable. Without push access, the permission cannot be read, and

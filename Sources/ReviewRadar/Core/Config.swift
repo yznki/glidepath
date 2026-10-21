@@ -40,6 +40,8 @@ struct RepoConfig: Equatable {
     var rules: String?
     var rulesMode: RulesMode = .extend
     var gitnexus: GitNexusMode = .auto
+    /// Review the user's own PRs too. Off by default; posting to your own PR is always a COMMENT review.
+    var includeOwn = false
 
     static func isValidSlug(_ slug: String) -> Bool {
         slug.range(of: #"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"#, options: .regularExpression) != nil
@@ -105,7 +107,7 @@ struct Config: Equatable {
     }
 
     private static func parseRepo(_ t: [String: TOMLValue], home: String) throws -> RepoConfig {
-        try checkKeys(t, allowed: ["slug", "clone", "posting", "authors", "rules", "rules_mode", "gitnexus"], where: "[[repo]]")
+        try checkKeys(t, allowed: ["slug", "clone", "posting", "authors", "rules", "rules_mode", "gitnexus", "include_own"], where: "[[repo]]")
         guard let slug = try string(t["slug"], key: "slug") else { throw ConfigError(message: "[[repo]] needs slug") }
         guard RepoConfig.isValidSlug(slug) else {
             throw ConfigError(message: "slug \"\(slug)\" must look like owner/name")
@@ -138,6 +140,10 @@ struct Config: Equatable {
             guard let v = RulesMode(rawValue: m) else { throw ConfigError(message: "rules_mode must be extend or replace") }
             repo.rulesMode = v
         }
+        if let value = t["include_own"] {
+            guard case .bool(let b) = value else { throw ConfigError(message: "include_own must be true or false") }
+            repo.includeOwn = b
+        }
         if let g = try string(t["gitnexus"], key: "gitnexus") {
             guard let v = GitNexusMode(rawValue: g) else { throw ConfigError(message: "gitnexus must be auto, on or off") }
             repo.gitnexus = v
@@ -168,6 +174,7 @@ struct Config: Equatable {
                 out += "rules_mode = \"\(r.rulesMode.rawValue)\"\n"
             }
             out += "gitnexus = \"\(r.gitnexus.rawValue)\"\n"
+            out += "include_own = \(r.includeOwn)\n"
         }
         return out
     }

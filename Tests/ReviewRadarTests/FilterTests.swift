@@ -10,9 +10,11 @@ final class FilterTests: XCTestCase {
                headSha: sha, additions: add, deletions: del)
     }
 
+    var includeOwn = false
+
     func eval(_ p: PRInfo, authors: AuthorPolicy = .collaborators, reviewed: Set<String>? = [],
               collaborator: Bool? = true) -> Decision {
-        PRFilter.evaluate(p, me: "me", authors: authors, limits: limits,
+        PRFilter.evaluate(p, me: "me", includeOwn: includeOwn, authors: authors, limits: limits,
                           isCollaborator: { collaborator }, reviewedHeads: { reviewed })
     }
 
@@ -31,6 +33,14 @@ final class FilterTests: XCTestCase {
         XCTAssertEqual(eval(pr(), reviewed: nil), .skip("could not read existing reviews"))
         XCTAssertEqual(eval(pr(), reviewed: ["abc"]), .skip("already reviewed at this head"))
         XCTAssertEqual(eval(pr(add: 90, del: 20)), .skip("too large (110 changed lines)"))
+    }
+
+    func testOwnPRsOnlyWhenIncluded() {
+        XCTAssertEqual(eval(pr(author: "me")), .skip("your own PR"))
+        includeOwn = true
+        defer { includeOwn = false }
+        XCTAssertEqual(eval(pr(author: "me")), .keep)
+        XCTAssertEqual(eval(pr(author: "me", draft: true)), .skip("draft"), "other rules still apply to own PRs")
     }
 
     func testReviewedAtOtherHeadIsKept() {

@@ -75,7 +75,8 @@ enum ReviewValidator {
 
     /// Checks a draft against the PR's file list and the repo's posting mode, and builds the payload.
     /// `head` comes from run state, never from the draft.
-    static func validate(_ d: Draft, files: Set<String>, posting: Posting, head: String) throws -> ReviewPayload {
+    /// `own` is true when the PR is the user's own: GitHub accepts only COMMENT there, whatever `posting` says.
+    static func validate(_ d: Draft, files: Set<String>, posting: Posting, head: String, own: Bool = false) throws -> ReviewPayload {
         guard ["approve", "changes"].contains(d.verdict) else {
             throw CommandError("verdict must be approve or changes")
         }
@@ -106,7 +107,7 @@ enum ReviewValidator {
             comments.append(PayloadComment(path: c.path, line: c.line, side: "RIGHT", body: text))
         }
 
-        switch posting {
+        switch own ? Posting.comment : posting {
         case .comment:
             // COMMENT reviews carry the verdict in the first line of the body.
             let verdictLine = d.verdict == "approve" ? "Verdict: approve" : "Verdict: changes"

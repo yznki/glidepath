@@ -235,8 +235,10 @@ enum PRCommands {
         guard let repo = config.repos.first(where: { $0.slug == slug }) else {
             throw CommandError("\(slug) is not in the config")
         }
+        let me = try GH.run(["api", "user", "--jq", ".login"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let own = view.author?.login.caseInsensitiveCompare(me) == .orderedSame
         let payload = try ReviewValidator.validate(draft, files: Set(view.files.map(\.path)),
-                                                   posting: repo.posting, head: head)
+                                                   posting: repo.posting, head: head, own: own)
         let payloadJSON = try json(payload)
 
         if binding.dryRun {

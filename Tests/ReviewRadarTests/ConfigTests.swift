@@ -95,6 +95,12 @@ final class ConfigTests: XCTestCase {
         XCTAssertNil(ScheduleTime("07:60"))
     }
 
+    func testIncludeOwnDefaultsFalseAndParses() throws {
+        XCTAssertFalse(try Config.parse("[[repo]]\nslug = \"a/b\"\n", home: home).repos[0].includeOwn)
+        XCTAssertTrue(try Config.parse("[[repo]]\nslug = \"a/b\"\ninclude_own = true\n", home: home).repos[0].includeOwn)
+        XCTAssertThrowsError(try Config.parse("[[repo]]\nslug = \"a/b\"\ninclude_own = \"yes\"\n", home: home))
+    }
+
     func testRelativeCloneRejected() {
         XCTAssertThrowsError(try Config.parse("[[repo]]\nslug = \"a/b\"\nclone = \"clones/x\"\n", home: home))
     }

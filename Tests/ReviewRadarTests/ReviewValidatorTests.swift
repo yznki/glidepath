@@ -21,6 +21,12 @@ final class ReviewValidatorTests: XCTestCase {
         XCTAssertEqual(p.comments, [PayloadComment(path: "a.swift", line: 3, side: "RIGHT", body: "fix")])
     }
 
+    func testOwnPRsAlwaysGetACommentReview() throws {
+        let p = try ReviewValidator.validate(draft(verdict: "approve"), files: files, posting: .review, head: "h", own: true)
+        XCTAssertEqual(p.event, "COMMENT")
+        XCTAssertTrue(p.body.hasPrefix("Verdict: approve\n\n"))
+    }
+
     func testReviewModeMapsVerdictToEvent() throws {
         XCTAssertEqual(try ReviewValidator.validate(draft(verdict: "approve"), files: files, posting: .review, head: "h").event, "APPROVE")
         XCTAssertEqual(try ReviewValidator.validate(draft(), files: files, posting: .review, head: "h").event, "REQUEST_CHANGES")
