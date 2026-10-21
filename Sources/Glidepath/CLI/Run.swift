@@ -299,7 +299,10 @@ final class Runner {
                 } catch {
                     failed = true
                     print("\(repo.slug): \(error)")
-                    try? update { $0.setRepoError(repo.slug, "\(error)") }
+                    try? update { run in
+                        run.phase = nil
+                        run.setRepoError(repo.slug, "\(error)")
+                    }
                 }
             }
         } catch {
@@ -323,6 +326,7 @@ final class Runner {
     /// Returns the tokens this repo's session used.
     private func process(_ repo: RepoConfig) throws -> Int {
         try prepareClone(repo)
+        setPhase("listing PRs in \(repo.slug)")
         var prs = try listPRs(repo)
         if let target = onlyPR {
             // `glidepath review`: only the named PR is considered, and only it gets the size override.
@@ -356,10 +360,12 @@ final class Runner {
         // The index is refreshed only for a repo that has something to review, so an idle repo costs nothing.
         var gitnexus = gitnexusEnabled(repo)
         if !kept.isEmpty, gitnexus, repo.gitnexusRefresh {
+            setPhase("indexing \(repo.slug)")
             gitnexus = refreshGitNexus(repo)
         }
 
         try update { run in
+            run.phase = nil
             run.ensureRepo(repo.slug)
             for (pr, reason) in skipped {
                 try run.setPR(repo: repo.slug, n: pr.n, stage: nil, author: pr.author, title: pr.title,
@@ -557,6 +563,11 @@ final class Runner {
 
     private func update(_ body: (inout RunState) throws -> Void) throws {
         try store.mutate(id, body)
+    }
+
+    /// Shows the app what the runner is doing before any PR is recorded. Best effort: a failed write only loses the line.
+    private func setPhase(_ text: String?) {
+        try? update { $0.phase = text }
     }
 
     private func printSummary() {

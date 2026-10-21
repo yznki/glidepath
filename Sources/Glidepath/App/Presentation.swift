@@ -5,6 +5,8 @@ enum HeaderKind: Equatable {
     case notScheduled
     case paused(since: Date?, lastStarted: Date?)
     case running(changes: Int, reviewing: Int, total: Int, landed: Int, started: Date?)
+    /// A sweep is running but has recorded no PRs yet: the runner is still indexing or listing.
+    case preparing(phase: String?, started: Date?)
     case failed(reason: String, started: Date?, next: Date?)
     case emptyRun(repos: Int, next: Date?, lastStarted: Date?)
     case idle(changes: Int, next: Date?, lastStarted: Date?, total: Int)
@@ -58,6 +60,7 @@ enum Presentation {
         let strips = Store.strips(from: snap.run)
         let changes = strips.filter { $0.verdict == .changes }.count
         if snap.running, let run = snap.run {
+            if strips.isEmpty { return .preparing(phase: run.phase, started: run.started) }
             return .running(changes: changes, reviewing: strips.filter { $0.active && $0.verdict == nil }.count,
                             total: strips.count, landed: strips.filter { $0.verdict != nil }.count,
                             started: run.started)
@@ -82,6 +85,17 @@ enum Presentation {
             return .noSweeps(next: snap.nextRun, repos: snap.repoCount)
         }
         return .idle(changes: changes, next: snap.nextRun, lastStarted: snap.run?.started, total: strips.count)
+    }
+
+    /// The line under "Getting ready": the runner's phase in words, or listing when the phase is not known.
+    static func preparingLine(_ phase: String?) -> String {
+        if let phase, phase.hasPrefix("indexing ") {
+            return "Refreshing the code graph for \(phase.dropFirst("indexing ".count))"
+        }
+        if let phase, phase.hasPrefix("listing PRs in ") {
+            return "Listing open PRs in \(phase.dropFirst("listing PRs in ".count))"
+        }
+        return "Listing open PRs"
     }
 
     /// What to tell the user when a sweep ends. Dry runs never become current, so they never reach here. A finished

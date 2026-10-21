@@ -92,9 +92,13 @@ struct OverviewView: View {
         switch kind {
         case .idle(let changes, _, _, _) where changes > 0:
             return "\(changes) PR\(changes == 1 ? "" : "s") need\(changes == 1 ? "s" : "") changes"
+        case .preparing:
+            return "Getting ready"
         case .running:
             return "Reviewing \(inFlight.count) of \(rows.count)"
         case .dryRun:
+            // No PRs yet: say so rather than "0 of 0".
+            guard !reviewed.isEmpty else { return "Dry run · getting ready" }
             return "Dry run · \(reviewed.filter { $0.strip.verdict != nil }.count) of \(reviewed.count)"
         default:
             return copy.headline
@@ -265,20 +269,34 @@ struct OverviewView: View {
         rows.filter { $0.meter != nil }
     }
 
+    @ViewBuilder
     private var onApproach: some View {
         let items = inFlight
         // A dry run also lists the PRs it has landed, under the ones in flight.
         let landedHere = store.snap.dryRunning ? reviewed.filter { $0.strip.verdict != nil } : []
-        return panel("On approach", meta: "\(items.count) in flight · \(reviewed.filter { $0.strip.verdict != nil }.count) landed", rows: {
-            ForEach(Array(items.enumerated()), id: \.offset) { index, row in
-                approachRow(row, first: index == 0)
-            }
-            ForEach(Array(landedHere.enumerated()), id: \.offset) { index, row in
-                landedRow(row, first: items.isEmpty && index == 0)
-            }
-        }, footer: {
-            WinButton(title: "Open the log", style: .link) { store.openLog() }
-        })
+        if case .preparing(let phase, _) = Presentation.headerKind(store.snap, now: Date()) {
+            // Nothing recorded yet: one muted row says what the runner is doing, and no counts.
+            panel("On approach", meta: nil, rows: {
+                Text(Presentation.preparingLine(phase))
+                    .font(.system(size: 13))
+                    .foregroundStyle(WinTheme.muted)
+                    .padding(.horizontal, WinMetrics.s20)
+                    .padding(.vertical, WinMetrics.s12)
+            }, footer: {
+                EmptyView()
+            })
+        } else {
+            panel("On approach", meta: "\(items.count) in flight · \(reviewed.filter { $0.strip.verdict != nil }.count) landed", rows: {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, row in
+                    approachRow(row, first: index == 0)
+                }
+                ForEach(Array(landedHere.enumerated()), id: \.offset) { index, row in
+                    landedRow(row, first: items.isEmpty && index == 0)
+                }
+            }, footer: {
+                WinButton(title: "Open the log", style: .link) { store.openLog() }
+            })
+        }
     }
 
     private func approachRow(_ row: RowModel, first: Bool) -> some View {

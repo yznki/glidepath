@@ -64,6 +64,9 @@ struct HeaderCopy: Equatable {
                 copy.line2Weight = 500
             }
             return copy
+        case .preparing(let phase, let started):
+            return HeaderCopy(headline: "Getting ready", line2: Presentation.preparingLine(phase),
+                              line3: started.map { "Started \(clock($0))" }, line3Tone: .tertiary)
         case .failed(let reason, let started, let next):
             let retry = next.map { "Retrying at \(clock($0)) · " } ?? ""
             _ = started

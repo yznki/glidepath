@@ -53,6 +53,9 @@ struct RunState: Codable, Equatable {
     var error: String?
     /// "review" for `glidepath review` (one PR, by hand). nil for a sweep. Optional so older run files decode.
     var kind: String? = nil
+    /// What the runner is doing before any PR is recorded, such as "listing PRs in owner/name" or
+    /// "indexing owner/name". Cleared once the repo's PRs are recorded. Optional so older run files decode.
+    var phase: String? = nil
 
     static func new(id: String, now: Date, kind: String? = nil) -> RunState {
         RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil, kind: kind)
@@ -225,6 +228,7 @@ struct RunState: Codable, Equatable {
     mutating func finish(at now: Date, error: String?) {
         finished = now
         self.error = error
+        phase = nil
         for ri in repos.indices {
             for pi in repos[ri].prs.indices { repos[ri].prs[pi].active = false }
         }
