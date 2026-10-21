@@ -201,7 +201,7 @@ enum PRCommands {
     /// plain file name, so the output can only land in the PR's own scratch folder.
     static func output(_ text: String, _ f: [String: String], _ binding: RunBinding, _ n: Int) throws -> String {
         guard let name = f["--out"] else { return text }
-        guard name.range(of: #"^[a-z0-9][a-z0-9._-]*$"#, options: .regularExpression) != nil, name.count <= 80 else {
+        guard name.range(of: #"\A[a-z0-9][a-z0-9._-]*\z"#, options: .regularExpression) != nil, name.count <= 80 else {
             throw CommandError("--out takes a file name of lowercase letters, digits, dots, dashes and underscores")
         }
         let dir = binding.scratch + "/\(n)"

@@ -44,7 +44,7 @@ struct RepoConfig: Equatable {
     var includeOwn = false
 
     static func isValidSlug(_ slug: String) -> Bool {
-        slug.range(of: #"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"#, options: .regularExpression) != nil
+        slug.range(of: #"\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z"#, options: .regularExpression) != nil
     }
 
     var owner: String { String(slug.split(separator: "/").first ?? "") }
