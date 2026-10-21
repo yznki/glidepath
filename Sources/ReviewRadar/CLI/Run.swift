@@ -306,6 +306,8 @@ final class Runner {
             allowlist: allowlist)
         var childEnv = Claude.childEnvironment(parent: env, binding: binding.environment)
         childEnv["PATH"] = Claude.pathPrepending(InitCommand.runningBinaryDirectory(), to: childEnv["PATH"])
+        childEnv["REVIEW_RADAR_STATE_DIR"] = paths.stateDir
+        childEnv["REVIEW_RADAR_CONFIG_FILE"] = paths.configFile
 
         print("\(repo.slug): reviewing \(numbers.map { "#\($0)" }.joined(separator: " "))")
         print("allowlist: " + allowlist.joined(separator: ","))

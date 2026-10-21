@@ -9,9 +9,12 @@ struct Paths {
     let configBase: String
     let stateBase: String
 
+    private let overrides: [String: String]
+
     init(home: String? = nil, env: [String: String] = ProcessInfo.processInfo.environment) {
         let h = home ?? env["HOME"] ?? NSHomeDirectory()
         self.home = h
+        self.overrides = env
         self.configBase = Paths.absoluteEnv(env["XDG_CONFIG_HOME"]) ?? h + "/.config"
         self.stateBase = Paths.absoluteEnv(env["XDG_STATE_HOME"]) ?? h + "/.local/state"
     }
@@ -23,8 +26,10 @@ struct Paths {
     }
 
     var configDir: String { configBase + "/review-radar" }
-    var configFile: String { configDir + "/config.toml" }
-    var stateDir: String { stateBase + "/review-radar" }
+    /// REVIEW_RADAR_CONFIG_FILE and REVIEW_RADAR_STATE_DIR let the review session find the runner's folders,
+    /// since its environment does not carry the XDG variables.
+    var configFile: String { Paths.absoluteEnv(overrides["REVIEW_RADAR_CONFIG_FILE"]) ?? configDir + "/config.toml" }
+    var stateDir: String { Paths.absoluteEnv(overrides["REVIEW_RADAR_STATE_DIR"]) ?? stateBase + "/review-radar" }
     var runsDir: String { stateDir + "/runs" }
     var currentLink: String { stateDir + "/current" }
     var pausedFile: String { stateDir + "/paused" }
