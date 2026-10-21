@@ -151,8 +151,9 @@ Counts are 12 pt semibold, the same in every state. Changes waiting clears when 
 
 ## 8. App icon
 
-The icon is the brand artwork in `assets/brand/`: `icon.png` (1024 px, the full art) and `icon-small.png` (1024 px, the
-simplified art). `make-app.sh` builds the iconset with `sips`: 16 and 32 pt, and their @2x, from the simplified art;
+The icon is a space grey keycap labelled "land", with the glide slope landing an amber light on the runway bar. It is
+the brand artwork in `assets/brand/`: `icon.png` (1024 px, the full art) and `icon-small.png` (1024 px, the simplified
+art). `make-app.sh` builds the iconset with `sips`: 16 and 32 pt, and their @2x, from the simplified art;
 128, 256 and 512 pt, and their @2x, from the full art. `iconutil` packs the `.icns`, and `codesign` signs it ad hoc.
 The menu bar glyphs stay drawn in code.
 
