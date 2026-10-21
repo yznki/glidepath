@@ -239,13 +239,24 @@ A gh token with the `repo` scope, for private repos.
 
 ## Menu bar app
 
-- Radar: blips move inward as a PR advances through gather, review, check and post. Posted PRs sit at the centre.
-- Strips: grouped by repo, with the stage rail, the verdict stamp, the author and the reason.
-- Header: running state with the count done, or the next scheduled time when idle.
-- Footer: Run now, Pause or Resume, Log, Open at login, Quit.
-- Pause writes a marker file, so scheduled runs skip until you resume. Manual runs still work.
+The app follows `docs/design.md`. The radar is an instrument: one blip per PR, placed by its progress (queued on
+the outer ring, one step inward per phase, landed at the centre). The arm sweeps only while a run is in progress,
+and the blips breathe while idle. Reduced motion stops the arm, the breathing and the pings.
+
+- Header: the headline says what needs you ("2 need changes", "All clear", "Last sweep failed", "Paused") and the
+  sub-line gives the detail (landed count, next sweep, error).
+- Rows: sorted by what needs you: changes first, then in progress, approved, skipped, dropped. Each row has the PR
+  title, `#number · author · reason`, and in the right column a verdict stamp or the phase word, with a four-part rail.
+- Footer: Run now (or Running…, or Resume while paused) on the left, and a menu on the right with Pause, Open log,
+  Open at login and Quit.
+- Menu bar: idle ring, a rotating arm while running (with the count of active PRs), an amber dot when changes are
+  waiting (cleared when you open the popover), pause marks while paused, and a warning triangle for a failed or
+  unscheduled run.
+
+Pause writes a marker file, so scheduled runs skip until you resume. Manual runs still work.
 
 The app is the same binary as the CLI. Launched with no arguments, or with `app`, it opens the menu bar.
+`review-radar --snapshot <dir>` renders the design states from fixtures to PNG files.
 
 ## Commands
 
