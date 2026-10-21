@@ -128,7 +128,8 @@ final class Store: ObservableObject {
         }
         reload()
         checkIfDue(maxAge: Updates.maxAge)
-        Timer.scheduledTimer(withTimeInterval: Updates.maxAge, repeats: true) { _ in
+        // Hourly: checkIfDue decides whether a fetch is due, so the cadence is maxAge and a sleeping Mac catches up.
+        Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { _ in
             MainActor.assumeIsolated { Store.shared.checkIfDue(maxAge: Updates.maxAge) }
         }
     }
@@ -337,6 +338,8 @@ final class Store: ObservableObject {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = ["update", "--wait"]
+        // The same PATH the job uses, so brew, gh and claude resolve as they do for scheduled runs.
+        process.environment = Runner.environment(paths)
         attachLog(process)
         process.terminationHandler = { p in
             let ok = p.terminationStatus == 0

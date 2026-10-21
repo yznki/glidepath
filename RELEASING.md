@@ -58,3 +58,5 @@ brew uninstall glidepath
 
 - Update the README's Limits section: remove the line about the tap and the placeholder hash.
 - Keep `Formula/glidepath.rb` in this repo in step with the tap.
+- Upgrading from 1.0.2: run `brew upgrade yznki/tap/glidepath`, then `glidepath init --refresh` once. Say so in the
+  release notes for 1.0.3.

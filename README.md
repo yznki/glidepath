@@ -258,6 +258,8 @@ For a Homebrew install, "Update to 1.1.0…" in the footer menu (or `glidepath u
 expect about a minute. The menu bar app restarts itself when it is done. If a sweep is running, the update waits for it
 to end. A source build is not updated in place: the update opens the release page instead.
 
+Upgrading from 1.0.2: run `brew upgrade yznki/tap/glidepath`, then `glidepath init --refresh` once.
+
 ```sh
 glidepath update              # checks now; upgrades a Homebrew install
 glidepath update --wait       # same, but waits for a running sweep to end first

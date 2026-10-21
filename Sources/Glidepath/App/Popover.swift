@@ -317,6 +317,8 @@ struct PopoverView: View {
                     linkButton("What's new") {
                         if let url = URL(string: update.url) { NSWorkspace.shared.open(url) }
                     }
+                    linkButton("Update") { confirmAndUpdate(update) }
+                        .padding(.leading, 12)
                 }
             }
         }

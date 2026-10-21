@@ -41,6 +41,18 @@ final class UpdatesTests: XCTestCase {
         XCTAssertNil(Updates.parseRelease(Data("not json".utf8)))
     }
 
+    func testReleaseURLOnlyLinksThisRepo() throws {
+        let fallback = "https://github.com/yznki/glidepath/releases/latest"
+        XCTAssertEqual(Updates.releaseURL("https://github.com/yznki/glidepath/releases/tag/v1.1.0"),
+                       "https://github.com/yznki/glidepath/releases/tag/v1.1.0")
+        XCTAssertEqual(Updates.releaseURL("https://evil.example/releases/tag/v1.1.0"), fallback)
+        XCTAssertEqual(Updates.releaseURL("https://github.com/someone/else/releases/tag/v1.1.0"), fallback)
+        XCTAssertEqual(Updates.releaseURL("http://github.com/yznki/glidepath/releases/tag/v1.1.0"), fallback)
+        XCTAssertEqual(Updates.releaseURL(nil), fallback)
+        let json = #"{"tag_name": "v1.1.0", "html_url": "javascript:alert(1)"}"#
+        XCTAssertEqual(try XCTUnwrap(Updates.parseRelease(Data(json.utf8))).url, fallback)
+    }
+
     func testInstallKindFromBinaryPath() {
         XCTAssertEqual(InstallKind.of(binary: "/opt/homebrew/Cellar/glidepath/1.0.2/bin/glidepath"),
                        .homebrew(prefix: "/opt/homebrew"))
@@ -63,9 +75,12 @@ final class UpdatesTests: XCTestCase {
         let paths = Paths(home: home, env: [:])
         XCTAssertNil(Updates.cached(paths))
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let cache = UpdateCache(checked: now, latest: "1.1.0", url: "https://example.test/release")
+        let cache = UpdateCache(checked: now, latest: "1.1.0", url: "https://github.com/yznki/glidepath/releases/tag/v1.1.0")
         try Updates.store(cache, paths)
         XCTAssertEqual(Updates.cached(paths), cache)
+        // A cache written with a foreign link is read back with the release page instead.
+        try Updates.store(UpdateCache(checked: now, latest: "1.1.0", url: "https://example.test/release"), paths)
+        XCTAssertEqual(Updates.cached(paths)?.url, "https://github.com/yznki/glidepath/releases/latest")
         XCTAssertTrue(Updates.isDue(nil, now: now, maxAge: Updates.maxAge))
         XCTAssertFalse(Updates.isDue(cache, now: now.addingTimeInterval(60), maxAge: Updates.maxAge))
         XCTAssertTrue(Updates.isDue(cache, now: now.addingTimeInterval(Updates.maxAge + 1), maxAge: Updates.maxAge))

@@ -363,8 +363,15 @@ enum UpdateCommand {
             eprint("brew upgrade failed")
             return 1
         }
+        // The new binary must be the release we asked for. The tap can lag behind GitHub's release.
+        let installed = Shell.run(prefix + "/bin/glidepath", ["--version"], timeout: 30)
+        guard installed.ok, installed.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "glidepath \(release.version)" else {
+            eprint("The tap has not published \(release.version) yet; try again later")
+            return 1
+        }
         // The new binary refreshes the skill, app link and job, so this process never runs the old code's steps.
-        guard Shell.inherit(prefix + "/bin/glidepath", ["init", "--refresh"], env: env) == 0 else {
+        // It is passed --holding-lock because this process holds the run lock, which would otherwise skip the job.
+        guard Shell.inherit(prefix + "/bin/glidepath", ["init", "--refresh", "--holding-lock"], env: env) == 0 else {
             eprint("init --refresh failed; run glidepath init --refresh")
             return 1
         }

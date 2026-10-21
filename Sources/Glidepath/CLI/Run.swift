@@ -192,13 +192,16 @@ final class Runner {
 
     static func environment(_ paths: Paths) -> [String: String] {
         var env = pinGitHubConfig(ProcessInfo.processInfo.environment, home: paths.home)
-        if let data = FileManager.default.contents(atPath: paths.plistFile),
-           let dict = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-           let vars = dict["EnvironmentVariables"] as? [String: String],
-           let path = vars["PATH"] {
-            env["PATH"] = path
-        }
+        if let path = jobPath(paths) { env["PATH"] = path }
         return env
+    }
+
+    /// The PATH recorded in the installed launchd job. nil when no job is installed.
+    static func jobPath(_ paths: Paths) -> String? {
+        guard let data = FileManager.default.contents(atPath: paths.plistFile),
+              let dict = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+              let vars = dict["EnvironmentVariables"] as? [String: String] else { return nil }
+        return vars["PATH"]
     }
 
     func execute(repos: [RepoConfig]) -> Int32 {

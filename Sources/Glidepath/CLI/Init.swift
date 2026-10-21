@@ -5,7 +5,7 @@ import Foundation
 enum InitCommand {
     static func main(_ args: [String]) -> Int32 {
         let a = Args(args, valued: ["--repo", "--clone"])
-        if a.has("--refresh") { return refresh() }
+        if a.has("--refresh") { return refresh(holdingLock: a.has("--holding-lock")) }
         let paths = Paths()
         let fm = FileManager.default
 
@@ -85,7 +85,8 @@ enum InitCommand {
         }
 
         do {
-            try installJob(paths: paths, config: config, binary: binary)
+            try installJob(paths: paths, config: config, binary: binary,
+                           path: ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin")
             print("Scheduled \(config.schedule.map(\.text).joined(separator: ", ")) via \(paths.plistFile)")
         } catch {
             eprint("could not install the scheduled job: \(error)")
@@ -103,15 +104,15 @@ enum InitCommand {
 
     /// `init --refresh`, run by `glidepath update` from the new binary after a brew upgrade. Non-interactive: the
     /// skill, the app link and the job are brought in line with this binary. Config, state and pause are left alone.
-    static func refresh() -> Int32 {
+    /// `holdingLock` is set by `update`, which holds the run lock through the upgrade, so the job is still rewritten.
+    static func refresh(holdingLock: Bool = false) -> Int32 {
         let paths = Paths()
-        let binary = binaryPath()
-        let config: Config
-        do {
-            config = try Config.load(paths)
-        } catch {
-            eprint("\(error)")
-            return 1
+        let binary: String
+        if case .homebrew(let prefix) = InstallKind.of(binary: binaryPath()) {
+            // The opt path survives upgrades; the keg path the running binary may come from does not.
+            binary = prefix + "/bin/glidepath"
+        } else {
+            binary = binaryPath()
         }
         guard let skill = findInstalledDir(relative: "share/glidepath", fallback: "skill/glidepath",
                                            requiredFile: "SKILL.md", from: binary) else {
@@ -133,14 +134,24 @@ enum InitCommand {
                 eprint("could not link the app: \(error.localizedDescription)")
             }
         }
-        // The job is rewritten (and reloaded) only when its content would change.
-        let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+
+        let config: Config
+        do {
+            config = try Config.load(paths)
+        } catch {
+            eprint("skipped the scheduled job: \(error)")
+            return 1
+        }
+        // The job is rewritten (and reloaded) only when its content would change. A sweep in progress keeps its job.
+        let path = Runner.jobPath(paths) ?? ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
         let wanted = try? Launchd.data(binary: binary, schedule: config.schedule, path: path, logFile: paths.logFile)
         if wanted != nil && wanted == (try? Data(contentsOf: URL(fileURLWithPath: paths.plistFile))) {
             print("Scheduled job is current")
+        } else if !holdingLock && RunLock.isHeld(paths.lockFile) {
+            print("skipped the schedule: a run is in progress")
         } else {
             do {
-                try installJob(paths: paths, config: config, binary: binary)
+                try installJob(paths: paths, config: config, binary: binary, path: path)
                 print("Rewrote the scheduled job at \(paths.plistFile)")
             } catch {
                 eprint("could not install the scheduled job: \(error)")
@@ -220,12 +231,11 @@ enum InitCommand {
         try fm.createSymbolicLink(atPath: link, withDestinationPath: app)
     }
 
-    static func installJob(paths: Paths, config: Config, binary: String) throws {
+    static func installJob(paths: Paths, config: Config, binary: String, path: String) throws {
         let fm = FileManager.default
         try fm.createDirectory(atPath: paths.agentsDir, withIntermediateDirectories: true)
         try fm.createDirectory(atPath: (paths.logFile as NSString).deletingLastPathComponent,
                                withIntermediateDirectories: true)
-        let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
         let data = try Launchd.data(binary: binary, schedule: config.schedule, path: path, logFile: paths.logFile)
         try data.write(to: URL(fileURLWithPath: paths.plistFile), options: .atomic)
         let uid = getuid()

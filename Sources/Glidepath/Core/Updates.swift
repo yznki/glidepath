@@ -64,12 +64,20 @@ enum Updates {
         return now.timeIntervalSince(cache.checked) > maxAge
     }
 
+    /// The release page the app links to. Only GitHub pages of this repo are linked; anything else falls back to
+    /// the latest release page.
+    static func releaseURL(_ url: String?) -> String {
+        guard let url, url.hasPrefix("https://github.com/yznki/glidepath/") else {
+            return "https://github.com/yznki/glidepath/releases/latest"
+        }
+        return url
+    }
+
     static func parseRelease(_ data: Data) -> Release? {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let tag = root["tag_name"] as? String, semver(tag) != nil,
-              let url = root["html_url"] as? String else { return nil }
+              let tag = root["tag_name"] as? String, semver(tag) != nil else { return nil }
         let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
-        return Release(version: version, url: url, notes: root["body"] as? String ?? "")
+        return Release(version: version, url: releaseURL(root["html_url"] as? String), notes: root["body"] as? String ?? "")
     }
 
     /// One unauthenticated GET. Blocks until GitHub answers or 15 s pass, so call it off the main thread.
@@ -96,7 +104,9 @@ enum Updates {
 
     static func cached(_ paths: Paths) -> UpdateCache? {
         guard let data = FileManager.default.contents(atPath: paths.updateFile) else { return nil }
-        return try? decoder().decode(UpdateCache.self, from: data)
+        guard var cache = try? decoder().decode(UpdateCache.self, from: data) else { return nil }
+        cache.url = releaseURL(cache.url)
+        return cache
     }
 
     static func store(_ cache: UpdateCache, _ paths: Paths) throws {
