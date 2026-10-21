@@ -35,17 +35,22 @@ final class WindowRouter: ObservableObject {
         self.showOnboarding = showOnboarding ?? WindowRouter.needsSetup()
     }
 
-    /// True when the window should open on onboarding: there is no config file, or (when the window is opened without
-    /// a section, from the popover's setup or at launch) a first sweep failed and has not been retried. A section
-    /// opened from elsewhere, such as Reviews, never opens onboarding for a failed sweep.
+    /// True when the window should open on onboarding: config.toml is missing or has no repos, or (when the window is
+    /// opened without a section, from the popover's setup or at launch) a first sweep failed and has not been retried.
+    /// A section opened from elsewhere, such as Reviews, never opens onboarding for a failed sweep.
     static func needsSetup(paths: Paths = Paths(), forSection: Bool = false) -> Bool {
-        opensOnboarding(hasConfig: FileManager.default.fileExists(atPath: paths.configFile),
+        opensOnboarding(configured: isConfigured(paths),
                         failedSweep: OnboardingResume.failedSweep != nil, forSection: forSection)
     }
 
+    /// config.toml parses and lists at least one repo.
+    static func isConfigured(_ paths: Paths) -> Bool {
+        ((try? Config.load(paths))?.repos.isEmpty ?? true) == false
+    }
+
     /// The decision behind `needsSetup`, without the disk or the failure state.
-    nonisolated static func opensOnboarding(hasConfig: Bool, failedSweep: Bool, forSection: Bool) -> Bool {
-        !hasConfig || (!forSection && failedSweep)
+    nonisolated static func opensOnboarding(configured: Bool, failedSweep: Bool, forSection: Bool) -> Bool {
+        !configured || (!forSection && failedSweep)
     }
 
     /// Selects `section` (when given), opens the main window and brings the app forward. With no config file the

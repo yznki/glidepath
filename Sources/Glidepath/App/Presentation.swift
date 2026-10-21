@@ -8,6 +8,7 @@ enum HeaderKind: Equatable {
     case failed(reason: String, started: Date?, next: Date?)
     case emptyRun(repos: Int, next: Date?, lastStarted: Date?)
     case idle(changes: Int, next: Date?, lastStarted: Date?, total: Int)
+    case notConfigured(next: Date?)
     case noSweeps(next: Date?, repos: Int)
     case dryRun
 }
@@ -74,7 +75,12 @@ enum Presentation {
             }
             return .idle(changes: changes, next: snap.nextRun, lastStarted: run.started, total: strips.count)
         }
-        if snap.run == nil { return .noSweeps(next: snap.nextRun, repos: snap.repoCount) }
+        if snap.run == nil {
+            // Configured means config.toml has repos. Onboarding's dry run never becomes the current run, so a
+            // configured user has no run until the first scheduled sweep.
+            if snap.repoCount == 0 { return .notConfigured(next: snap.nextRun) }
+            return .noSweeps(next: snap.nextRun, repos: snap.repoCount)
+        }
         return .idle(changes: changes, next: snap.nextRun, lastStarted: snap.run?.started, total: strips.count)
     }
 

@@ -89,10 +89,16 @@ struct HeaderCopy: Equatable {
         case .dryRun:
             return HeaderCopy(headline: "Dry run in progress", line2: "Nothing is posted. Watch it in Glidepath.",
                               line2Tone: .secondary)
-        case .noSweeps(let next, _):
+        case .notConfigured(let next):
             return HeaderCopy(headline: "Ready for the first sweep",
                               line2: "Pick the repos Glidepath should review.",
                               line3: next.map { "First sweep at \(clock($0))" }, line3Tone: .tertiary)
+        case .noSweeps(let next, let repos):
+            return HeaderCopy(headline: "Ready for the first sweep",
+                              line2: "Watching \(repos) repo\(repos == 1 ? "" : "s")",
+                              line3: next.map { "First sweep at \(clock($0)), in \(untilText($0, now))" }
+                                  ?? "No sweep scheduled",
+                              line3Tone: .tertiary)
         }
     }
 
@@ -435,7 +441,8 @@ struct PopoverView: View {
 
     @ViewBuilder
     private var footerButton: some View {
-        let firstRun = store.snap.run == nil && !store.snap.running && !store.snap.dryRunning
+        // Set up applies only while config.toml has no repos. A configured user with no run gets Run now.
+        let firstRun = store.snap.repoCount == 0 && !store.snap.running && !store.snap.dryRunning
         let dryRun = store.snap.dryRunning
         if offscreen {
             if store.snap.running { standIn("Stop") }

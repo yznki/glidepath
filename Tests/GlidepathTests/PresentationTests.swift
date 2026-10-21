@@ -105,10 +105,36 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(failed.headlineTone, .error)
         XCTAssertTrue(failed.openLog)
         XCTAssertFalse(HeaderCopy.make(.paused(since: nil, lastStarted: nil), now: now).openLog)
-        XCTAssertEqual(HeaderCopy.make(.noSweeps(next: nil, repos: 2), now: now).line2,
+        XCTAssertEqual(HeaderCopy.make(.notConfigured(next: nil), now: now).line2,
                        "Pick the repos Glidepath should review.")
+        XCTAssertEqual(HeaderCopy.make(.notConfigured(next: nil), now: now).headline, "Ready for the first sweep")
         let paused = HeaderCopy.make(.paused(since: nil, lastStarted: nil), now: now)
         XCTAssertEqual(paused.headlineTone, .changes, "paused headline uses the changes colour")
+    }
+
+    /// A configured user with no current run (onboarding's dry run never becomes current) is not sent back to setup.
+    func testConfiguredWithNoRunOffersRunNowNotSetup() {
+        let next = now.addingTimeInterval(2 * 3600 + 41 * 60)
+        var snap = Snapshot(run: nil, jobInstalled: true, nextRun: next)
+        snap.repoCount = 2
+        XCTAssertEqual(Presentation.headerKind(snap, now: now), .noSweeps(next: next, repos: 2))
+        let copy = HeaderCopy.make(.noSweeps(next: next, repos: 2), now: now)
+        XCTAssertEqual(copy.headline, "Ready for the first sweep")
+        XCTAssertEqual(copy.line2, "Watching 2 repos")
+        XCTAssertEqual(copy.line3, "First sweep at \(HeaderCopy.clock(next)), in 2 h 41 min")
+
+        let unscheduled = HeaderCopy.make(.noSweeps(next: nil, repos: 1), now: now)
+        XCTAssertEqual(unscheduled.line2, "Watching 1 repo")
+        XCTAssertEqual(unscheduled.line3, "No sweep scheduled")
+    }
+
+    /// Without repos in config.toml, the first-run copy stays and points at setup.
+    func testNotConfiguredWithNoRunAsksForSetup() {
+        var snap = Snapshot(run: nil, jobInstalled: true)
+        snap.repoCount = 0
+        XCTAssertEqual(Presentation.headerKind(snap, now: now), .notConfigured(next: nil))
+        XCTAssertEqual(HeaderCopy.make(.notConfigured(next: nil), now: now).line2,
+                       "Pick the repos Glidepath should review.")
     }
 
     func testRowFactsUsePassThreeLabels() {
