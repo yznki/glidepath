@@ -35,6 +35,12 @@ without polling.
 
 `review-radar init` checks each of these and prints the fix command for any that is missing.
 
+## Testing without touching your config
+
+`XDG_CONFIG_HOME` and `XDG_STATE_HOME` (absolute paths only) move review-radar's own config and state
+folders, for example for a sandboxed test run. HOME is not changed, so claude and gh keep their sign-in
+(the runner also pins gh's config directory to `~/.config/gh`).
+
 ## Install
 
 From Homebrew (once the tap is published):
@@ -133,12 +139,14 @@ Read(//<rules file>)                   only when rules is set
 Agent(gatherer)  Agent(reviewer)  Agent(checker)
 Bash(review-radar pr info:*)  Bash(review-radar pr diff:*)  Bash(review-radar pr threads:*)
 Bash(review-radar state set:*)  Bash(review-radar post:*)
+Bash(review-radar code grep:*)  Bash(review-radar code files:*)   read-only search of the checkout
 mcp__gitnexus__detect_changes  ...impact  ...api_impact  ...context  ...query  ...route_map  ...shape_check
                                        only when GitNexus is on
 ```
 
-There is no bare `Read`, `Grep` or `Glob`. Grep and Glob work only inside the session's working
-directories. The skill is not a file the session reads: its text is passed as the system prompt.
+There is no bare `Read`, `Grep` or `Glob`. A bare Grep allow rule reads any path on the machine, so search
+goes through `review-radar code grep`, which only reads the checkout's tracked files. The skill is not a
+file the session reads: its text is passed as the system prompt.
 
 **2. Bash guard hook.** The session has a PreToolUse hook on `Bash` that runs `review-radar hook bash-guard`
 for every command. It denies any command that does not start with `review-radar `, and any command that
@@ -156,6 +164,8 @@ input cannot be read, it blocks.
 | `review-radar pr diff --repo R --pr N [--path F]` | The diff, or one file's part of it. `F` must be a file in the PR. |
 | `review-radar pr threads --repo R --pr N` | Existing comments and reviews. Read-only. Also works in dry runs. |
 | `review-radar post --repo R --pr N` | Posts `final.json` after validation. Dry runs print the payload instead. |
+| `review-radar code grep --pattern TEXT` | Fixed-string search of the checkout's tracked files. Replaces the Grep tool, which cannot be scoped. |
+| `review-radar code files` | The checkout's tracked file list. Replaces the Glob tool. |
 | `review-radar state set ...` | Stage progress for this run only. Cannot set verdicts or the post stage. |
 
 Each wrapper takes only the flags listed here and checks its arguments against the run it is bound to. The
