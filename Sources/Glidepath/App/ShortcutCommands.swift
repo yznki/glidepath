@@ -14,10 +14,16 @@ struct ShortcutState: Equatable {
     var reviewCanPost = false
     var reviewCanDiscard = false
     var reviewIsLarge = false
+    /// A sheet is up (the ⌘/ sheet, Add Repo, Add Time). Only the window's own close, hide, quit and ⌘/ stay live.
+    var sheetOpen = false
 }
 
 enum ShortcutAvailability {
+    /// What stays live behind a sheet.
+    static let sheetAllowed: Set<ShortcutAction> = [.closeWindow, .hide, .quit, .shortcuts]
+
     static func enabled(_ action: ShortcutAction, _ s: ShortcutState) -> Bool {
+        if s.sheetOpen && !sheetAllowed.contains(action) { return false }
         let inReviews = !s.onboarding && s.section == .reviews && s.reviewSelected
         switch action {
         case .showOverview, .showReviews, .showRepos, .showSchedule, .showSettings:
@@ -151,10 +157,28 @@ extension FocusedValues {
     }
 }
 
+/// What a menu shortcut does while a text field has focus. Plain keys belong to the field; ⌘ letters are the menus'.
+/// Delete-type actions hand their key to the field as a delete, so ⌘⌫ still deletes a word.
+enum ShortcutRoute: Equatable {
+    case perform, forwardDelete, ignore
+
+    static func route(_ action: ShortcutAction, editing: Bool) -> ShortcutRoute {
+        guard editing else { return .perform }
+        if [ShortcutAction.discardDraft, .removeRepo, .deletePin].contains(action) { return .forwardDelete }
+        let shortcut = Shortcuts.shortcut(action)
+        guard let key = shortcut.key else { return .perform }
+        if case .character(let c) = key, c.isLetter, shortcut.modifiers.contains(.command) { return .perform }
+        return .ignore
+    }
+}
+
 /// The Reviews, Repos and Schedule views publish their selection here, so the menus can enable the right items.
 @MainActor
 final class ShortcutContext: ObservableObject {
     static let shared = ShortcutContext()
+    /// The Add Repo and Add Time sheets, set by their views.
+    @Published var repoSheetOpen = false
+    @Published var timeSheetOpen = false
     @Published var repoSelected = false
     @Published var pinSelected = false
     @Published var reviewSelected = false
@@ -174,6 +198,15 @@ final class ShortcutContext: ObservableObject {
 @MainActor
 enum ShortcutDispatch {
     static func perform(_ action: ShortcutAction, router: WindowRouter = .shared, store: Store = .shared) {
+        switch ShortcutRoute.route(action, editing: TextFocus.isEditing) {
+        case .forwardDelete:
+            NSApp.sendAction(#selector(NSResponder.deleteToBeginningOfLine(_:)), to: nil, from: nil)
+            return
+        case .ignore:
+            return
+        case .perform:
+            break
+        }
         switch action {
         case .showOverview: router.open(.overview)
         case .showReviews: router.open(.reviews)
@@ -189,8 +222,8 @@ enum ShortcutDispatch {
         case .find, .reviewRepoNow, .postReview, .discardDraft, .reviewAnyway, .openOnGitHub,
              .copyLink, .copyReviewText, .editRules, .removeRepo, .deletePin:
             router.deliver(action, section: nil)
-        case .runSweep: store.runNow()
-        case .stopSweep: store.stopRun()
+        case .runSweep: Confirm.run(store)
+        case .stopSweep: Confirm.stop(store)
         case .togglePause: store.togglePause()
         case .openLog: store.openLog()
         case .checkUpdates: store.checkForUpdates(manual: true)
@@ -222,7 +255,8 @@ struct GlidepathCommands: Commands {
                       configured: store.snap.config?.repos.isEmpty == false,
                       repoSelected: context.repoSelected, pinSelected: context.pinSelected,
                       reviewSelected: context.reviewSelected, reviewCanPost: context.reviewCanPost,
-                      reviewCanDiscard: context.reviewCanDiscard, reviewIsLarge: context.reviewIsLarge)
+                      reviewCanDiscard: context.reviewCanDiscard, reviewIsLarge: context.reviewIsLarge,
+                      sheetOpen: router.showShortcuts || context.repoSheetOpen || context.timeSheetOpen)
     }
 
     var body: some Commands {

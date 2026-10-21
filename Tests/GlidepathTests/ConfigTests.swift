@@ -169,6 +169,9 @@ final class ConfigTests: XCTestCase {
         XCTAssertFalse(off.hotkey)
         XCTAssertEqual(try Config.parse(off.render(), home: home), off)
         XCTAssertThrowsError(try Config.parse("hotkey = \"yes\"\n", home: home))
+        // The default is left out, so an older binary that rejects unknown keys still reads the file.
+        let on = try Config.parse("", home: home)
+        XCTAssertFalse(on.render().contains("hotkey"))
     }
 
     func testRenderEscapesStringsSoTheyReadBack() throws {

@@ -266,7 +266,8 @@ struct Config: Equatable {
         var out = "schedule = [" + schedule.map { tomlQuoted($0.text) }.joined(separator: ", ") + "]\n"
         out += "check_updates = \(checkUpdates)\n"
         out += "notify = \(notify)\n"
-        out += "hotkey = \(hotkey)\n"
+        // Written only when off: a config with the default leaves the key out, so an older binary still reads it.
+        if !hotkey { out += "hotkey = false\n" }
         if days != .all { out += "days = \(days.tomlText)\n" }
         out += "\n[limits]\n"
         out += "max_prs_per_run = \(limits.maxPRsPerRun)\n"

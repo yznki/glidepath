@@ -42,6 +42,7 @@ struct ScheduleView: View {
         .padding(.trailing, WinMetrics.canvasRight)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(isPresented: $model.addingTime) { addTimeSheet }
+        .onChange(of: model.addingTime) { _, open in ShortcutContext.shared.timeSheetOpen = open }
         .onAppear {
             model.refreshWeek(store)
             model.undoManager = undoManager
@@ -50,7 +51,10 @@ struct ScheduleView: View {
             takeAction()
         }
         .onChange(of: model.selectedPin) { _, pin in ShortcutContext.shared.pinSelected = pin != nil }
-        .onDisappear { ShortcutContext.shared.pinSelected = false }
+        .onDisappear {
+            ShortcutContext.shared.pinSelected = false
+            ShortcutContext.shared.timeSheetOpen = false
+        }
     }
 
     // MARK: Keys and actions

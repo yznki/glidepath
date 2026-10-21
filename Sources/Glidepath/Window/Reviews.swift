@@ -373,7 +373,7 @@ struct ReviewDetail: View {
                     .foregroundStyle(WinTheme.blue)
             } else {
                 HStack(spacing: WinMetrics.s8) {
-                    WinButton(title: "Discard", style: .outline, small: true) { store.discardDraft(strip) }
+                    WinButton(title: "Discard", style: .outline, small: true) { Confirm.discard(strip, store: store) }
                     WinButton(title: "Post review", style: .primary, small: true) { confirmAndPost() }
                 }
                 .fixedSize(horizontal: true, vertical: false)
@@ -474,7 +474,7 @@ struct ReviewDetail: View {
         case .postReview:
             if row.draft, store.draftBusy[row.stripID] == nil, !store.snap.running { confirmAndPost() }
         case .discardDraft:
-            if row.draft, !store.snap.running { store.discardDraft(strip) }
+            if row.draft, !store.snap.running { Confirm.discard(strip, store: store) }
         case .reviewAnyway:
             if row.tooLarge, !store.snap.running { confirmAndReview() }
         case .openOnGitHub:

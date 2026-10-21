@@ -116,13 +116,13 @@ struct OverviewView: View {
     private func heroActions(_ kind: HeaderKind) -> some View {
         HStack(spacing: WinMetrics.s16) {
             if store.snap.dryRunning {
-                WinButton(title: "Stop dry run", style: .outline, large: true) { confirmAndStop() }
+                WinButton(title: "Stop dry run", style: .outline, large: true) { Confirm.stop(store) }
             } else if store.snap.running {
-                WinButton(title: "Stop sweep", style: .outline, large: true) { confirmAndStop() }
+                WinButton(title: "Stop sweep", style: .outline, large: true) { Confirm.stop(store) }
             } else if store.snap.paused {
                 WinButton(title: "Resume", style: .primary) { store.togglePause() }
             } else {
-                WinButton(title: "Run sweep now", style: .primary) { confirmAndRun() }
+                WinButton(title: "Run sweep now", style: .primary) { Confirm.run(store) }
                     .disabled(!store.snap.jobInstalled)
             }
             if case .failed = kind {
@@ -257,7 +257,7 @@ struct OverviewView: View {
                 .foregroundStyle(WinTheme.blue)
         } else if strip.draft {
             WinButton(title: "Post", style: .link) { confirmAndPost(strip) }
-            WinButton(title: "Discard", style: .quiet) { store.discardDraft(strip) }
+            WinButton(title: "Discard", style: .quiet) { Confirm.discard(strip, store: store) }
         } else {
             WinButton(title: "Review", style: .link) { confirmAndReview(strip) }
         }
@@ -435,28 +435,6 @@ struct OverviewView: View {
     }
 
     // MARK: Confirmations (the same alerts as the popover)
-
-    private func confirmAndRun() {
-        if store.snap.postsReviews {
-            let alert = NSAlert()
-            alert.messageText = "Run the review pipeline now?"
-            alert.informativeText = "Some repos post reviews with posting = \"review\", which show as real reviews on GitHub."
-            alert.addButton(withTitle: "Run now")
-            alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-        }
-        store.runNow()
-    }
-
-    private func confirmAndStop() {
-        let alert = NSAlert()
-        alert.messageText = store.snap.dryRunning ? "Stop the dry run?" : "Stop the current sweep?"
-        alert.informativeText = "Reviews already posted stay posted."
-        alert.addButton(withTitle: "Stop")
-        alert.addButton(withTitle: "Keep running")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        store.stopRun()
-    }
 
     private func confirmAndPost(_ strip: Strip) {
         let preview = store.draftPreview(strip)

@@ -120,3 +120,34 @@ final class ShortcutTests: XCTestCase {
         XCTAssertNil(Shortcuts.all.first { $0.key == .character("z") && $0.modifiers == .command })
     }
 }
+
+final class ShortcutGuardTests: XCTestCase {
+    func testSheetLeavesOnlyCloseHideQuitAndShortcutsLive() {
+        var s = ShortcutState(section: .repos, repoSelected: true)
+        s.sheetOpen = true
+        XCTAssertFalse(ShortcutAvailability.enabled(.addRepo, s))
+        XCTAssertFalse(ShortcutAvailability.enabled(.showOverview, s))
+        XCTAssertFalse(ShortcutAvailability.enabled(.runSweep, s))
+        XCTAssertFalse(ShortcutAvailability.enabled(.find, s))
+        XCTAssertTrue(ShortcutAvailability.enabled(.closeWindow, s))
+        XCTAssertTrue(ShortcutAvailability.enabled(.hide, s))
+        XCTAssertTrue(ShortcutAvailability.enabled(.quit, s))
+        XCTAssertTrue(ShortcutAvailability.enabled(.shortcuts, s))
+    }
+
+    func testWhileEditingOnlyCommandLettersPerform() {
+        XCTAssertEqual(ShortcutRoute.route(.find, editing: true), .perform)
+        XCTAssertEqual(ShortcutRoute.route(.closeWindow, editing: true), .perform)
+        XCTAssertEqual(ShortcutRoute.route(.stopSweep, editing: true), .ignore)
+        XCTAssertEqual(ShortcutRoute.route(.shortcuts, editing: true), .ignore)
+        XCTAssertEqual(ShortcutRoute.route(.settings, editing: true), .ignore)
+        XCTAssertEqual(ShortcutRoute.route(.postReview, editing: true), .ignore)
+    }
+
+    func testDeleteWhileEditingGoesToTheFieldAsADelete() {
+        for action in [ShortcutAction.discardDraft, .removeRepo, .deletePin] {
+            XCTAssertEqual(ShortcutRoute.route(action, editing: true), .forwardDelete, "\(action)")
+        }
+        XCTAssertEqual(ShortcutRoute.route(.discardDraft, editing: false), .perform)
+    }
+}

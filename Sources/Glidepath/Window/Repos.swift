@@ -55,6 +55,8 @@ struct ReposView: View {
         .sheet(isPresented: $model.addingRepo) {
             AddRepoSheet(store: store, model: model)
         }
+        .onChange(of: model.addingRepo) { _, open in ShortcutContext.shared.repoSheetOpen = open }
+        .onDisappear { ShortcutContext.shared.repoSheetOpen = false }
         .onAppear { focus = .list }
         .onChange(of: selected?.slug) { _ in ShortcutContext.shared.repoSelected = selected != nil }
         .onDisappear { ShortcutContext.shared.repoSelected = false }

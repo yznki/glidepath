@@ -179,9 +179,9 @@ struct PopoverView: View {
         if mods == [.command] {
             switch press.characters {
             case "r":
-                if !store.snap.running, store.snap.jobInstalled { confirmAndRun() }
+                if !store.snap.running, store.snap.jobInstalled { Confirm.run(store) }
             case ".":
-                if store.snap.running { confirmAndStop() }
+                if store.snap.running { Confirm.stop(store) }
             case "o":
                 WindowRouter.shared.open(nil)
             case ",":
@@ -511,7 +511,7 @@ struct PopoverView: View {
             else if firstRun { standIn("Set up Glidepath…", prominent: true) }
             else { standIn("Run now") }
         } else if store.snap.running {
-            Button("Stop") { confirmAndStop() }
+            Button("Stop") { Confirm.stop(store) }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
         } else if dryRun {
@@ -527,7 +527,7 @@ struct PopoverView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
         } else {
-            Button("Run now") { confirmAndRun() }
+            Button("Run now") { Confirm.run(store) }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(!store.snap.jobInstalled)
@@ -535,18 +535,6 @@ struct PopoverView: View {
     }
 
     /// Posting is public, so a run that can post reviews asks first.
-    private func confirmAndRun() {
-        if store.snap.postsReviews {
-            let alert = NSAlert()
-            alert.messageText = "Run the review pipeline now?"
-            alert.informativeText = "Some repos post reviews with posting = \"review\", which show as real reviews on GitHub."
-            alert.addButton(withTitle: "Run now")
-            alert.addButton(withTitle: "Cancel")
-            guard alert.runModal() == .alertFirstButtonReturn else { return }
-        }
-        store.runNow()
-    }
-
     /// Homebrew installs update after a confirmation; anything else opens the release page.
     private func confirmAndUpdate(_ update: UpdateCache) {
         guard store.updatesWithBrew else {
@@ -563,15 +551,6 @@ struct PopoverView: View {
         store.startUpdate()
     }
 
-    private func confirmAndStop() {
-        let alert = NSAlert()
-        alert.messageText = "Stop the current sweep?"
-        alert.informativeText = "Reviews already posted stay posted."
-        alert.addButton(withTitle: "Stop")
-        alert.addButton(withTitle: "Keep running")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        store.stopRun()
-    }
 }
 
 /// One PR row (docs/design.md, pass 4): the title on line 1 with the full width; line 2 has `#number · author`
@@ -706,7 +685,7 @@ struct PRRow: View {
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(p.doingText)
                     .disabled(store.snap.running)
-                Button("Discard") { store.discardDraft(strip) }
+                Button("Discard") { Confirm.discard(strip, store: store) }
                     .buttonStyle(.plain)
                     .font(.system(size: 12))
                     .foregroundStyle(p.secondary)
