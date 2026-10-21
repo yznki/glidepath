@@ -108,10 +108,10 @@ enum StateCommand {
                     guard let v = Verdict(rawValue: text) else { throw StateError("unknown verdict \(text)") }
                     return v
                 }
-                var run = try store.load(runId)
-                try run.setPR(repo: slug, n: n, stage: stage, author: a.value("--author"),
-                              title: a.value("--title"), verdict: verdict, reason: a.value("--reason"))
-                try store.save(run)
+                try store.mutate(runId) { run in
+                    try run.setPR(repo: slug, n: n, stage: stage, author: a.value("--author"),
+                                  title: a.value("--title"), verdict: verdict, reason: a.value("--reason"))
+                }
                 print("ok")
                 return 0
             case "show":

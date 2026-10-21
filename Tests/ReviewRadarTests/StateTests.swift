@@ -76,4 +76,32 @@ final class StateTests: XCTestCase {
         XCTAssertFalse(RunLock.isHeld(path))
         _ = lock
     }
+
+    func testTwentyParallelStateSetsAllLand() throws {
+        let paths = Paths(home: home)
+        let store = RunStore(paths: paths)
+        let id = "parallel"
+        try store.save(RunState.new(id: id, now: Date()))
+        let failures = AtomicCounter()
+        DispatchQueue.concurrentPerform(iterations: 20) { i in
+            do {
+                try store.mutate(id) { run in
+                    try run.setPR(repo: "a/b", n: i + 1, stage: .gather, author: "x", title: nil,
+                                  verdict: nil, reason: nil)
+                }
+            } catch {
+                failures.add()
+            }
+        }
+        XCTAssertEqual(failures.value, 0)
+        let run = try store.load(id)
+        XCTAssertEqual(Set(run.repos[0].prs.map(\.n)), Set(1...20))
+    }
+}
+
+final class AtomicCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+    func add() { lock.lock(); n += 1; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return n }
 }

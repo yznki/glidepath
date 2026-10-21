@@ -20,6 +20,8 @@ struct PRState: Codable, Equatable {
     var verdict: Verdict?
     var reason: String?
     var tokens: Int
+    /// Head SHA recorded by `pr info` at gather time. Posting refuses if the head has moved since.
+    var head: String? = nil
 }
 
 struct RepoState: Codable, Equatable {
@@ -145,6 +147,20 @@ struct RunStore {
         let data = try RunStore.encoder().encode(run)
         // `.atomic` writes a temp file in the same folder and renames it over the target.
         try data.write(to: URL(fileURLWithPath: paths.runFile(run.id)), options: .atomic)
+    }
+
+    /// Read-modify-write under `state.lock`, so concurrent writers (the runner and the review
+    /// skill's `state set` calls) cannot overwrite each other's changes.
+    func mutate(_ id: String, _ body: (inout RunState) throws -> Void) throws {
+        try FileManager.default.createDirectory(atPath: paths.stateDir, withIntermediateDirectories: true)
+        let fd = open(paths.stateDir + "/state.lock", O_CREAT | O_RDWR, 0o644)
+        guard fd >= 0 else { throw StateError("cannot open state lock") }
+        defer { close(fd) }
+        guard flock(fd, LOCK_EX) == 0 else { throw StateError("cannot lock state") }
+        defer { flock(fd, LOCK_UN) }
+        var run = try load(id)
+        try body(&run)
+        try save(run)
     }
 
     func load(_ id: String) throws -> RunState {
