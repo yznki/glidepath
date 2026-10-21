@@ -1,97 +1,134 @@
-# Glidepath design pass 1
+# Glidepath: design
 
-Baseline critic score 6.3 (design 6.3, usability 6.0, creativity 6.5, content 6.5).
-Target 8+. The fixes below come from the critique; the idea stays (ATC radar, PRs as flights,
-verdict stamps). Rule for this pass: the screen answers "do I need to act?" first.
+The menu bar app shows a sweep as an approach profile. Each PR flies down a glide slope until it lands on
+the runway with a verdict. Left to right is progress, so the header needs no legend beyond its four stage
+ticks. The screen answers "do I need to act?" first.
 
-## Tokens (one table, light / dark)
+This document is the final design. It replaces design pass 1 and the radar that pass 1 described.
 
-| Role | Light | Dark | Use |
+## 1. Header: the approach profile
+
+Full content width (328 pt, x = 16 to 344), 64 pt tall, at the top of the popover.
+
+- **Stage ticks**: four labels, 11/400 secondary, above the slope: `gather` at x = 0, `review` at x = 88,
+  `check` at x = 176, `land` at the runway (x = 268). Their baseline is at y = 10.
+- **Glide slope**: one 1.5 pt line in secondary colour, from (0, 18) to (268, 50). The slope starts below
+  the tick labels so the labels stay clear of it. (Pass 2 said y = 6; the labels need the room.)
+- **Stage columns**: stage n (1 to 4) is centred at x = (n - 0.5) / 4 * 268.
+- **Active PRs**: an 8 pt circle in `doing` (system blue) on the slope at its stage column. PRs on the same
+  stage spread 10 pt apart along the slope. The most recently active PR gets a 2 pt halo ring.
+- **Queued PRs** (running, not started): a grey circle at the top of the slope.
+- **Runway**: 60 pt by 4 pt at x = 268 to 328, y = 52 to 56, in ink at 25%.
+- **Landed PRs**: 8 pt rounded squares (radius 2) sitting on the runway, packed left to right in list order.
+  Changes are amber (#E5A000), approved green (#30A46C), skipped and no-result grey. With more than six, the
+  squares shrink to fit the runway.
+- **Motion while running**: each active circle slides along the slope by at most 6 pt and back, on a 4 s
+  ease-in-out loop. **On landing**: the circle slides down the rest of the slope and onto the runway in 0.7 s
+  with an ease-out curve, and turns into its square in the verdict colour. Reduced motion: final positions
+  only, no slides.
+- **Idle**: slope and runway drawn, last sweep's squares on the runway, no circles.
+- **Paused**: slope and runway at 40% opacity, two 2 x 8 pt pause bars at the start of the slope.
+- **Failed**: runway in the error colour at 60%, with a small x at its left end.
+- **Hover**: hovering a row rings its circle or square (12 pt ring in `doing` or the verdict colour), and
+  hovering a mark highlights its row.
+
+## 2. Header text
+
+Left-aligned at x = 16, three lines, no separator dots at line ends. The first line is 17/600 ink, unless
+noted; the second 13/400 ink; the third 12/400 secondary.
+
+| State | Line 1 | Line 2 | Line 3 |
 |---|---|---|---|
-| ink | #111111 | #F2F2F2 | titles, headline |
-| secondary | #6B6B6B | #A0A0A0 | meta lines (>= 4.5:1 on both grounds) |
-| line | ink 8% | ink 10% | one header rule only |
-| doing | system accent (`Color.accentColor`, blue by default) | same | in-progress phase, sweep arm, active blips |
-| approve text / fill | #247B50 / #30A46C | #4CC38A / #30A46C | stamp text / blip |
-| changes text / fill | #8A5A00 / #E5A000 | #F2B13C / #E5A000 | stamp text / blip / headline count |
-| skipped | secondary | secondary | stamp, blip |
-| error | #B42318 | #F97066 | run failed |
+| running | amber dot, then "2 need changes"; with none: "Reviewing 3 PRs" | "3 reviewing · 4 of 7 landed" | "Started 10:12" |
+| idle, changes | amber dot, "2 need changes" | "Last sweep 10:12 · 7 PRs" | "Next sweep 13:00, in 2 h 41 min" |
+| idle, clear | "All clear" | "Last sweep 10:12 · 7 PRs" | "Next sweep 13:00, in 2 h 41 min" |
+| paused | "Paused" | "Scheduled sweeps are skipped" | "Since 10:35" |
+| failed | "Last sweep failed" (error colour) | "Couldn't finish the review. Showing results from 09:12." | "Open log" link, error colour, underlined |
+| empty | "No open PRs" | "Watching 2 repos" | "Next sweep 13:00, in 2 h 41 min" |
+| first run | "Ready for the first sweep" | "Sweeps run at 07:00, 13:00 and 19:00" | "Next at 13:00, in 2 h 41 min" |
+| not scheduled | "Not scheduled" (amber) | "Run `glidepath init` to set it up" | none |
 
-Every foreground: 4.5:1 for text, 3:1 for marks, on #F5F5F5 and #222 (the snapshot grounds) and on
-the live popover material. No gradients anywhere, the radar included.
+Tokens leave the header. They go into the ellipsis menu as a disabled item: "Last run: 1.2M tokens".
 
-## Type
+## 3. Status column: one mark per row
 
-Four sizes, two weights: 11 (group labels, stamp), 12 (meta), 13 (row title, buttons), 17 (headline).
-Weights 400 and 600 only (stamp 700 is the one exception). SF Pro; SF Mono only for `#1234` inside meta.
+- **Finished rows**: one chip, 11/600 sentence case, 20 pt tall, 8 pt horizontal padding, radius 4, no border,
+  no rotation.
+  - Changes: text #7A4B00 on #FBEBC8 (light); #FFC966 on #3A2A0C (dark).
+  - Approved: text #1B6B3F on #DDF3E4 (light); #7EE0A6 on #12301F (dark).
+  - No result (a failed run, or a PR the run never reached): text #555 on #EBEBEB (light); #BBB on #333 (dark).
+  - Skipped: no chip. Plain 12/400 secondary text with the reason, as "Draft, skipped".
+- **Active rows**: the stage word in the `doing` text colour, and below it a four-dash meter: done dashes ink
+  at 60%, the current dash in `doing`, future dashes #C4C4C4 (light) or #555 (dark). Finished rows have no meter.
+- **Queued rows** (running, not started): "Queued" in secondary.
+- The status column's width is intrinsic. The title column takes the rest.
 
-## Header (radar 92pt + text block, vertically centred on the radar, same grid in every state)
+## 4. Rows
 
-| State | Headline (17/600) | Sub-line (12/400 secondary) |
-|---|---|---|
-| running, changes so far | "2 need changes" (count in changes colour), then " · 3 reviewing" in ink | "4 of 7 landed · started 10:12 · 1.2M tokens" |
-| running, none yet | "Reviewing 3 PRs" | same |
-| idle, last run had changes | "2 need changes" | "Next sweep 13:00 · in 2 h 41 min" |
-| idle, all clean | "All clear" | same |
-| idle, no runs yet | "No sweeps yet" | "First sweep 13:00 · in 2 h 41 min" |
-| paused | "Paused" | "Since 10:35 · scheduled sweeps are skipped" |
-| run failed | "Last sweep failed" (error colour) | first line of the error, then "Open log" link |
-| job not loaded | "Not scheduled" (changes colour) | "Run `glidepath init` to set it up" (selectable) |
-| empty run | "No PRs to review" | "Checked 3 repos at 10:12 · next 13:00" |
+- Line 1: the title, 13/600 ink, up to two lines (13 pt type, 16 pt leading). The row grows from 52 pt to
+  fit a second line. Titles do not truncate to one line.
+- Line 2: `#1125` in SF Mono, then the author, 12/400 secondary.
+- Changes rows: line 3 is the review's reason, 12/400, in the changes text colour, one line. The full text is
+  in the tooltip.
+- Approved rows: no reason line.
+- Rows are ordered: changes, then in progress (and queued while running), then approved, then skipped, then
+  no result. Ties go by PR number, highest first.
 
-## Radar (the signature, as an instrument)
+## 5. Grid
 
-- 92pt disc. Two rings + crosshair at 1pt, ink 18% (>= 1.6:1). No sweep wedge, no gradient.
-- Sweep arm: one 1.5pt line in `doing`, 3 s/rev while running. Idle: arm hidden, rings only, blips
-  breathe (opacity 0.7 to 1, 4 s) so it is alive but clearly not scanning. Paused: arm frozen at
-  -45 deg at 30% opacity, blips at 50%.
-- One 7pt blip per PR. Angle = fixed slot in list order (360 / n, starting at 12 o'clock).
-  Radius = progress: queued on the outer ring, each phase one step inward, landed at 18% radius.
-  Colour = state: `doing` while active, verdict fill when landed, secondary when skipped/dropped.
-- While running, a blip brightens for 600 ms when the arm passes it (the radar afterglow, as
-  opacity, not a gradient).
-- Hovering a row draws a 12pt ring around its blip; hovering a blip highlights its row.
-- Landing moment: when a PR gets a verdict, its blip moves to the centre (spring 0.45/0.86) and
-  emits one ring ping (circle scales 1 to 2.2, opacity 0.6 to 0, 500 ms).
+- Symmetric 16 pt gutters: every element lives between x = 16 and x = 344. That covers the header, rows,
+  chips, footer and ellipsis button.
+- The hover highlight spans x = 8 to 352 with radius 6.
+- Hover chevron: it fades in at x = 344, and the status column moves in to make room, so there is no dead strip.
+- Repo groups: a label at 11/600 secondary (dark #9A9A9A), 20 pt above and 4 pt below. A 1 pt rule in ink at
+  8% spans x = 16 to 344, between groups only.
 
-## Rows (fixed 52pt pitch, 16pt side gutters, one left edge)
+## 6. Footer
 
-- Sort: needs changes, then active, then approved, then skipped, then dropped; by number within.
-- Line 1: PR title 13/600 ink, one line, truncates. Trailing: stamp, or phase word in `doing`.
-- Line 2: `#1125` (SF Mono 12) · author · reason, 12/400 secondary, one line, truncates; full
-  reason in `.help` tooltip. Trailing: the 4-segment rail, 44pt wide, 3pt tall capsules.
-- Rail rule: done segments ink 60%, current segment `doing`, future ink 12%. Verdict is never shown
-  by recolouring the rail; skipped/dropped rows show no rail.
-- Right column fixed 72pt, right-aligned to the 16pt gutter, for both stamp and rail.
-- Stamp at rest: upright, 72pt wide, 10.5/700 caps, 1.5pt border radius 3, fill = verdict fill at
-  12%, text = verdict text colour. Landing: scale 1.15 to 1 and -3 deg to 0 over 140 ms, only when
-  the verdict first appears while the popover is open. Reduced motion: none.
-- Row hover: ground ink 5%, radius 6. A chevron.right (11pt secondary) fades in at the far right on
-  hover. Click opens the PR. Keyboard: rows are buttons with a visible focus ring.
-- Repo groups (only when >1 repo): label 11/600 secondary, 14pt above, 6pt below, 18pt before the
-  next group. No rule lines between rows or groups.
-- Tokens per row: removed (they go to the header sub-line total).
+- Left: a bordered button. "Run now" when idle, empty, first-run or failed; "Resume" while paused; "Stop" while
+  running. Stop asks first: "Stop the current sweep?" with "Reviews already posted stay posted."
+- Right, aligned to x = 344: the ellipsis menu. Pause (or Resume), Open log, the last-run tokens info item, a
+  divider, Open at login (a native checkmark), a divider, and Quit Glidepath (⌘Q).
+- Run now asks first when a repo posts reviews (`posting = "review"`).
 
-## Footer (one row, 44pt)
+## 7. Colour and type
 
-- Left: one bordered (`.bordered`, controlSize small) primary button: "Run now" (idle), "Resume"
-  (paused), "Running…" disabled while running.
-- Right: `ellipsis.circle` menu button: Pause / Resume, Open log, Open at login (native checkmark
-  item), separator, Quit Glidepath (⌘Q).
-- No status word in the footer. No second rule above the footer; spacing only.
+- Type: four sizes (11, 12, 13, 17) and weights 400 and 600. The stamp and chips use 11/600.
+- Text is at least 4.5:1 on the grounds; marks are at least 3:1.
+- `doing` text: #0060CC (light, 5.3:1), #4DA3FF (dark). `doing` marks: the system blue.
+- Secondary: #6B6B6B (light), #9A9A9A (dark). Never lighter.
+- Grey marks: #767676 (light), #8A8A8A (dark).
+- Verdict marks on the profile are the same in both modes: amber #E5A000, green #30A46C.
+- No gradients anywhere.
 
-## Menu bar glyph
+## 8. Menu bar glyph
+
+18 x 18 pt, a template image unless noted. The glyph echoes the profile: a short slope descending to a runway bar.
 
 | State | Glyph |
 |---|---|
-| idle, clear | ring + dot |
-| running | ring + rotating arm, then count of active PRs |
-| changes waiting (last run) | ring + dot with a small filled amber dot at top-right (non-template overlay), then the count |
-| paused | ring with a pause mark |
-| failed / not scheduled | exclamationmark.triangle |
+| idle, clear | slope and runway |
+| running | slope, runway, and a dot moving down the slope (10 fps), then the count of active PRs |
+| changes waiting | slope and runway with the count of changes in amber (#C77700 on a light bar, #FFB000 on a dark one). Not a template image. Cleared when the popover opens after the run ends |
+| paused | runway and two pause bars |
+| failed or not scheduled | a triangle with "!" at 1.5 pt stroke |
 
-"Changes waiting" clears when the popover is opened after the run ends.
+## 9. App icon
 
-## Not in this pass
+A squircle on a flat night blue (#0E2236, no gradient). One glide slope in #4DA3FF descends from the top left to
+a runway of three short white dashes at the lower right. One amber square is landed on the runway. It must read
+at 16 pt; the slope and the square are drawn heavy enough to do so. `docs/shots/icon.png` shows it at 512 and at
+32 and 16 pt.
 
-The bold landing moment beyond the blip ping and stamp settle (menu bar pulse) waits for v1.1.
+## 10. Behaviour kept from earlier passes
+
+- Opening the popover after a run ends clears the menu bar's "changes waiting" mark.
+- A stamp or square that lands while the popover is open animates once. A stamp that was already there when the
+  popover opened does not.
+- Reduced motion turns off every slide, pulse and settle. State changes are immediate.
+- Snapshot mode (`glidepath --snapshot <dir>`) renders the states in this document from fixtures, light and
+  dark, plus the menu bar strip and the icon.
+
+## 11. Not in this design
+
+The bold landing moment beyond the slide and the square's appearance waits for v1.1.

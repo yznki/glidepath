@@ -1,10 +1,10 @@
 # glidepath
 
 glidepath runs Claude Code on a schedule to review open pull requests in the GitHub repos you list.
-It posts the reviews to GitHub and shows the run in a macOS menu bar app: one blip per PR on a radar,
-one strip per PR with its stage and verdict.
+It posts the reviews to GitHub and shows the run in a macOS menu bar app. An approach profile shows every PR
+flying down a glide slope to a runway, and each row shows its status.
 
-![Popover during a run (placeholder until a live screenshot is taken)](docs/shots/running-dark.png)
+![Popover during a run, dark (rendered from fixtures)](docs/shots/running-dark.png)
 
 It is a single binary, `glidepath`. The scheduled job, the review skill and the menu bar app all
 come from that binary and the skill files it installs.
@@ -149,9 +149,11 @@ goes through `glidepath code grep`, which only reads the checkout's tracked file
 file the session reads: its text is passed as the system prompt.
 
 **2. Bash guard hook.** The session has a PreToolUse hook on `Bash` that runs `glidepath hook bash-guard`
-for every command. It denies any command that does not start with `glidepath `, and any command that
-contains `;`, `&`, `|`, `$`, a backtick, `>`, `<`, `(`, `)`, or a newline. The guard fails closed: if its
-input cannot be read, it blocks.
+for every command. The command must be `glidepath ` followed by plain words (letters, digits and `_./:,@+-`) and
+single-quoted strings. Anything else is denied, including `;`, `&`, `|`, `$`, backticks, `<`, `>`, redirects, braces,
+globs, `~`, `!`, `#`, backslashes, `=(...)` and zsh glob qualifiers. Parentheses inside a quoted string are fine.
+An unquoted value that starts with `--` is denied, so a flag cannot be passed as a value. The guard fails closed: if
+its input cannot be read, it blocks.
 
 **3. Disallowed tools.** `WebFetch`, `WebSearch`, `Skill`, and `Bash(ps:*)`, `Bash(du:*)`, `Bash(lsof:*)`,
 `Bash(which:*)` are denied even if something else allowed them.
@@ -239,24 +241,27 @@ A gh token with the `repo` scope, for private repos.
 
 ## Menu bar app
 
-The app follows `docs/design.md`. The radar is an instrument: one blip per PR, placed by its progress (queued on
-the outer ring, one step inward per phase, landed at the centre). The arm sweeps only while a run is in progress,
-and the blips breathe while idle. Reduced motion stops the arm, the breathing and the pings.
+The app follows `docs/design.md`. The header is an approach profile: a glide slope with four stage ticks, and a
+runway on the right where landed PRs park as squares. Active PRs are circles on the slope, at the stage they are in.
 
-- Header: the headline says what needs you ("2 need changes", "All clear", "Last sweep failed", "Paused") and the
-  sub-line gives the detail (landed count, next sweep, error).
-- Rows: sorted by what needs you: changes first, then in progress, approved, skipped, dropped. Each row has the PR
-  title, `#number · author · reason`, and in the right column a verdict stamp or the phase word, with a four-part rail.
-- Footer: Run now (or Running…, or Resume while paused) on the left, and a menu on the right with Pause, Open log,
-  Open at login and Quit.
-- Menu bar: idle ring, a rotating arm while running (with the count of active PRs), an amber dot when changes are
-  waiting (cleared when you open the popover), pause marks while paused, and a warning triangle for a failed or
-  unscheduled run.
+- Header: the headline says what needs you ("2 need changes", "All clear", "Last sweep failed", "Paused"), the
+  second line gives the progress, and the third gives the time.
+- Rows: changes first, then in progress, approved, skipped, and no result. Each row has the PR title (up to two
+  lines), `#number · author`, and a status: a chip for a finished PR, or the stage word with a four-dash meter for
+  an active one. Changes rows also show the review's reason.
+- Footer: Run now (or Resume while paused, or Stop while running) on the left, and a menu on the right with Pause,
+  Open log, the last run's token count, Open at login and Quit.
+- Menu bar: a glyph echoing the profile. A moving dot while running (with the count of active PRs), an amber count
+  when changes are waiting (cleared when you open the popover), pause bars while paused, and a warning triangle for a
+  failed or unscheduled run.
+- Stop signals the running sweep's process group. Reviews already posted stay posted; the PRs not yet reviewed show
+  "No result".
 
 Pause writes a marker file, so scheduled runs skip until you resume. Manual runs still work.
 
 The app is the same binary as the CLI. Launched with no arguments, or with `app`, it opens the menu bar.
-`glidepath --snapshot <dir>` renders the design states from fixtures to PNG files.
+`glidepath --snapshot <dir>` renders the design states from fixtures to PNG files, and
+`glidepath --render-icon FILE PIXELS` renders the app icon.
 
 ## Commands
 
