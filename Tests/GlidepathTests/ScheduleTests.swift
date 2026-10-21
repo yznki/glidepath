@@ -222,4 +222,27 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(cal.dateComponents([.year, .month, .day, .hour, .minute], from: start),
                        DateComponents(year: 2026, month: 10, day: 19, hour: 0, minute: 0))
     }
+
+    // MARK: Reconcile the job
+
+    /// The job on disk is compared with what config.toml would write. No job, or no readable config, means nothing to do.
+    func testJobNeedsReinstallOnlyWhenTheJobDiffers() throws {
+        let dir = NSTemporaryDirectory() + "glidepath-reconcile-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let paths = Paths(home: dir, env: ["HOME": dir])
+        try FileManager.default.createDirectory(atPath: paths.configDir, withIntermediateDirectories: true)
+        try "schedule = [\"07:00\"]\n".write(toFile: paths.configFile, atomically: true, encoding: .utf8)
+        XCTAssertFalse(ScheduleEditor.jobNeedsReinstall(paths), "no job installed")
+
+        try FileManager.default.createDirectory(atPath: paths.agentsDir, withIntermediateDirectories: true)
+        try Data("stale".utf8).write(to: URL(fileURLWithPath: paths.plistFile))
+        XCTAssertTrue(ScheduleEditor.jobNeedsReinstall(paths), "job differs from the config")
+
+        let config = try Config.load(paths)
+        let wanted = try Launchd.data(binary: InitCommand.stableBinary(runningBinary: InitCommand.binaryPath()),
+                                      schedule: config.schedule, days: config.days,
+                                      path: InitCommand.jobPath(paths: paths), logFile: paths.logFile)
+        try wanted.write(to: URL(fileURLWithPath: paths.plistFile))
+        XCTAssertFalse(ScheduleEditor.jobNeedsReinstall(paths), "job matches the config")
+    }
 }

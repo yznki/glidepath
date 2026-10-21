@@ -138,11 +138,8 @@ enum InitCommand {
             return 1
         }
         // The job is rewritten (and reloaded) only when its content would change. A sweep in progress keeps its job.
-        let path = GitNexus.jobPath(base: Runner.jobPath(paths) ?? ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
-                                    home: paths.home)
-        let wanted = try? Launchd.data(binary: binary, schedule: config.schedule, days: config.days, path: path,
-                                         logFile: paths.logFile)
-        if wanted != nil && wanted == (try? Data(contentsOf: URL(fileURLWithPath: paths.plistFile))) {
+        let path = jobPath(paths: paths)
+        if jobIsCurrent(paths: paths, config: config, binary: binary, path: path) {
             print("Scheduled job is current")
         } else if !holdingLock && RunLock.isHeld(paths.lockFile) {
             print("skipped the schedule: a run is in progress")
@@ -156,6 +153,20 @@ enum InitCommand {
             }
         }
         return 0
+    }
+
+    /// The PATH the scheduled job runs with, as `init`, `init --refresh` and the app's schedule save derive it now.
+    static func jobPath(paths: Paths) -> String {
+        GitNexus.jobPath(base: Runner.jobPath(paths) ?? ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
+                         home: paths.home)
+    }
+
+    /// True when the installed plist is exactly what `config` would write for `binary` and `path`. A plist that cannot be
+    /// built is not current.
+    static func jobIsCurrent(paths: Paths, config: Config, binary: String, path: String) -> Bool {
+        guard let wanted = try? Launchd.data(binary: binary, schedule: config.schedule, days: config.days, path: path,
+                                             logFile: paths.logFile) else { return false }
+        return wanted == (try? Data(contentsOf: URL(fileURLWithPath: paths.plistFile)))
     }
 
     /// The path the scheduled job, the app link and the skill are written against. A Homebrew keg path does not survive

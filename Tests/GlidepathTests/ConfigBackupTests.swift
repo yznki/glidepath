@@ -41,4 +41,18 @@ final class ConfigBackupTests: XCTestCase {
         XCTAssertEqual(try String(contentsOfFile: one, encoding: .utf8), "first\n")
         XCTAssertEqual(try String(contentsOfFile: two, encoding: .utf8), "second\n")
     }
+
+    func testSymlinkedConfigIsBackedUpAsItsContents() throws {
+        let paths = Paths(home: home, env: ["HOME": home])
+        let realDir = home + "/dotfiles"
+        try FileManager.default.createDirectory(atPath: realDir, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(atPath: paths.configDir, withIntermediateDirectories: true)
+        try "# real\n".write(toFile: realDir + "/config.toml", atomically: true, encoding: .utf8)
+        try FileManager.default.createSymbolicLink(atPath: paths.configFile, withDestinationPath: realDir + "/config.toml")
+        let backup = try XCTUnwrap(ConfigEditor.backupExisting(paths: paths, now: Date(timeIntervalSince1970: 0)))
+        XCTAssertTrue(backup.hasPrefix(paths.configFile + ".bak-"), backup)
+        let attrs = try FileManager.default.attributesOfItem(atPath: backup)
+        XCTAssertEqual(attrs[.type] as? FileAttributeType, .typeRegular)
+        XCTAssertEqual(try String(contentsOfFile: backup, encoding: .utf8), "# real\n")
+    }
 }

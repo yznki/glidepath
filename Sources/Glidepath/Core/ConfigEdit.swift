@@ -203,6 +203,8 @@ enum ConfigEditor {
         let fm = FileManager.default
         let target = paths.configFile
         guard fm.fileExists(atPath: target) else { return nil }
+        // A symlinked config.toml is copied through the link, so the backup is a regular file with the target's contents.
+        let source = URL(fileURLWithPath: target).resolvingSymlinksInPath().path
         let stamp = DateFormatter()
         stamp.locale = Locale(identifier: "en_US_POSIX")
         stamp.dateFormat = "yyyyMMdd-HHmmss"
@@ -213,7 +215,7 @@ enum ConfigEditor {
             backup = "\(base)-\(n)"
             n += 1
         }
-        try fm.copyItem(atPath: target, toPath: backup)
+        try fm.copyItem(atPath: source, toPath: backup)
         return backup
     }
 
@@ -261,7 +263,8 @@ actor ConfigWriter {
 
     func apply<T>(paths: Paths, change: @Sendable (Config) throws -> Config,
                   save: @Sendable (Config) throws -> T) throws -> T {
-        let disk = try? Config.load(paths)
+        // A missing file is "No config yet"; a file that exists but does not parse throws its own error.
+        let disk = FileManager.default.fileExists(atPath: paths.configFile) ? try Config.load(paths) : nil
         return try save(try ConfigEditor.applyFresh(disk: disk, change))
     }
 }

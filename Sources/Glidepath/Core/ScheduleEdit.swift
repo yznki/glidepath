@@ -83,12 +83,22 @@ enum ScheduleEditor {
         }
     }
 
-    /// Rewrites and reloads the job for `config` as it is on disk now. Used when a deferred reinstall comes due.
+    /// Rewrites and reloads the job for `config` as it is on disk now.
     static func installJob(_ config: Config, paths: Paths) throws {
-        let base = Runner.jobPath(paths) ?? ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
         try InitCommand.installJob(paths: paths, config: config,
                                    binary: InitCommand.stableBinary(runningBinary: InitCommand.binaryPath()),
-                                   path: GitNexus.jobPath(base: base, home: paths.home))
+                                   path: InitCommand.jobPath(paths: paths))
+    }
+
+    /// True when a job is installed and the file on disk is not what config.toml would write now. False with no job
+    /// (nothing to reconcile, so a fresh install or an uninstall is left alone) or with no readable config.
+    static func jobNeedsReinstall(_ paths: Paths) -> Bool {
+        guard FileManager.default.fileExists(atPath: paths.plistFile), let config = try? Config.load(paths) else {
+            return false
+        }
+        return !InitCommand.jobIsCurrent(paths: paths, config: config,
+                                         binary: InitCommand.stableBinary(runningBinary: InitCommand.binaryPath()),
+                                         path: InitCommand.jobPath(paths: paths))
     }
 
     // MARK: Helpers

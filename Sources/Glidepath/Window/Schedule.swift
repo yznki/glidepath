@@ -346,10 +346,10 @@ final class ScheduleModel: ObservableObject {
         Task {
             let ok: Bool
             do {
-                let deferred = try await ConfigWriter.shared.apply(paths: paths, change: change) {
+                // A deferred reinstall needs no call here: the store's reload runs the reconcile once the lock frees.
+                _ = try await ConfigWriter.shared.apply(paths: paths, change: change) {
                     try ScheduleEditor.save($0, paths: paths)
                 }
-                if deferred { store.deferJobReinstall() }
                 rowErrors[row] = nil
                 saved.flash()
                 ok = true

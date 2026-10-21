@@ -159,8 +159,11 @@ final class Store: ObservableObject {
     private var loggedUpdateFailure = false
     /// The sweep seen running most recently. When it finishes, its notification goes out once.
     private var pendingNoticeRunID: String?
-    /// Checks for a deferred job reinstall; set while one waits for a running sweep to end.
+    /// Set while a check waits for a running sweep to end, or retries a failed reinstall. Stopped once the job is current.
     private var jobReinstallTimer: Timer?
+    private var jobReinstalling = false
+    /// The last reinstall of the launchd job that failed. Cleared by the next check that succeeds.
+    @Published private(set) var jobError: String?
 
     /// `snapshot == nil` is the live app: registers at login and watches the state folders.
     /// A non-nil snapshot is fixed state for snapshot rendering.
@@ -220,7 +223,7 @@ final class Store: ObservableObject {
         if case .homebrew = InstallKind.of(binary: path) { return true }
         return false
     }
-    var errorText: String? { actionError ?? snap.run.flatMap { Presentation.failureMessage($0) } }
+    var errorText: String? { actionError ?? jobError ?? snap.run.flatMap { Presentation.failureMessage($0) } }
     var headerKind: HeaderKind { Presentation.headerKind(snap, now: Date()) }
 
     /// Changes waiting: the last finished run had changes and the popover has not been opened since.
@@ -291,30 +294,49 @@ final class Store: ObservableObject {
             }
         }
         snap = s
+        reconcileJob()
         hovered = hovered.flatMap { h in Store.strips(from: s.run).contains { $0.id == h } ? h : nil }
     }
 
-    /// A schedule save wrote the config but left the launchd job alone, because a sweep was running. Checks every few
-    /// seconds until the run lock frees, then rewrites the job from the config on disk.
-    func deferJobReinstall() {
-        guard jobReinstallTimer == nil else { return }
-        jobReinstallTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] timer in
-            MainActor.assumeIsolated { self?.reinstallDeferredJob(timer) }
+    /// Brings the launchd job in line with config.toml. Runs on every reload, so a schedule save made while a sweep held
+    /// the run lock is reinstalled once the sweep's state is written. While the lock is held, or a reinstall failed, it
+    /// checks again every few seconds.
+    func reconcileJob() {
+        guard !isFixture, !jobReinstalling else { return }
+        guard ScheduleEditor.jobNeedsReinstall(paths) else {
+            stopJobTimer()
+            jobError = nil
+            return
         }
-    }
-
-    private func reinstallDeferredJob(_ timer: Timer) {
-        guard !RunLock.isHeld(paths.lockFile) else { return }
-        timer.invalidate()
-        jobReinstallTimer = nil
+        guard !RunLock.isHeld(paths.lockFile) else {
+            startJobTimer()
+            return
+        }
+        jobReinstalling = true
         let paths = self.paths
         Task {
             do {
                 try await Task.detached { try ScheduleEditor.installJob(try Config.load(paths), paths: paths) }.value
+                jobError = nil
+                stopJobTimer()
             } catch {
-                actionError = "could not reinstall the schedule: \(error.localizedDescription)"
+                jobError = "could not reinstall the schedule: \(error.localizedDescription)"
+                startJobTimer()
             }
+            jobReinstalling = false
         }
+    }
+
+    private func startJobTimer() {
+        guard jobReinstallTimer == nil else { return }
+        jobReinstallTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reconcileJob() }
+        }
+    }
+
+    private func stopJobTimer() {
+        jobReinstallTimer?.invalidate()
+        jobReinstallTimer = nil
     }
 
     /// Called when the popover appears. Opening it after a run ends clears "changes waiting".

@@ -107,7 +107,9 @@ struct RepoConfig: Equatable {
     static let defaultFlagNote = "Touches flagged paths; needs an extra approval."
 
     static func isValidSlug(_ slug: String) -> Bool {
-        slug.range(of: #"\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z"#, options: .regularExpression) != nil
+        guard slug.range(of: #"\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z"#, options: .regularExpression) != nil else { return false }
+        // "." and ".." are legal characters but would point the clone path at the clones folder itself or above it.
+        return !slug.split(separator: "/").contains { $0 == "." || $0 == ".." }
     }
 
     var owner: String { String(slug.split(separator: "/").first ?? "") }

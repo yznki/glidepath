@@ -173,4 +173,12 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(back.repos[0].flagPaths, repo.flagPaths)
         XCTAssertEqual(back.repos[0].flagNote, repo.flagNote)
     }
+
+    func testSlugRejectsDotSegments() {
+        for slug in ["./x", "x/..", "../x", "a/.", "./.."] {
+            XCTAssertFalse(RepoConfig.isValidSlug(slug), slug)
+        }
+        XCTAssertTrue(RepoConfig.isValidSlug("lumen/api"))
+        XCTAssertTrue(RepoConfig.isValidSlug("my.org/web-app_2"))
+    }
 }

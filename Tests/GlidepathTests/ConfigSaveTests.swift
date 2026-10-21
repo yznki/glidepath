@@ -81,4 +81,25 @@ final class ConfigSaveTests: XCTestCase {
     func testFreshApplyWithoutAConfigWritesNothing() {
         XCTAssertThrowsError(try ConfigEditor.applyFresh(disk: nil) { $0 })
     }
+
+    func testApplyReportsAParseErrorInsteadOfNoConfig() async throws {
+        try "schedule = [\"07:00\"\n".write(toFile: paths.configFile, atomically: true, encoding: .utf8)
+        do {
+            _ = try await ConfigWriter().apply(paths: paths, change: { $0 }, save: { _ in () })
+            XCTFail("a file that does not parse must not be saved over")
+        } catch let error as ConfigError {
+            XCTAssertNotEqual(error.message, "No config yet. Run glidepath init.")
+            XCTAssertFalse(error.message.isEmpty)
+        }
+    }
+
+    func testApplyWithNoFileSaysNoConfigYet() async throws {
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.configFile))
+        do {
+            _ = try await ConfigWriter().apply(paths: paths, change: { $0 }, save: { _ in () })
+            XCTFail("no config should not be saved")
+        } catch let error as ConfigError {
+            XCTAssertEqual(error.message, "No config yet. Run glidepath init.")
+        }
+    }
 }
