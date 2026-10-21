@@ -58,8 +58,22 @@ enum Transcript {
         return out
     }
 
-    /// Total for the main session plus its subagents. A subagent is attributed to a PR only when its
-    /// brief names exactly one of the PRs this run is reviewing; everything else stays in the total.
+    /// Splits a subagent's tokens evenly among the PRs its brief names. The remainder goes to the lowest
+    /// PR number, so the parts always add up to the whole.
+    static func split(_ tokens: Int, among prs: Set<Int>) -> [Int: Int] {
+        let sorted = prs.sorted()
+        guard !sorted.isEmpty, tokens > 0 else { return [:] }
+        let each = tokens / sorted.count
+        let remainder = tokens % sorted.count
+        var out: [Int: Int] = [:]
+        for (i, n) in sorted.enumerated() {
+            out[n] = each + (i < remainder ? 1 : 0)
+        }
+        return out
+    }
+
+    /// Total for the main session plus its subagents. A subagent's tokens are split among the PRs its
+    /// brief names (see `split`); the main session's tokens stay in the run total only.
     static func usage(paths: Paths, cwd: String, sessionId: String, keptPRs: Set<Int>) -> Usage {
         let dir = projectDir(paths: paths, cwd: cwd)
         let fm = FileManager.default
@@ -74,8 +88,8 @@ enum Transcript {
             let count = tokens(lines: lines)
             usage.total += count
             let named = firstUserText(lines: lines).map { mentions($0).intersection(keptPRs) } ?? []
-            if named.count == 1, let n = named.first {
-                usage.byPR[n, default: 0] += count
+            for (n, part) in split(count, among: named) {
+                usage.byPR[n, default: 0] += part
             }
         }
         return usage

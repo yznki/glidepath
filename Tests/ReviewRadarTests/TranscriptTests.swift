@@ -21,6 +21,14 @@ final class TranscriptTests: XCTestCase {
         XCTAssertEqual(Transcript.mentions("PRs 7 and 9"), [7, 9])
     }
 
+    func testSubagentTokensSplitAmongNamedPRs() {
+        XCTAssertEqual(Transcript.split(10, among: [1, 2, 3]), [1: 4, 2: 3, 3: 3])
+        XCTAssertEqual(Transcript.split(10, among: [1, 2, 3]).values.reduce(0, +), 10)
+        XCTAssertEqual(Transcript.split(7, among: [42]), [42: 7])
+        XCTAssertEqual(Transcript.split(7, among: []), [:])
+        XCTAssertEqual(Transcript.split(0, among: [5]), [:])
+    }
+
     func testProjectDirEncodesCwd() {
         let paths = Paths(home: "/fake/home")
         XCTAssertEqual(Transcript.projectDir(paths: paths, cwd: "/fake/home/dev/clone"),
