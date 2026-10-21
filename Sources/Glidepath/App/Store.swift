@@ -159,6 +159,8 @@ final class Store: ObservableObject {
     private var loggedUpdateFailure = false
     /// The sweep seen running most recently. When it finishes, its notification goes out once.
     private var pendingNoticeRunID: String?
+    /// Checks for a deferred job reinstall; set while one waits for a running sweep to end.
+    private var jobReinstallTimer: Timer?
 
     /// `snapshot == nil` is the live app: registers at login and watches the state folders.
     /// A non-nil snapshot is fixed state for snapshot rendering.
@@ -290,6 +292,29 @@ final class Store: ObservableObject {
         }
         snap = s
         hovered = hovered.flatMap { h in Store.strips(from: s.run).contains { $0.id == h } ? h : nil }
+    }
+
+    /// A schedule save wrote the config but left the launchd job alone, because a sweep was running. Checks every few
+    /// seconds until the run lock frees, then rewrites the job from the config on disk.
+    func deferJobReinstall() {
+        guard jobReinstallTimer == nil else { return }
+        jobReinstallTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated { self?.reinstallDeferredJob(timer) }
+        }
+    }
+
+    private func reinstallDeferredJob(_ timer: Timer) {
+        guard !RunLock.isHeld(paths.lockFile) else { return }
+        timer.invalidate()
+        jobReinstallTimer = nil
+        let paths = self.paths
+        Task {
+            do {
+                try await Task.detached { try ScheduleEditor.installJob(try Config.load(paths), paths: paths) }.value
+            } catch {
+                actionError = "could not reinstall the schedule: \(error.localizedDescription)"
+            }
+        }
     }
 
     /// Called when the popover appears. Opening it after a run ends clears "changes waiting".

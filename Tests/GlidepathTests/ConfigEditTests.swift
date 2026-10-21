@@ -116,6 +116,26 @@ final class ConfigEditTests: XCTestCase {
         }
     }
 
+    func testBotLoginsAreValidAndHyphenStartIsNot() throws {
+        XCTAssertEqual(try ConfigEditor.validateLogin("renovate[bot]"), "renovate[bot]")
+        XCTAssertThrowsError(try ConfigEditor.validateLogin("a[b]c"))
+        XCTAssertThrowsError(try ConfigEditor.validateLogin("-x"))
+        XCTAssertThrowsError(try ConfigEditor.validateLogin("[bot]"))
+    }
+
+    /// Only logins being added are checked: an invalid one already in the file does not block an unrelated save.
+    func testExistingInvalidLoginDoesNotBlockAnUnrelatedSave() throws {
+        var start = try base()
+        start.repos[0].authors = .logins(["old_name"])
+        let posted = try ConfigEditor.setPosting(start, slug: "lumen/api", .draft)
+        XCTAssertEqual(repo(posted).authors, .logins(["old_name"]))
+        let dir = NSTemporaryDirectory() + "glidepath-login-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        XCTAssertNoThrow(try ConfigEditor.save(posted, paths: Paths(home: home, env: ["GLIDEPATH_CONFIG_FILE": dir + "/config.toml"])))
+        XCTAssertNoThrow(try ConfigEditor.setAuthors(start, slug: "lumen/api", .logins(["old_name", "alice"])))
+        XCTAssertThrowsError(try ConfigEditor.setAuthors(start, slug: "lumen/api", .logins(["old_name", "-x"])))
+    }
+
     func testBadLoginsRejected() throws {
         let start = try base()
         for login in ["", "bad_name", "has space", String(repeating: "a", count: 40), "a.b"] {

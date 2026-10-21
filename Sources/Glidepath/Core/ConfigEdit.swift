@@ -5,10 +5,11 @@ import Foundation
 enum ConfigEditor {
     // MARK: Validation
 
-    /// A GitHub login: 1 to 39 letters, digits or hyphens. Returns the login unchanged.
+    /// A GitHub login: 1 to 39 letters, digits or hyphens, starting with a letter or digit, with an optional `[bot]`
+    /// suffix as on app accounts (renovate[bot]). Returns the login unchanged.
     static func validateLogin(_ login: String) throws -> String {
-        guard login.range(of: #"\A[A-Za-z0-9-]{1,39}\z"#, options: .regularExpression) != nil else {
-            throw ConfigError(message: "\"\(login)\" is not a GitHub login: letters, digits and hyphens, up to 39")
+        guard login.range(of: #"\A[A-Za-z0-9][A-Za-z0-9-]{0,38}(\[bot\])?\z"#, options: .regularExpression) != nil else {
+            throw ConfigError(message: "\"\(login)\" is not a GitHub login: letters, digits and hyphens, up to 39, or a name ending in [bot]")
         }
         return login
     }
@@ -57,7 +58,10 @@ enum ConfigEditor {
         try edit(config, slug) { repo in
             if case .logins(let logins) = authors {
                 guard !logins.isEmpty else { throw ConfigError(message: "Keep at least one login, or choose Collaborators or Anyone.") }
-                for login in logins { _ = try validateLogin(login) }
+                // Only logins being added are checked: one already in the file does not block an unrelated save.
+                var known: Set<String> = []
+                if case .logins(let existing) = repo.authors { known = Set(existing) }
+                for login in logins where !known.contains(login) { _ = try validateLogin(login) }
             }
             repo.authors = authors
         }

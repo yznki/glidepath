@@ -587,6 +587,8 @@ final class OnboardingModel: ObservableObject {
     @Published private(set) var copied: String?
     /// Where an existing config.toml was copied before onboarding replaced it, shown on the final step.
     @Published private(set) var backupNote: String?
+    /// True once a first sweep has found no scheduled job and written one. "Post nothing yet" pauses only that job.
+    private var createdJob = false
     /// PRs of the dry run, as the first sweep step shows them while it runs and after it lands.
     @Published private(set) var liveStrips: [Strip] = []
 
@@ -839,6 +841,7 @@ final class OnboardingModel: ObservableObject {
         let paths = self.paths
         let started = Date()
         state.firstSweep = .running
+        createdJob = createdJob || !FileManager.default.fileExists(atPath: self.paths.plistFile)
         OnboardingResume.failedSweep = nil
         liveStrips = []
         message = nil
@@ -896,7 +899,7 @@ final class OnboardingModel: ObservableObject {
     /// Leaves the schedule paused and opens Overview.
     func postNothingYet() {
         do {
-            try Pause.set(true, paths)
+            if Pause.pausesOnPostNothing(createdJob: createdJob) { try Pause.set(true, paths) }
             finish()
         } catch {
             message = "Could not pause the schedule: \(error.localizedDescription)"

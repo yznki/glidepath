@@ -1,5 +1,18 @@
 import Foundation
 
+/// Whether a schedule save reinstalls the launchd job now. Reinstalling boots the job out, which would stop a sweep that
+/// is running, so while the run lock is held the config is written and the reinstall waits.
+enum ScheduleSave {
+    enum Decision: Equatable {
+        case writeAndReinstall
+        case writeOnly(deferred: Bool)
+    }
+
+    static func decision(lockHeld: Bool) -> Decision {
+        lockHeld ? .writeOnly(deferred: true) : .writeAndReinstall
+    }
+}
+
 /// Edits to the schedule and the per-sweep limits, made from the Schedule section. Each function is pure and returns a
 /// new `Config`, or throws `ConfigError`. `save` is the only one that writes, and it reinstalls the launchd job.
 enum ScheduleEditor {
@@ -56,9 +69,22 @@ enum ScheduleEditor {
         return out
     }
 
-    /// Writes the config atomically, then rewrites and reloads the launchd job with the new schedule and days.
-    static func save(_ config: Config, paths: Paths) throws {
+    /// Writes the config atomically, then rewrites and reloads the launchd job with the new schedule and days, unless a
+    /// sweep holds the run lock. Returns true when the reinstall was deferred.
+    @discardableResult
+    static func save(_ config: Config, paths: Paths) throws -> Bool {
         try ConfigEditor.save(config, paths: paths)
+        switch ScheduleSave.decision(lockHeld: RunLock.isHeld(paths.lockFile)) {
+        case .writeAndReinstall:
+            try installJob(config, paths: paths)
+            return false
+        case .writeOnly(let deferred):
+            return deferred
+        }
+    }
+
+    /// Rewrites and reloads the job for `config` as it is on disk now. Used when a deferred reinstall comes due.
+    static func installJob(_ config: Config, paths: Paths) throws {
         let base = Runner.jobPath(paths) ?? ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
         try InitCommand.installJob(paths: paths, config: config,
                                    binary: InitCommand.stableBinary(runningBinary: InitCommand.binaryPath()),

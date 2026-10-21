@@ -9,6 +9,15 @@ final class ScheduleTests: XCTestCase {
         try Config.parse("schedule = [\"07:00\"]\n" + days + "\n", home: home)
     }
 
+    // MARK: Save while a sweep runs
+
+    /// A save reinstalls the job only when no sweep holds the run lock; otherwise the config is written and the
+    /// reinstall waits.
+    func testSaveDefersTheReinstallWhileALockIsHeld() {
+        XCTAssertEqual(ScheduleSave.decision(lockHeld: false), .writeAndReinstall)
+        XCTAssertEqual(ScheduleSave.decision(lockHeld: true), .writeOnly(deferred: true))
+    }
+
     // MARK: Config `days`
 
     func testDaysDefaultsToAllWhenAbsent() throws {

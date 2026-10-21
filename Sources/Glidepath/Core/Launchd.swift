@@ -94,6 +94,11 @@ enum Pause {
         !jobInstalled
     }
 
+    /// Whether "Post nothing yet" pauses the schedule. Only a job this setup created is paused; an existing job keeps its state.
+    static func pausesOnPostNothing(createdJob: Bool) -> Bool {
+        createdJob
+    }
+
     static func set(_ paused: Bool, _ paths: Paths) throws {
         let fm = FileManager.default
         if paused {

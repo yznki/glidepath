@@ -144,6 +144,12 @@ final class OnboardingTests: XCTestCase {
         XCTAssertFalse(Pause.pausesOnSetup(jobInstalled: true))
     }
 
+    /// "Post nothing yet" pauses only a job this setup created.
+    func testPostNothingPausesOnlyACreatedJob() {
+        XCTAssertTrue(Pause.pausesOnPostNothing(createdJob: true))
+        XCTAssertFalse(Pause.pausesOnPostNothing(createdJob: false))
+    }
+
     /// A reopened window lands on the first sweep only when a config exists and that sweep failed.
     func testResumeStepReopensOnFailedFirstSweepOnlyWithConfig() {
         XCTAssertEqual(OnboardingState.resumeStep(configExists: true, failedSweep: "boom"), .firstSweep)
