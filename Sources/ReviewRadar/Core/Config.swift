@@ -41,6 +41,10 @@ struct RepoConfig: Equatable {
     var rulesMode: RulesMode = .extend
     var gitnexus: GitNexusMode = .auto
 
+    static func isValidSlug(_ slug: String) -> Bool {
+        slug.range(of: #"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"#, options: .regularExpression) != nil
+    }
+
     var owner: String { String(slug.split(separator: "/").first ?? "") }
     var name: String { String(slug.split(separator: "/").last ?? "") }
 }
@@ -103,12 +107,16 @@ struct Config: Equatable {
     private static func parseRepo(_ t: [String: TOMLValue], home: String) throws -> RepoConfig {
         try checkKeys(t, allowed: ["slug", "clone", "posting", "authors", "rules", "rules_mode", "gitnexus"], where: "[[repo]]")
         guard let slug = try string(t["slug"], key: "slug") else { throw ConfigError(message: "[[repo]] needs slug") }
-        guard slug.range(of: #"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"#, options: .regularExpression) != nil else {
+        guard RepoConfig.isValidSlug(slug) else {
             throw ConfigError(message: "slug \"\(slug)\" must look like owner/name")
         }
         let clone = try string(t["clone"], key: "clone")
             ?? home + "/review-radar/clones/" + slug.replacingOccurrences(of: "/", with: "-")
-        var repo = RepoConfig(slug: slug, clone: expand(clone, home: home))
+        let expandedClone = expand(clone, home: home)
+        guard expandedClone.hasPrefix("/") else {
+            throw ConfigError(message: "clone \"\(clone)\" must be an absolute path or start with ~/")
+        }
+        var repo = RepoConfig(slug: slug, clone: expandedClone)
 
         if let p = try string(t["posting"], key: "posting") {
             guard let v = Posting(rawValue: p) else { throw ConfigError(message: "posting must be comment or review") }

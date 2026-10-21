@@ -19,7 +19,10 @@ struct TOMLError: Error, CustomStringConvertible, Equatable {
 /// (may span lines) and `#` comments. Anything else is an error, so typos fail loudly.
 enum TOML {
     static func parse(_ text: String) throws -> [String: TOMLValue] {
-        var parser = Parser(chars: Array(text))
+        // Swift treats "\r\n" as one Character, so normalize before the parser looks at characters.
+        var normalized = text.replacingOccurrences(of: "\r\n", with: "\n")
+        if normalized.hasPrefix("\u{FEFF}") { normalized.removeFirst() }
+        var parser = Parser(chars: Array(normalized))
         return try parser.document()
     }
 }

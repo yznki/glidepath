@@ -54,4 +54,15 @@ final class TOMLTests: XCTestCase {
         XCTAssertThrowsError(try TOML.parse("s = \"open\n"))
         XCTAssertThrowsError(try TOML.parse("x = 1 2\n"))
     }
+
+    func testCRLFLineEndings() throws {
+        let doc = try TOML.parse("a = 1\r\n[t]\r\nb = \"x\"\r\n")
+        XCTAssertEqual(doc["a"], .int(1))
+        XCTAssertEqual(doc["t"], .table(["b": .string("x")]))
+    }
+
+    func testLeadingBOMIsStripped() throws {
+        let doc = try TOML.parse("\u{FEFF}a = 2\n")
+        XCTAssertEqual(doc["a"], .int(2))
+    }
 }

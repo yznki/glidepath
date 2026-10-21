@@ -94,4 +94,15 @@ final class ConfigTests: XCTestCase {
         XCTAssertNil(ScheduleTime("7:00"))
         XCTAssertNil(ScheduleTime("07:60"))
     }
+
+    func testRelativeCloneRejected() {
+        XCTAssertThrowsError(try Config.parse("[[repo]]\nslug = \"a/b\"\nclone = \"clones/x\"\n", home: home))
+    }
+
+    func testSlugValidation() {
+        XCTAssertTrue(RepoConfig.isValidSlug("acme/api.v2"))
+        XCTAssertFalse(RepoConfig.isValidSlug("acme"))
+        XCTAssertFalse(RepoConfig.isValidSlug("acme/api; rm"))
+        XCTAssertFalse(RepoConfig.isValidSlug("../x/y"))
+    }
 }
