@@ -276,6 +276,8 @@ final class Store: ObservableObject {
         s.schedule = config?.schedule ?? []
         s.repoCount = config?.repos.count ?? 0
         s.config = config
+        // The shortcut follows the config as it is now, not only as it was at launch.
+        if !isFixture { GlobalHotkey.shared.apply(on: config?.hotkey ?? true) }
         s.hovered = snap.hovered
         s.update = Updates.cached(paths)
         s.checkUpdates = config?.checkUpdates ?? true

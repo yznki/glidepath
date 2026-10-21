@@ -46,12 +46,15 @@ struct ScheduleView: View {
         .onAppear {
             model.refreshWeek(store)
             model.undoManager = undoManager
+            ScheduleModel.live = model
         }
         .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
             takeAction()
         }
         .onChange(of: model.selectedPin) { _, pin in ShortcutContext.shared.pinSelected = pin != nil }
         .onDisappear {
+            // Leaving the section saves a pending nudge rather than dropping it.
+            model.flush(store)
             ShortcutContext.shared.pinSelected = false
             ShortcutContext.shared.timeSheetOpen = false
         }
@@ -335,12 +338,20 @@ final class ScheduleModel: ObservableObject {
     /// The pin the keyboard has selected.
     @Published var selectedPin: ScheduleTime?
     /// A pin being nudged: its time on disk, and where it is now. Saved once the keys go quiet.
-    @Published private(set) var draft: (from: ScheduleTime, to: ScheduleTime)?
+    @Published private(set) var draft: PinMove?
     /// The schedule before the current nudge burst: what one undo restores.
     private var burstStart: [ScheduleTime]?
     /// The window's undo manager. Schedule changes register with it, so Edit > Undo and Redo work.
     weak var undoManager: UndoManager?
     private var saveTask: Task<Void, Never>?
+    private var saveInFlight = false
+    /// The model whose window is open, so a window close can flush its pending nudge.
+    static weak var live: ScheduleModel?
+
+    /// Flushes the live model's pending nudge, if any. Called when the window closes and the app quits.
+    static func flushLive(_ store: Store) {
+        live?.flush(store)
+    }
     @Published var newTime = Date()
     @Published var rowErrors: [String: String] = [:]
     @Published var week = WeekStats()
@@ -382,19 +393,46 @@ final class ScheduleModel: ObservableObject {
         let origin = draft?.from ?? current
         guard let target = PinNudge.target(from: current, by: minutes, among: displayedTimes(config)) else { return }
         if draft == nil { burstStart = config.schedule }
-        draft = (from: origin, to: target)
+        draft = PinMove(from: origin, to: target)
         selectedPin = target
         saveTask?.cancel()
-        saveTask = Task { [weak self] in
+        // The task holds the model until it has saved, so a view that goes away mid-burst still writes.
+        saveTask = Task {
             try? await Task.sleep(nanoseconds: 500_000_000)
-            guard !Task.isCancelled, let self, let d = self.draft else { return }
-            let before = self.burstStart
-            self.commit("time", store, undoTo: before, then: { [weak self] _ in
-                self?.draft = nil
-                self?.burstStart = nil
-            }) {
-                try ScheduleEditor.moveTime($0, from: d.from, hour: d.to.hour, minute: d.to.minute)
+            guard !Task.isCancelled else { return }
+            self.commitDraft(store)
+        }
+    }
+
+    /// Saves the pending nudge now: when the section changes, the window closes, or the app quits.
+    func flush(_ store: Store) {
+        saveTask?.cancel()
+        commitDraft(store)
+    }
+
+    /// Saves the draft as one move from its time on disk. One save is in flight at a time. When the keys moved the pin
+    /// again meanwhile, the draft is rebased on the time now saved and the next save follows.
+    private func commitDraft(_ store: Store) {
+        guard !saveInFlight, let saving = draft else { return }
+        guard saving.from != saving.to else {
+            draft = nil
+            burstStart = nil
+            return
+        }
+        saveInFlight = true
+        commit("time", store, undoTo: burstStart, then: { [self] ok in
+            saveInFlight = false
+            if ok {
+                draft = PinMove.settle(draft, saved: saving)
+                if draft != nil { commitDraft(store) } else { burstStart = nil }
+            } else {
+                draft = nil
+                burstStart = nil
             }
+            // A pin that no longer exists is not selected.
+            if let pin = selectedPin, !(store.snap.config?.schedule.contains(pin) ?? true) { selectedPin = nil }
+        }) {
+            try ScheduleEditor.moveTime($0, from: saving.from, hour: saving.to.hour, minute: saving.to.minute)
         }
     }
 

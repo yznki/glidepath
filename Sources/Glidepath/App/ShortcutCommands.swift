@@ -14,6 +14,8 @@ struct ShortcutState: Equatable {
     var reviewCanPost = false
     var reviewCanDiscard = false
     var reviewIsLarge = false
+    /// Onboarding is on its Repos step, where Find focuses the picker's search.
+    var repoStepShowing = false
     /// A sheet is up (the ⌘/ sheet, Add Repo, Add Time). Only the window's own close, hide, quit and ⌘/ stay live.
     var sheetOpen = false
 }
@@ -28,10 +30,14 @@ enum ShortcutAvailability {
         switch action {
         case .showOverview, .showReviews, .showRepos, .showSchedule, .showSettings:
             return !s.onboarding
+        case .addRepo:
+            // Onboarding has its own repo picker, so Add Repo's sheet is not offered there.
+            return !s.onboarding
         case .filterAll, .filterChanges, .filterDrafts, .filterSkipped:
             return !s.onboarding && s.section == .reviews
         case .find:
-            return s.onboarding || s.section == .repos
+            // Onboarding's search is on the Repos step only; the Repos section has its own.
+            return s.onboarding ? s.repoStepShowing : s.section == .repos
         case .addTime:
             return !s.onboarding && s.section == .schedule
         case .discardDraft:
@@ -180,6 +186,7 @@ final class ShortcutContext: ObservableObject {
     @Published var repoSheetOpen = false
     @Published var timeSheetOpen = false
     @Published var repoSelected = false
+    @Published var repoStepShowing = false
     @Published var pinSelected = false
     @Published var reviewSelected = false
     @Published var reviewCanPost = false
@@ -229,7 +236,9 @@ enum ShortcutDispatch {
         case .checkUpdates: store.checkForUpdates(manual: true)
         case .about: NSApp.orderFrontStandardAboutPanel(nil)
         case .hide: NSApp.hide(nil)
-        case .quit: NSApp.terminate(nil)
+        case .quit:
+            ScheduleModel.flushLive(store)
+            NSApp.terminate(nil)
         case .closeWindow: NSApp.keyWindow?.performClose(nil)
         case .minimize: NSApp.keyWindow?.miniaturize(nil)
         case .zoom: NSApp.keyWindow?.zoom(nil)
@@ -256,6 +265,7 @@ struct GlidepathCommands: Commands {
                       repoSelected: context.repoSelected, pinSelected: context.pinSelected,
                       reviewSelected: context.reviewSelected, reviewCanPost: context.reviewCanPost,
                       reviewCanDiscard: context.reviewCanDiscard, reviewIsLarge: context.reviewIsLarge,
+                      repoStepShowing: context.repoStepShowing,
                       sheetOpen: router.showShortcuts || context.repoSheetOpen || context.timeSheetOpen)
     }
 

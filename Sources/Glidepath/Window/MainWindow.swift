@@ -101,7 +101,10 @@ final class MainWindowLifecycle {
             forName: NSWindow.willCloseNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard (note.object as? NSWindow)?.title == "Glidepath" else { return }
-            Task { @MainActor [weak self] in self?.settle() }
+            Task { @MainActor [weak self] in
+                ScheduleModel.flushLive(Store.shared)
+                self?.settle()
+            }
         }
     }
 

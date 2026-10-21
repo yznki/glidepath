@@ -31,6 +31,7 @@ struct OnboardingView: View {
             if step == .tools { model.checkTools() }
             if step == .repos { model.loadRepos() }
             if step != .schedule { model.selectedPin = nil }
+            ShortcutContext.shared.repoStepShowing = step == .repos
         }
         .onChange(of: model.selectedPin) { _, pin in
             ShortcutContext.shared.pinSelected = pin != nil && model.state.step == .schedule
@@ -42,6 +43,11 @@ struct OnboardingView: View {
         .focusable()
         .focused($rootFocused)
         .onAppear { rootFocused = true }
+        .onDisappear {
+            // Onboarding is over: an action it had queued must not fire in the sections.
+            WindowRouter.shared.pending = nil
+            ShortcutContext.shared.repoStepShowing = false
+        }
         .onKeyPress(phases: .down) { handleKey($0) }
     }
 

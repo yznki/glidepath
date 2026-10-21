@@ -10,6 +10,13 @@ struct SettingsView: View {
 
     private var config: Config? { store.snap.config }
 
+    /// The reason the switch is not working: the last save's error, or the shortcut being on but not registered.
+    private var hotkeyError: String? {
+        if let error = model.rowErrors["hotkey"] { return error }
+        guard !store.isFixture, config?.hotkey ?? true, !GlobalHotkey.shared.registered else { return nil }
+        return "Another app already uses ⌥⌘G, so Glidepath cannot register it."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             TitleRow(saved: model.saved)
@@ -29,7 +36,7 @@ struct SettingsView: View {
                         }
                     }
                     SettingRow(title: "Open Glidepath with ⌥⌘G", detail: "Opens the menu bar popover from any app.",
-                               error: model.rowErrors["hotkey"]) {
+                               error: hotkeyError) {
                         WinToggle(isOn: config?.hotkey ?? true) { model.toggleHotkey(store) }
                     }
                     SettingRow(title: "Open at login", detail: "Starts Glidepath when you log in.",

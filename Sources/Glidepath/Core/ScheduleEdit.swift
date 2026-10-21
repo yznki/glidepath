@@ -38,6 +38,20 @@ enum PinNudge {
     static func minute(of time: ScheduleTime) -> Int { time.hour * 60 + time.minute }
 }
 
+/// One pin's move: the time it has on disk and the time the keys have moved it to.
+struct PinMove: Equatable {
+    let from: ScheduleTime
+    let to: ScheduleTime
+
+    /// The draft left after `saved` has been written. Nothing is left when the keys have not moved the pin since the
+    /// save began. Otherwise the pin's time on disk is now `saved.to`, so the rest of the move starts there.
+    static func settle(_ draft: PinMove?, saved: PinMove) -> PinMove? {
+        guard let draft else { return nil }
+        if draft == saved { return nil }
+        return PinMove(from: saved.to, to: draft.to)
+    }
+}
+
 extension ScheduleTime {
     /// The time for a minute of the day, 0 to 1439.
     init?(minuteOfDay minute: Int) {

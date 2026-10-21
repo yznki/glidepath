@@ -10,20 +10,26 @@ final class GlobalHotkey {
     private var handler: EventHandlerRef?
     /// Called on the main actor when the shortcut is pressed.
     var onFire: (() -> Void)?
+    /// Whether ⌥⌘G is registered right now. Settings reads it to say why the shortcut is not working.
+    private(set) var registered = false
 
     private static let signature: OSType = 0x47_50_74_68 // "GPth"
 
     /// Registers the shortcut when the config says so. A config that does not parse counts as the default: on.
     func applyConfig(_ paths: Paths) {
         onFire = { PopoverToggle.toggle() }
-        let on = (try? Config.load(paths))?.hotkey ?? true
+        apply(on: (try? Config.load(paths))?.hotkey ?? true)
+    }
+
+    /// Makes the registration match `on`. Called at launch and on every config reload; registering again is a no-op.
+    func apply(on: Bool) {
         if on { _ = register() } else { unregister() }
     }
 
     /// Registers ⌥⌘G. False when the system refuses it, usually because another app already uses it.
     @discardableResult
     func register() -> Bool {
-        if ref != nil { return true }
+        if ref != nil { registered = true; return true }
         if handler == nil {
             var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
             let userData = Unmanaged.passUnretained(self).toOpaque()
@@ -33,14 +39,19 @@ final class GlobalHotkey {
         var newRef: EventHotKeyRef?
         let status = RegisterEventHotKey(UInt32(kVK_ANSI_G), UInt32(cmdKey | optionKey), id,
                                          GetApplicationEventTarget(), 0, &newRef)
-        guard status == noErr, let newRef else { return false }
+        guard status == noErr, let newRef else {
+            registered = false
+            return false
+        }
         ref = newRef
+        registered = true
         return true
     }
 
     func unregister() {
         if let ref { UnregisterEventHotKey(ref) }
         ref = nil
+        registered = false
     }
 
     private static let callback: EventHandlerUPP = { _, _, userData in
