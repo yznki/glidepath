@@ -48,6 +48,26 @@ enum Shell {
             stderr: String(decoding: errBox.data, as: UTF8.self))
     }
 
+    /// Runs with stdout and stderr connected to this process, so output appears as it is produced.
+    static func inherit(_ exe: String, _ args: [String], env: [String: String]? = nil) -> Int32 {
+        guard let path = exe.contains("/") ? exe : find(exe, path: env?["PATH"]) else {
+            eprint("\(exe): not found")
+            return 127
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = args
+        if let env { process.environment = env }
+        do {
+            try process.run()
+        } catch {
+            eprint("\(exe): \(error.localizedDescription)")
+            return 126
+        }
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
+
     static func find(_ name: String, path: String? = nil) -> String? {
         let dirs = (path ?? ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":")
         for dir in dirs {

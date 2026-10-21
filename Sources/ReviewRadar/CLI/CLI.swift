@@ -169,7 +169,36 @@ enum Checks {
             Item(name: "gh signed in", ok: Shell.run("gh", ["auth", "status"]).ok, fix: "gh auth login"),
             Item(name: "claude (Claude Code)", ok: Shell.find("claude") != nil,
                  fix: "brew install --cask claude-code, then run claude once and log in"),
+            claudeVersion(),
+            ghRepoScope(),
         ]
+    }
+
+    /// The review sessions use flags that exist from `Claude.minimumVersion` on.
+    static func claudeVersion() -> Item {
+        let r = Shell.run("claude", ["--version"], timeout: 30)
+        let reported = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ok = r.ok && Claude.isVersion(reported, atLeast: Claude.minimumVersion)
+        return Item(name: "claude version \(Claude.minimumVersion) or later (found \(reported.isEmpty ? "none" : reported))",
+                    ok: ok, fix: "update Claude Code to \(Claude.minimumVersion) or later")
+    }
+
+    /// Private repos need the `repo` scope. A token that does not list scopes (fine-grained) is flagged too.
+    static func ghRepoScope() -> Item {
+        let r = Shell.run("gh", ["auth", "status"], timeout: 30)
+        let text = r.stdout + r.stderr
+        let line = text.split(separator: "\n").first { $0.contains("Token scopes:") }
+        let ok = line.map { $0.contains("'repo'") } ?? false
+        return Item(name: "gh token has the repo scope", ok: ok,
+                    fix: "gh auth refresh -s repo (a token without listed scopes needs repo access to private repos)")
+    }
+
+    /// Global settings still load inside review sessions under `--setting-sources user`.
+    static func userSettingsNotes() -> [String] {
+        let path = Paths().home + "/.claude/settings.json"
+        guard let data = FileManager.default.contents(atPath: path),
+              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return [] }
+        return Claude.settingsWarnings(root)
     }
 
     static func installed(_ paths: Paths) -> [Item] {
@@ -195,6 +224,9 @@ enum Doctor {
             print(item.ok ? "ok    \(item.name)" : "FAIL  \(item.name): \(item.fix)")
         }
         print(Pause.isPaused(paths) ? "note  scheduled runs are paused (review-radar resume)" : "ok    scheduled runs are active")
+        for note in Checks.userSettingsNotes() {
+            print("warn  ~/.claude/settings.json: \(note)")
+        }
         return items.allSatisfy(\.ok) ? 0 : 1
     }
 }

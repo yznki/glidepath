@@ -20,12 +20,17 @@ enum InitCommand {
                 print("Using existing config at \(paths.configFile)")
             } else {
                 guard let slug = a.value("--repo") ?? prompt("GitHub repo to review (owner/name): "),
-                      slug.contains("/") else {
+                      RepoConfig.isValidSlug(slug) else {
                     eprint("init needs a repo as owner/name, for example --repo acme/api")
                     return 2
                 }
-                let repo = RepoConfig(slug: slug, clone: a.value("--clone").map(paths.expand)
-                    ?? paths.home + "/review-radar/clones/" + slug.replacingOccurrences(of: "/", with: "-"))
+                let clone = a.value("--clone").map(paths.expand)
+                    ?? paths.home + "/review-radar/clones/" + slug.replacingOccurrences(of: "/", with: "-")
+                guard clone.hasPrefix("/") else {
+                    eprint("--clone must be an absolute path or start with ~/")
+                    return 2
+                }
+                let repo = RepoConfig(slug: slug, clone: clone)
                 config = Config(schedule: Config.defaultSchedule.compactMap(ScheduleTime.init),
                                 limits: Limits(), repos: [repo])
                 try fm.createDirectory(atPath: (paths.configFile as NSString).deletingLastPathComponent,
@@ -88,12 +93,11 @@ enum InitCommand {
 
         print("Dry run (posts nothing):")
         let slug = config.repos[0].slug
-        let dry = Shell.run(binary, ["run", "--dry-run", "--repo", slug], env: env, timeout: 3600)
-        print(dry.stdout)
-        if !dry.stderr.isEmpty { eprint(dry.stderr) }
-        print(dry.ok ? "Done. Scheduled reviews will post with posting = \"\(config.repos[0].posting.rawValue)\"."
-                     : "Dry run failed; fix the issue above, then run review-radar doctor.")
-        return dry.ok ? 0 : 1
+        // Output streams as the run produces it, so the first review is visible while it works.
+        let status = Shell.inherit(binary, ["run", "--dry-run", "--repo", slug], env: env)
+        print(status == 0 ? "Done. Scheduled reviews will post with posting = \"\(config.repos[0].posting.rawValue)\"."
+                          : "Dry run failed; fix the issue above, then run review-radar doctor.")
+        return status == 0 ? 0 : 1
     }
 
     /// The path launchd should run. Prefers the installed PATH entry (stable across upgrades).
@@ -171,7 +175,12 @@ enum InitCommand {
         try data.write(to: URL(fileURLWithPath: paths.plistFile), options: .atomic)
         let uid = getuid()
         _ = Shell.run("launchctl", ["bootout", "gui/\(uid)/\(Launchd.label)"])
-        let boot = Shell.run("launchctl", ["bootstrap", "gui/\(uid)", paths.plistFile])
+        var boot = Shell.run("launchctl", ["bootstrap", "gui/\(uid)", paths.plistFile])
+        // Error 5 (I/O error) right after a bootout is a race with launchd. One retry after a second.
+        if boot.status == 5 {
+            sleep(1)
+            boot = Shell.run("launchctl", ["bootstrap", "gui/\(uid)", paths.plistFile])
+        }
         guard boot.ok else { throw StateError("launchctl bootstrap failed: \(boot.stderr)") }
     }
 }
