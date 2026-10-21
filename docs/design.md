@@ -136,26 +136,29 @@ On the right, the ellipsis menu: a disabled "Glidepath 1.0" title, Pause or Resu
 
 ## 7. Menu bar glyph
 
-18 pt canvas, 1.75 pt round-cap strokes, template images only (no colour). The base mark is a 14 pt slope descending
-left to right onto a 6 pt runway, vertically centred.
+18 pt canvas, centred on (9, 9). Template images only (no colour). The glyph is the app icon's mark in miniature: a
+disc of horizontal stripes (radius 8 pt, five stripes 1.6 pt tall at a 3.2 pt pitch, centred on y = 9, each clipped to
+the disc), with a 3 pt rounded slot cut in from the upper left at 24 degrees. The slot ends at the touchdown point
+T = (11.5, 6.5), where the dot sits (radius 1.1 pt). The slot is cut with a clear compositing operation.
 
 | State | Glyph |
 |---|---|
-| idle | base mark |
-| running | base mark, a 3 pt dot moving down the slope (10 fps), then the active count |
-| changes waiting | base mark, then the count of PRs needing changes |
-| paused | base mark with two pause bars replacing the slope |
-| failed | base mark with a 5 pt cross of 1.75 pt strokes just past the touchdown point, above the runway |
+| idle | disc, slot and dot at T |
+| running | disc and slot; the dot moves from where the slot meets the disc edge to T as the sweep progresses (10 fps), then the active count |
+| changes waiting | idle mark, then the count of PRs needing changes |
+| paused | stripes only, at 50% ink: no slot, no dot |
+| failed | idle mark with a 4 pt cross (1.5 pt strokes, round caps) centred on T in place of the dot; the slot stays cut |
 
 Counts are 12 pt semibold, the same in every state. Changes waiting clears when the popover opens after the run ends.
 
 ## 8. App icon
 
-The icon is a space grey keycap labelled "land", with the glide slope landing an amber light on the runway bar. It is
-the brand artwork in `assets/brand/`: `icon.png` (1024 px, the full art) and `icon-small.png` (1024 px, the simplified
-art). `make-app.sh` builds the iconset with `sips`: 16 and 32 pt, and their @2x, from the simplified art;
-128, 256 and 512 pt, and their @2x, from the full art. `iconutil` packs the `.icns`, and `codesign` signs it ad hoc.
-The menu bar glyphs stay drawn in code.
+The app icon is the brand artwork in `assets/brand/`: a disc of white horizontal stripes on a near-black rounded tile,
+with a slot cut in from the upper left and an amber (#FFB020) touchdown dot at its end. `icon.png` (1024 px, the full
+art) and `icon-small.png` (1024 px, the simplified art) are the sources. `assets/brand/gen.py` regenerates the SVGs and
+the wordmark, social and tile art. `make-app.sh` builds the iconset with `sips`: 16 and 32 pt, and their @2x, from the
+simplified art; 128, 256 and 512 pt, and their @2x, from the full art. `iconutil` packs the `.icns`, and `codesign`
+signs it ad hoc. The menu bar glyph is drawn in code (section 7) and does not use the artwork.
 
 The icon sheet (`docs/shots/icon.png`) shows every size of the built iconset, with 512 and 256 @2x shown at 256 px so
 the sheet fits. The labels give the size.
@@ -170,7 +173,6 @@ the sheet fits. The labels give the size.
   without it.
 - **Carried-over rows**: after a failed sweep, a PR with no verdict in the run takes the newest earlier verdict and the
   start of the run that decided it. The row shows "from 10:12 AM" on line 2.
-- **Menu bar cross**: placed just past the touchdown point rather than centred on it, so it does not sit on the runway.
 - **Popover height**: the popover is capped at 640 pt. Past that, the list scrolls.
 - **Not in this design**: the bold landing moment beyond the slide, and the appearance of the mark, wait for v1.1.
 

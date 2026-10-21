@@ -61,7 +61,7 @@ enum CLI {
         case "doctor": return Doctor.main()
         case "uninstall": return Uninstall.main(rest)
         case "--version", "version":
-            print("glidepath 1.0.0")
+            print("glidepath 1.0.2")
             return 0
         case "-h", "--help", "help":
             print(usage)

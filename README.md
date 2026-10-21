@@ -117,9 +117,9 @@ PR is a dot on the slope at the stage it is in.
 - Footer: Run now (or Resume while paused, or Stop while running) on the left, and a menu on the right with Pause,
   Open log, the last run's token count, Open at login and Quit. On a first run, Edit repos… opens the config file.
 - The popover is at most 640 pt tall. Past that, the list scrolls.
-- Menu bar: a glyph echoing the profile. A moving dot while running (with the count of active PRs), a count when
-  changes are waiting (cleared when you open the popover), pause bars while paused, and the slope with a cross for a
-  failed run.
+- Menu bar: a glyph echoing the app icon, a striped disc with a slot cut into it. A dot moves along the slot while
+  running (with the count of active PRs), a count when changes are waiting (cleared when you open the popover), faded
+  stripes while paused, and a cross at the touchdown point for a failed run.
 - Stop signals the running sweep's process group. Reviews already posted stay posted; the PRs not yet reviewed show
   "No result".
 
