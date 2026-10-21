@@ -233,16 +233,42 @@ enum Doctor {
 
 enum Uninstall {
     static func main(_ args: [String]) -> Int32 {
-        let purge = Args(args, valued: []).has("--purge")
+        let a = Args(args, valued: [])
         let paths = Paths()
+        let fm = FileManager.default
         let uid = getuid()
+
+        // The login item belongs to the app bundle, so the app unregisters it.
+        let appBinary = paths.appLink + "/Contents/MacOS/review-radar"
+        if fm.fileExists(atPath: appBinary) {
+            let r = Shell.run(appBinary, ["--unregister-login"], timeout: 30)
+            if !r.ok { eprint("could not remove the login item; remove it in System Settings > General > Login Items") }
+        }
 
         _ = Shell.run("launchctl", ["bootout", "gui/\(uid)/\(Launchd.label)"])
         remove(paths.plistFile, "scheduled job")
         remove(paths.skillDir, "skill")
         remove(paths.appLink, "app link")
-        if purge {
-            remove(paths.home + "/.config/review-radar", "config")
+
+        if a.has("--purge") {
+            let configDir = paths.home + "/.config/review-radar"
+            let rules = configDir + "/rules"
+            var keepRules = false
+            if fm.fileExists(atPath: rules) {
+                if a.has("--yes") {
+                    keepRules = false
+                } else {
+                    print("Delete your rules files in \(rules)? They are yours to edit; deleting cannot be undone. [y/N] ",
+                          terminator: "")
+                    keepRules = !(readLine()?.trimmingCharacters(in: .whitespaces).lowercased() == "y")
+                }
+            }
+            if keepRules {
+                print("kept \(rules)")
+                remove(configDir + "/config.toml", "config")
+            } else {
+                remove(configDir, "config")
+            }
             remove(paths.stateDir, "state")
         } else {
             print("kept config and state (use --purge to remove them)")

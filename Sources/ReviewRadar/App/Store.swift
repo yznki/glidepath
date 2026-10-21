@@ -30,18 +30,37 @@ struct Snapshot {
     var lastError: String?
 }
 
-/// Watches the state folders with DispatchSource, so the popover updates on each write
-/// without polling.
+/// Watches the state folders with DispatchSource, so the popover updates on each write without polling.
+/// If a watched folder is deleted or renamed, the watcher recreates it and re-arms every source, so
+/// the next write is still seen.
 final class DirectoryWatcher {
     private var sources: [DispatchSourceFileSystemObject] = []
+    private let paths: [String]
+    private let onChange: @Sendable () -> Void
 
     init(paths: [String], onChange: @escaping @Sendable () -> Void) {
+        self.paths = paths
+        self.onChange = onChange
+        arm()
+    }
+
+    private func arm() {
+        sources.forEach { $0.cancel() }
+        sources = []
         for path in paths {
+            try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
             let fd = open(path, O_EVTONLY)
             guard fd >= 0 else { continue }
             let source = DispatchSource.makeFileSystemObjectSource(
                 fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: .main)
-            source.setEventHandler(handler: onChange)
+            source.setEventHandler { [weak self] in
+                guard let self else { return }
+                let events = source.data
+                if events.contains(.delete) || events.contains(.rename) {
+                    self.arm()
+                }
+                self.onChange()
+            }
             source.setCancelHandler { close(fd) }
             source.resume()
             sources.append(source)
@@ -128,7 +147,12 @@ final class Store: ObservableObject {
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = ["run"]
         process.environment = Runner.environment(paths)
-        FileManager.default.createFile(atPath: paths.logFile, contents: nil)
+        // Append to the log. createFile would truncate it.
+        try? FileManager.default.createDirectory(atPath: (paths.logFile as NSString).deletingLastPathComponent,
+                                                 withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: paths.logFile) {
+            FileManager.default.createFile(atPath: paths.logFile, contents: nil)
+        }
         if let log = FileHandle(forWritingAtPath: paths.logFile) {
             log.seekToEndOfFile()
             process.standardOutput = log
