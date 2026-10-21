@@ -15,6 +15,15 @@ struct Strip: Identifiable, Equatable {
     var verdict: Verdict?
     var tokens: Int
     var carriedFrom: Date? = nil
+    var draft = false
+    var flagged = false
+    /// A draft post is running for this row: the status reads "Posting…".
+    var posting = false
+    /// The last draft post or discard failed: its last output line, shown on line 3.
+    var draftError: String? = nil
+    /// "size" on a PR skipped for size: its row offers Review.
+    var skipReason: String? = nil
+    var changedLines: Int? = nil
 
     var id: String { "\(repo)#\(number)" }
 }
@@ -35,6 +44,8 @@ struct Snapshot {
     var postsReviews = false
     var schedule: [ScheduleTime] = []
     var repoCount = 0
+    /// `max_changed_lines`, for the Review warning.
+    var maxChangedLines = 3000
     var hovered: String?
     /// The cached latest release. The popover offers it when it is newer than this build.
     var update: UpdateCache?
@@ -97,6 +108,9 @@ final class Store: ObservableObject {
     /// Stamps that landed while the popover was open. The stamp settles once, then this clears.
     @Published private(set) var justLanded: Set<String> = []
     @Published var hovered: String?
+    /// Draft posts and discards running from this app, and the last error of each.
+    @Published private(set) var draftBusy: Set<String> = []
+    @Published private(set) var draftErrors: [String: String] = [:]
 
     let paths = Paths()
     let profileMotion: ProfileMotion
@@ -104,6 +118,8 @@ final class Store: ObservableObject {
     private var watcher: DirectoryWatcher?
     private var acknowledgedRunID: String?
     private var loggedUpdateFailure = false
+    /// The sweep seen running most recently. When it finishes, its notification goes out once.
+    private var pendingNoticeRunID: String?
 
     /// `snapshot == nil` is the live app: registers at login and watches the state folders.
     /// A non-nil snapshot is fixed state for snapshot rendering.
@@ -121,6 +137,7 @@ final class Store: ObservableObject {
         acknowledgedRunID = UserDefaults.standard.string(forKey: Store.ackKey)
         try? FileManager.default.createDirectory(atPath: paths.runsDir, withIntermediateDirectories: true)
         registerLoginItemIfMoved()
+        Notifier.setUp()
         let stateDir = paths.stateDir
         let runsDir = paths.runsDir
         watcher = DirectoryWatcher(paths: [stateDir, runsDir]) {
@@ -134,7 +151,17 @@ final class Store: ObservableObject {
         }
     }
 
-    var strips: [Strip] { Store.strips(from: snap.run) }
+    var strips: [Strip] {
+        Store.strips(from: snap.run).map { strip in
+            var s = strip
+            s.posting = draftBusy.contains(strip.id)
+            s.draftError = draftErrors[strip.id]
+            return s
+        }
+    }
+
+    /// Reviews held as drafts in the current run.
+    var draftCount: Int { strips.filter(\.draft).count }
 
     /// The cached release, when it is newer than this build.
     var availableUpdate: UpdateCache? {
@@ -190,9 +217,22 @@ final class Store: ObservableObject {
         s.hovered = snap.hovered
         s.update = Updates.cached(paths)
         s.checkUpdates = config?.checkUpdates ?? true
+        s.maxChangedLines = config?.limits.maxChangedLines ?? 3000
         s.updateChecking = snap.updateChecking
         s.updatePhase = snap.updatePhase
         s.updateNote = snap.updateNote
+
+        // A sweep notifies once, when the file goes from running to finished. Dry runs never become current.
+        if let run = s.run {
+            if run.finished == nil {
+                pendingNoticeRunID = run.id
+            } else if run.id == pendingNoticeRunID {
+                pendingNoticeRunID = nil
+                if config?.notify ?? true, let notice = Presentation.notice(run) {
+                    Notifier.post(notice, runID: run.id)
+                }
+            }
+        }
 
         let landed = Set(Store.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
         if popoverOpen && !landed.isEmpty {
@@ -242,6 +282,93 @@ final class Store: ObservableObject {
     }
 
     // MARK: Actions
+
+    /// Posts a held draft through `glidepath drafts post`, the same command a terminal would run.
+    func postDraft(_ strip: Strip) {
+        runCommand(["drafts", "post", strip.repo, String(strip.number)], id: strip.id, showsBusy: true)
+    }
+
+    func discardDraft(_ strip: Strip) {
+        runCommand(["drafts", "discard", strip.repo, String(strip.number)], id: strip.id, showsBusy: true)
+    }
+
+    /// Reviews a PR skipped for size, through `glidepath review`. The run shows its progress on the slope, so the row
+    /// shows nothing while it starts; a refusal (another run holds the lock) lands on the row.
+    func reviewPR(_ strip: Strip) {
+        guard !snap.running else {
+            draftErrors[strip.id] = "a sweep is running; try again when it ends"
+            return
+        }
+        runCommand(["review", strip.repo, String(strip.number)], id: strip.id, showsBusy: false)
+    }
+
+    /// The Review confirm text for a PR over the limit: its size, the limit, and a rough token estimate when the last
+    /// finished run allows one.
+    func reviewWarning(_ strip: Strip) -> String {
+        let last = snap.run.flatMap { $0.finished == nil ? nil : $0 }
+        return Presentation.reviewWarning(changedLines: strip.changedLines ?? 0, limit: snap.maxChangedLines, last: last)
+    }
+
+    /// The verdict line and the start of the body, for the confirm alert before a post.
+    func draftPreview(_ strip: Strip) -> (verdict: String, body: String) {
+        let verdict = strip.verdict == .changes ? "Verdict: changes" : "Verdict: approve"
+        let body = Drafts.newest(paths, slug: strip.repo, n: strip.number)?.draft.body ?? ""
+        return (verdict, body.count > 300 ? String(body.prefix(300)) + "…" : body)
+    }
+
+    /// Runs a draft command as a process. Its last output line becomes the row's error if it fails.
+    private func runCommand(_ args: [String], id: String, showsBusy: Bool) {
+        guard let binary = Bundle.main.executablePath else {
+            draftErrors[id] = "cannot find the glidepath binary"
+            return
+        }
+        draftErrors[id] = nil
+        if showsBusy { draftBusy.insert(id) }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: binary)
+        process.arguments = args
+        process.environment = Runner.environment(paths)
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        process.terminationHandler = { p in
+            let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            let last = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init) ?? ""
+            let ok = p.terminationStatus == 0
+            DispatchQueue.main.async { MainActor.assumeIsolated { Store.shared.finishDraftCommand(id, ok: ok, message: last) } }
+        }
+        do {
+            try process.run()
+        } catch {
+            draftBusy.remove(id)
+            draftErrors[id] = "run failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func finishDraftCommand(_ id: String, ok: Bool, message: String) {
+        draftBusy.remove(id)
+        draftErrors[id] = ok ? nil : (message.isEmpty ? "failed; see the log" : message)
+        reload()
+    }
+
+    /// Writes the HTML dashboard and opens it. The CLI does the work, so the page is the same either way.
+    func openDashboard() {
+        guard let binary = Bundle.main.executablePath else {
+            actionError = "cannot find the glidepath binary"
+            return
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: binary)
+        process.arguments = ["dashboard"]
+        process.environment = Runner.environment(paths)
+        attachLog(process)
+        do {
+            try process.run()
+            actionError = nil
+        } catch {
+            actionError = "dashboard: \(error.localizedDescription)"
+        }
+    }
 
     func togglePause() {
         do {
@@ -417,7 +544,8 @@ final class Store: ObservableObject {
             repo.prs.map { pr in
                 Strip(repo: repo.slug, number: pr.n, author: pr.author, title: pr.title, reason: pr.reason,
                       stage: pr.stage.rank + 1, active: pr.active, verdict: pr.verdict, tokens: pr.tokens,
-                      carriedFrom: pr.carriedFrom)
+                      carriedFrom: pr.carriedFrom, draft: pr.draft ?? false, flagged: pr.flagged ?? false,
+                      skipReason: pr.skipReason, changedLines: pr.changedLines)
             }
         }
     }

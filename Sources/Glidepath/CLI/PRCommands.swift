@@ -335,8 +335,10 @@ enum PRCommands {
         }
         let me = try GH.run(["api", "user", "--jq", ".login"]).trimmingCharacters(in: .whitespacesAndNewlines)
         let own = view.author?.login.caseInsensitiveCompare(me) == .orderedSame
-        let payload = try ReviewValidator.validate(draft, files: Set(view.files.map(\.path)),
-                                                   posting: repo.posting, head: head, own: own)
+        let paths = view.files.map(\.path)
+        let matches = repo.flagPaths.isEmpty ? [] : FlagPaths.matches(paths, prefixes: repo.flagPaths)
+        let payload = try ReviewValidator.validate(draft, files: Set(paths), posting: repo.posting, head: head, own: own,
+                                                   note: FlagPaths.note(repo.flagNote, matches: matches))
         let payloadJSON = try json(payload)
 
         if binding.dryRun {
@@ -345,12 +347,33 @@ enum PRCommands {
             return "dry run, nothing posted. Would send to \(slug) #\(n):\n" + payloadJSON
         }
 
-        let payloadPath = "\(binding.scratch)/\(n)/payload.json"
-        try payloadJSON.write(toFile: payloadPath, atomically: true, encoding: .utf8)
-        _ = try GH.run(["api", "repos/\(slug)/pulls/\(n)/reviews", "--method", "POST", "--input", payloadPath])
+        if repo.posting == .draft {
+            // Held for the user. The row carries the verdict as usual, plus the draft mark.
+            let file = DraftFile(slug: slug, n: n, head: head, event: payload.event, body: payload.body,
+                                 comments: payload.comments, created: Date())
+            try Drafts.write(file, runId: binding.runId, store.paths)
+            try store.mutate(binding.runId) { run in
+                try run.setPR(repo: slug, n: n, stage: .post, author: nil, title: nil,
+                              verdict: verdict(draft), reason: draft.reason)
+                run.setDraft(repo: slug, n: n, draft: true, posted: nil)
+                if !matches.isEmpty { try run.setFlagged(repo: slug, n: n) }
+            }
+            return "saved a draft for \(slug) #\(n); post it from the menu bar app or with glidepath drafts post"
+        }
+
+        try send(payloadJSON, slug: slug, n: n, path: "\(binding.scratch)/\(n)/payload.json")
         try store.mutate(binding.runId) { try $0.setPR(repo: slug, n: n, stage: .post, author: nil, title: nil,
                                                       verdict: verdict(draft), reason: draft.reason) }
         return "posted \(payload.event) on \(slug) #\(n)"
+    }
+
+    /// The one place a review is sent: the payload goes to a file, then to the reviews API with gh. Shared by
+    /// `post` and `glidepath drafts post`.
+    static func send(_ payloadJSON: String, slug: String, n: Int, path: String) throws {
+        try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
+                                                withIntermediateDirectories: true)
+        try payloadJSON.write(toFile: path, atomically: true, encoding: .utf8)
+        _ = try GH.run(["api", "repos/\(slug)/pulls/\(n)/reviews", "--method", "POST", "--input", path])
     }
 
     private static func verdict(_ d: Draft) -> Verdict {

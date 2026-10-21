@@ -27,7 +27,8 @@ struct Limits: Equatable {
     var splitOverLines = 1500
 }
 
-enum Posting: String, Equatable { case comment, review }
+/// `draft` runs the whole pipeline and holds the review for the user to post from the app or `glidepath drafts`.
+enum Posting: String, Equatable { case comment, review, draft }
 enum AuthorPolicy: Equatable { case collaborators, anyone, logins([String]) }
 enum RulesMode: String, Equatable { case extend, replace }
 enum GitNexusMode: String, Equatable { case auto, on, off }
@@ -42,6 +43,13 @@ struct RepoConfig: Equatable {
     var gitnexus: GitNexusMode = .auto
     /// Review the user's own PRs too. Off by default; posting to your own PR is always a COMMENT review.
     var includeOwn = false
+    /// Refresh the GitNexus index in the clone before a sweep that reviews something. Only when GitNexus is on.
+    var gitnexusRefresh = true
+    /// Path prefixes that need an extra approval. A PR touching one gets a note on its review.
+    var flagPaths: [String] = []
+    var flagNote = RepoConfig.defaultFlagNote
+
+    static let defaultFlagNote = "Touches flagged paths; needs an extra approval."
 
     static func isValidSlug(_ slug: String) -> Bool {
         slug.range(of: #"\A[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\z"#, options: .regularExpression) != nil
@@ -60,6 +68,8 @@ struct Config: Equatable {
     var repos: [RepoConfig]
     /// Automatic update checks. Off disables them; "Check for updates…" and `glidepath update` still work.
     var checkUpdates = true
+    /// Notification when a sweep finishes. The menu bar app reads it; nothing writes it.
+    var notify = true
 
     static func load(_ paths: Paths) throws -> Config {
         guard let text = try? String(contentsOfFile: paths.configFile, encoding: .utf8) else {
@@ -75,7 +85,7 @@ struct Config: Equatable {
         } catch let e as TOMLError {
             throw ConfigError(message: "config.toml: \(e)")
         }
-        try checkKeys(doc, allowed: ["schedule", "limits", "repo", "check_updates"], where: "top level")
+        try checkKeys(doc, allowed: ["schedule", "limits", "repo", "check_updates", "notify"], where: "top level")
 
         let scheduleText = try strings(doc["schedule"], key: "schedule") ?? defaultSchedule
         guard !scheduleText.isEmpty else { throw ConfigError(message: "schedule must list at least one time") }
@@ -106,11 +116,13 @@ struct Config: Equatable {
             }
         }
         let checkUpdates = try bool(doc["check_updates"], key: "check_updates") ?? true
-        return Config(schedule: schedule, limits: limits, repos: repos, checkUpdates: checkUpdates)
+        let notify = try bool(doc["notify"], key: "notify") ?? true
+        return Config(schedule: schedule, limits: limits, repos: repos, checkUpdates: checkUpdates, notify: notify)
     }
 
     private static func parseRepo(_ t: [String: TOMLValue], home: String) throws -> RepoConfig {
-        try checkKeys(t, allowed: ["slug", "clone", "posting", "authors", "rules", "rules_mode", "gitnexus", "include_own"], where: "[[repo]]")
+        try checkKeys(t, allowed: ["slug", "clone", "posting", "authors", "rules", "rules_mode", "gitnexus", "gitnexus_refresh",
+                                   "include_own", "flag_paths", "flag_note"], where: "[[repo]]")
         guard let slug = try string(t["slug"], key: "slug") else { throw ConfigError(message: "[[repo]] needs slug") }
         guard RepoConfig.isValidSlug(slug) else {
             throw ConfigError(message: "slug \"\(slug)\" must look like owner/name")
@@ -124,7 +136,7 @@ struct Config: Equatable {
         var repo = RepoConfig(slug: slug, clone: expandedClone)
 
         if let p = try string(t["posting"], key: "posting") {
-            guard let v = Posting(rawValue: p) else { throw ConfigError(message: "posting must be comment or review") }
+            guard let v = Posting(rawValue: p) else { throw ConfigError(message: "posting must be comment, review or draft") }
             repo.posting = v
         }
         if let value = t["authors"] {
@@ -151,6 +163,12 @@ struct Config: Equatable {
             guard let v = GitNexusMode(rawValue: g) else { throw ConfigError(message: "gitnexus must be auto, on or off") }
             repo.gitnexus = v
         }
+        repo.gitnexusRefresh = try bool(t["gitnexus_refresh"], key: "gitnexus_refresh") ?? true
+        if let paths = try strings(t["flag_paths"], key: "flag_paths") {
+            guard paths.allSatisfy({ !$0.isEmpty }) else { throw ConfigError(message: "flag_paths must not contain empty paths") }
+            repo.flagPaths = paths
+        }
+        repo.flagNote = try string(t["flag_note"], key: "flag_note") ?? RepoConfig.defaultFlagNote
         return repo
     }
 
@@ -158,6 +176,7 @@ struct Config: Equatable {
     func render() -> String {
         var out = "schedule = [" + schedule.map { "\"\($0.text)\"" }.joined(separator: ", ") + "]\n"
         out += "check_updates = \(checkUpdates)\n"
+        out += "notify = \(notify)\n"
         out += "\n[limits]\n"
         out += "max_prs_per_run = \(limits.maxPRsPerRun)\n"
         out += "max_changed_lines = \(limits.maxChangedLines)\n"
@@ -179,6 +198,11 @@ struct Config: Equatable {
             }
             out += "gitnexus = \"\(r.gitnexus.rawValue)\"\n"
             out += "include_own = \(r.includeOwn)\n"
+            out += "gitnexus_refresh = \(r.gitnexusRefresh)\n"
+            if !r.flagPaths.isEmpty {
+                out += "flag_paths = [" + r.flagPaths.map { "\"\($0)\"" }.joined(separator: ", ") + "]\n"
+                out += "flag_note = \"\(r.flagNote)\"\n"
+            }
         }
         return out
     }

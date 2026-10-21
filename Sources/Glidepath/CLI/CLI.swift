@@ -38,6 +38,12 @@ enum CLI {
                                              run the review pipeline now
       glidepath state set --run ID --repo owner/name --pr N [--stage gather|review|check] [--reason TEXT]
       glidepath state show [--run ID]     print a run as JSON (default: current)
+      glidepath review owner/name N [--dry-run] [--again]
+                                             review one open PR now, even if it is over max_changed_lines
+      glidepath drafts list               list reviews held for posting (draft mode)
+      glidepath drafts post owner/name N  post the newest draft for a PR
+      glidepath drafts discard owner/name N  delete the newest draft for a PR
+      glidepath dashboard                 write the run history and open drafts to a page and open it in the browser
       glidepath pause | resume            skip or allow scheduled runs
       glidepath doctor                    check requirements and installed pieces
       glidepath uninstall [--purge]       remove the job, skill and app link; --purge also removes config and state
@@ -56,6 +62,9 @@ enum CLI {
         case "state": return StateCommand.main(rest)
         case "hook": return HookCommand.main(rest)
         case "code": return CodeCommands.main(rest)
+        case "drafts": return DraftCommands.main(rest)
+        case "review": return ReviewCommand.main(rest)
+        case "dashboard": return DashboardCommand.main()
         case "pr": return PRCommands.main(rest)
         case "post": return PRCommands.post(rest)
         case "pause": return setPaused(true)

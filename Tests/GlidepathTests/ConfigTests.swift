@@ -117,4 +117,49 @@ final class ConfigTests: XCTestCase {
         XCTAssertFalse(RepoConfig.isValidSlug("acme/api; rm"))
         XCTAssertFalse(RepoConfig.isValidSlug("../x/y"))
     }
+
+    func testNewKeysParseAndDefault() throws {
+        let c = try Config.parse("""
+        notify = false
+        [[repo]]
+        slug = "acme/api"
+        posting = "draft"
+        gitnexus_refresh = false
+        flag_paths = ["infra/", ".github/workflows/"]
+        flag_note = "Needs a devops approval."
+        """, home: home)
+        XCTAssertFalse(c.notify)
+        let r = c.repos[0]
+        XCTAssertEqual(r.posting, .draft)
+        XCTAssertFalse(r.gitnexusRefresh)
+        XCTAssertEqual(r.flagPaths, ["infra/", ".github/workflows/"])
+        XCTAssertEqual(r.flagNote, "Needs a devops approval.")
+
+        let defaults = try Config.parse("[[repo]]\nslug = \"acme/web\"\n", home: home)
+        XCTAssertTrue(defaults.notify)
+        XCTAssertTrue(defaults.repos[0].gitnexusRefresh)
+        XCTAssertEqual(defaults.repos[0].flagPaths, [])
+        XCTAssertEqual(defaults.repos[0].flagNote, RepoConfig.defaultFlagNote)
+    }
+
+    func testNewKeysRejectBadValues() {
+        for text in ["notify = \"yes\"\n", "[[repo]]\nslug = \"a/b\"\ngitnexus_refresh = 1\n",
+                     "[[repo]]\nslug = \"a/b\"\nflag_paths = \"infra/\"\n",
+                     "[[repo]]\nslug = \"a/b\"\nflag_paths = [\"\"]\n"] {
+            XCTAssertThrowsError(try Config.parse(text, home: home), text)
+        }
+    }
+
+    func testNewKeysSurviveRender() throws {
+        let original = try Config.parse("""
+        notify = false
+        [[repo]]
+        slug = "acme/api"
+        posting = "draft"
+        gitnexus_refresh = false
+        flag_paths = ["infra/"]
+        flag_note = "Check infra."
+        """, home: home)
+        XCTAssertEqual(try Config.parse(original.render(), home: home), original)
+    }
 }

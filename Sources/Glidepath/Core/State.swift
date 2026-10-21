@@ -24,6 +24,16 @@ struct PRState: Codable, Equatable {
     var head: String? = nil
     /// Set when the PR was not reviewed in this sweep and its last result is carried over from an earlier one.
     var carriedFrom: Date? = nil
+    /// Optional so 1.0.x run files still decode. True while a draft review waits to be posted.
+    var draft: Bool? = nil
+    /// When the draft was posted. Set by `glidepath drafts post`.
+    var posted: Date? = nil
+    /// True when the PR touches a `flag_paths` prefix. The review note says so; the verdict is unchanged.
+    var flagged: Bool? = nil
+    /// Set on a PR skipped for size: "size". Its row offers Review.
+    var skipReason: String? = nil
+    /// Additions plus deletions at gather time. Optional for 1.0.x run files.
+    var changedLines: Int? = nil
 }
 
 struct RepoState: Codable, Equatable {
@@ -117,6 +127,28 @@ struct RunState: Codable, Equatable {
             throw StateError("unknown PR for this run: \(slug) #\(n)")
         }
         repos[ri].prs[pi].head = head
+    }
+
+    /// Marks a row as a held draft, or clears the mark once the draft is posted or discarded. Works after the run
+    /// has finished, because drafts are posted later from the app or the CLI.
+    mutating func setDraft(repo slug: String, n: Int, draft: Bool, posted: Date?) {
+        guard let ri = repoIndexIfExists(slug), let pi = repos[ri].prs.firstIndex(where: { $0.n == n }) else { return }
+        repos[ri].prs[pi].draft = draft
+        repos[ri].prs[pi].posted = posted ?? repos[ri].prs[pi].posted
+    }
+
+    /// Records the PR's size, and whether it was skipped for size. Missing rows are left alone.
+    mutating func setSize(repo slug: String, n: Int, changedLines: Int, skippedForSize: Bool) {
+        guard let ri = repoIndexIfExists(slug), let pi = repos[ri].prs.firstIndex(where: { $0.n == n }) else { return }
+        repos[ri].prs[pi].changedLines = changedLines
+        repos[ri].prs[pi].skipReason = skippedForSize ? "size" : nil
+    }
+
+    mutating func setFlagged(repo slug: String, n: Int) throws {
+        guard let ri = repoIndexIfExists(slug), let pi = repos[ri].prs.firstIndex(where: { $0.n == n }) else {
+            throw StateError("unknown PR for this run: \(slug) #\(n)")
+        }
+        repos[ri].prs[pi].flagged = true
     }
 
     mutating func setRepoError(_ slug: String, _ message: String) {

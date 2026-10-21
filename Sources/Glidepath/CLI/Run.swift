@@ -130,6 +130,56 @@ enum RunCommand {
     }
 }
 
+/// `glidepath review owner/name N [--dry-run] [--again]`: reviews one open PR now, including one over
+/// `max_changed_lines`. Every other filter still applies. The run lock is taken, as for a sweep.
+enum ReviewCommand {
+    static func main(_ args: [String]) -> Int32 {
+        let switches = Set(args.filter { $0.hasPrefix("--") })
+        let positional = args.filter { !$0.hasPrefix("--") }
+        let usage = "usage: glidepath review owner/name N [--dry-run] [--again]"
+        guard switches.isSubset(of: ["--dry-run", "--again"]), positional.count == 2,
+              RepoConfig.isValidSlug(positional[0]), let n = Int(positional[1]), n > 0, String(n) == positional[1] else {
+            eprint(usage)
+            return 2
+        }
+        let paths = Paths()
+        if let message = HookRefusal.message(paths: paths) {
+            eprint(message)
+            return 1
+        }
+        let config: Config
+        do {
+            config = try Config.load(paths)
+        } catch {
+            eprint("\(error)")
+            return 1
+        }
+        guard let repo = config.repos.first(where: { $0.slug == positional[0] }) else {
+            eprint("repo \(positional[0]) is not in the config")
+            return 1
+        }
+        let lock: RunLock
+        do {
+            guard let held = try RunLock.acquire(paths.lockFile) else {
+                print("A review run is in progress; try again when it ends")
+                return 1
+            }
+            lock = held
+        } catch {
+            eprint("\(error)")
+            return 1
+        }
+        // Same process group as a sweep, so Stop reaches the review session too.
+        _ = setpgid(0, 0)
+        try? "\(getpid())".write(toFile: paths.pidFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: paths.pidFile) }
+        let runner = Runner(paths: paths, config: config, dryRun: switches.contains("--dry-run"))
+        runner.onlyPR = (repo.slug, n)
+        runner.again = switches.contains("--again")
+        return withExtendedLifetime(lock) { runner.execute(repos: [repo]) }
+    }
+}
+
 /// Refuses to start when the user's own hooks would run inside a review session.
 enum HookRefusal {
     static func message(paths: Paths) -> String? {
@@ -170,6 +220,9 @@ final class Runner {
     let store: RunStore
     let env: [String: String]
     private(set) var id = ""
+    /// Set by `glidepath review`: the one PR to consider, and whether an already reviewed head is reviewed again.
+    var onlyPR: (slug: String, n: Int)?
+    var again = false
     private var collaboratorCache: [String: Bool] = [:]
     private var me = ""
 
@@ -251,15 +304,21 @@ final class Runner {
     /// Returns the tokens this repo's session used.
     private func process(_ repo: RepoConfig) throws -> Int {
         try prepareClone(repo)
-        let prs = try listPRs(repo)
+        var prs = try listPRs(repo)
+        if let target = onlyPR {
+            // `glidepath review`: only the named PR is considered, and only it gets the size override.
+            prs = prs.filter { $0.n == target.n }
+            if prs.isEmpty { print("\(repo.slug) #\(target.n): not an open PR") }
+        }
 
         var kept: [PRInfo] = []
         var skipped: [(PRInfo, String)] = []
         for pr in prs {
             let decision = PRFilter.evaluate(
-                pr, me: me, includeOwn: repo.includeOwn, authors: repo.authors, limits: config.limits,
+                pr, me: me, includeOwn: repo.includeOwn, authors: repo.authors,
+                limits: Runner.limits(config.limits, for: pr.n, reviewing: onlyPR?.n),
                 isCollaborator: { self.isCollaborator(repo, login: pr.author) },
-                reviewedHeads: { self.reviewedHeads(repo, pr.n) })
+                reviewedHeads: { self.again && self.onlyPR?.n == pr.n ? Set<String>() : self.reviewedHeads(repo, pr.n) })
             switch decision {
             case .keep where kept.count < config.limits.maxPRsPerRun:
                 kept.append(pr)
@@ -270,28 +329,73 @@ final class Runner {
             }
         }
 
+        let flagged = flaggedNumbers(repo, kept)
+        // The index is refreshed only for a repo that has something to review, so an idle repo costs nothing.
+        var gitnexus = gitnexusEnabled(repo)
+        if !kept.isEmpty, gitnexus, repo.gitnexusRefresh {
+            gitnexus = refreshGitNexus(repo)
+        }
+
         try update { run in
             run.ensureRepo(repo.slug)
             for (pr, reason) in skipped {
                 try run.setPR(repo: repo.slug, n: pr.n, stage: nil, author: pr.author, title: pr.title,
                               verdict: .skipped, reason: reason)
+                run.setSize(repo: repo.slug, n: pr.n, changedLines: pr.changedLines,
+                            skippedForSize: reason.hasPrefix(PRFilter.tooLargeReason))
             }
             for pr in kept {
                 try run.setPR(repo: repo.slug, n: pr.n, stage: nil, author: pr.author, title: pr.title,
                               verdict: nil, reason: nil)
+                run.setSize(repo: repo.slug, n: pr.n, changedLines: pr.changedLines, skippedForSize: false)
+                if flagged.contains(pr.n) { try run.setFlagged(repo: repo.slug, n: pr.n) }
             }
         }
         guard !kept.isEmpty else { return 0 }
-        return try invokeReview(repo, kept: kept)
+        return try invokeReview(repo, kept: kept, gitnexus: gitnexus)
     }
 
-    private func invokeReview(_ repo: RepoConfig, kept: [PRInfo]) throws -> Int {
+    /// The limits for one PR. Only the PR named by `glidepath review` loses the size limit; every other filter applies.
+    static func limits(_ base: Limits, for n: Int, reviewing target: Int?) -> Limits {
+        var out = base
+        if target == n { out.maxChangedLines = Int.max }
+        return out
+    }
+
+    /// Re-indexes the clone so GitNexus answers from the code that is checked out. Failure or the 10-minute limit
+    /// turns GitNexus off for this repo in this run; the sweep carries on without it.
+    private func refreshGitNexus(_ repo: RepoConfig) -> Bool {
+        let r = Shell.run("gitnexus", ["analyze", "--index-only"], cwd: repo.clone, env: env, timeout: 600)
+        let output = (r.stdout + r.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !output.isEmpty { print(output) }
+        if r.ok { return true }
+        print("\(repo.slug): gitnexus refresh failed (exit \(r.status)); reviewing this repo without GitNexus")
+        return false
+    }
+
+    /// The PRs whose changed files start with a `flag_paths` prefix. The file list comes from gh, never the model.
+    /// A lookup that fails leaves the PR unflagged here; `post` still computes the note from a fresh list.
+    private func flaggedNumbers(_ repo: RepoConfig, _ kept: [PRInfo]) -> Set<Int> {
+        guard !repo.flagPaths.isEmpty else { return [] }
+        var out = Set<Int>()
+        for pr in kept {
+            let r = gh(["pr", "view", String(pr.n), "-R", repo.slug, "--json", "files", "--jq", ".files[].path"])
+            guard r.ok else {
+                print("\(repo.slug) #\(pr.n): could not read changed files for flag_paths")
+                continue
+            }
+            let files = r.stdout.split(separator: "\n").map(String.init)
+            if !FlagPaths.matches(files, prefixes: repo.flagPaths).isEmpty { out.insert(pr.n) }
+        }
+        return out
+    }
+
+    private func invokeReview(_ repo: RepoConfig, kept: [PRInfo], gitnexus: Bool) throws -> Int {
         let fm = FileManager.default
         let numbers = kept.map(\.n)
         let session = UUID().uuidString.lowercased()
         let scratch = paths.scratchDir + "/" + id + "/" + repo.owner + "-" + repo.name
         try fm.createDirectory(atPath: scratch, withIntermediateDirectories: true)
-        let gitnexus = gitnexusEnabled(repo)
         let mcpPath = scratch + "/mcp.json"
         try Claude.mcpConfig(gitnexus: gitnexus).write(toFile: mcpPath, atomically: true, encoding: .utf8)
 

@@ -72,7 +72,28 @@ wrappers call gh with an argument list, never through a shell.
 
 Before anything is posted, `post` refuses a review that contains an image (`![`, `<img`), an iframe, or a link to
 any host other than github.com. It also enforces the length limits, at most 5 comments, and that each comment is on
-a file in the PR.
+a file in the PR. A flag note from `flag_paths` is appended before these checks, so it is held to the same rules.
+
+## Drafts
+
+In draft mode `post` runs the same checks and saves the payload instead of sending it. The draft is data on disk, so
+`glidepath drafts post` checks it again before anything is sent: the event, the body, the comments and the own-PR rule.
+It also fetches the PR and refuses if its head differs from the one the review was written against. The refusal marks
+the draft stale, and the sweep that next reviews the PR writes a new one. Review sessions cannot run `glidepath drafts`:
+the bash guard refuses it by name.
+
+## Reviewing one large PR
+
+`glidepath review` is a CLI command for the user. It takes the same run lock as a sweep, so it is refused while one
+runs, and it applies every filter except the size limit, for the one PR named. Review sessions cannot run it: it is
+not on their allowlist, and the bash guard refuses `glidepath drafts` by name.
+
+## Dashboard
+
+`glidepath dashboard` writes a static page. It has a Content-Security-Policy of `default-src 'none'; style-src
+'unsafe-inline'; img-src data:`, so it cannot run script or load anything else. Every string from GitHub or the model
+(titles, authors, reasons, review bodies, comments) is HTML-escaped. The test suite renders a title with `<script>`
+and an attribute-breaking author and checks neither reaches the page as markup.
 
 ## Subagents
 
@@ -136,7 +157,8 @@ Reviews appear under your GitHub account. "Run now" in the app asks for confirma
 ## Local state
 
 The run file holds PR numbers, titles, authors, verdicts and token counts. It holds no tokens, and the session
-transcript stays in Claude Code's own folder.
+transcript stays in Claude Code's own folder. Held drafts hold the review text, and the dashboard page repeats it;
+both sit in the state folder with the run files.
 
 ## Update check
 

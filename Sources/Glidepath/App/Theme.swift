@@ -61,6 +61,8 @@ enum Metrics {
     static let chevronReserve: CGFloat = 12
     static let rowOneLine: CGFloat = 44
     static let rowThreeLines: CGFloat = 60
+    /// Post and Discard on a draft row's line 2, and the room the status keeps clear of them.
+    static let draftActionsWidth: CGFloat = 100
     static let profileFull: CGFloat = 64
     static let profileQuiet: CGFloat = 36
     static let footerRow: CGFloat = 44

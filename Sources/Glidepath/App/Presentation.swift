@@ -21,6 +21,12 @@ enum RowStatus: Equatable {
     case queued                        // hollow grey circle, "Queued"
 }
 
+/// The notification for a finished sweep. Pure, so the copy is testable.
+struct SweepNotice: Equatable {
+    let title: String
+    let body: String
+}
+
 /// One segment of the four-dash meter.
 enum MeterSegment: Equatable {
     case done, current, future
@@ -68,6 +74,65 @@ enum Presentation {
         }
         if snap.run == nil { return .noSweeps(next: snap.nextRun, repos: snap.repoCount) }
         return .idle(changes: changes, next: snap.nextRun, lastStarted: snap.run?.started, total: strips.count)
+    }
+
+    /// What to tell the user when a sweep ends. Dry runs never become current, so they never reach here. A finished
+    /// sweep with nothing reviewed says nothing, unless it failed.
+    static func notice(_ run: RunState) -> SweepNotice? {
+        guard run.finished != nil else { return nil }
+        if let message = failureMessage(run) {
+            return SweepNotice(title: "Sweep failed", body: message)
+        }
+        let prs = run.repos.flatMap(\.prs)
+        let drafts = prs.filter { $0.draft == true }.count
+        let changes = prs.filter { $0.verdict == .changes }.count
+        let approved = prs.filter { $0.verdict == .approve }.count
+        let reviewed = changes + approved
+        guard reviewed > 0 else { return nil }
+        if drafts > 0 {
+            return SweepNotice(title: "Sweep done", body: "\(drafts) draft\(drafts == 1 ? "" : "s") to post")
+        }
+        if changes == 0 {
+            return SweepNotice(title: "Sweep done", body: "All clear · \(reviewed) reviewed")
+        }
+        var body = "\(changes) need changes"
+        if approved > 0 { body += " · \(approved) approved" }
+        return SweepNotice(title: "Sweep done", body: body)
+    }
+
+    /// "Too large · 12,480 lines": line 3 of a PR skipped for size.
+    static func sizeText(_ lines: Int) -> String {
+        "Too large · \(lines.formatted()) lines"
+    }
+
+    /// Rough tokens for a PR of `changedLines`, from the last finished run: its tokens per reviewed PR, scaled by the
+    /// PR's size against that run's average. nil when that run does not have the sizes to compare.
+    static func reviewEstimate(_ run: RunState, changedLines: Int) -> Int? {
+        guard run.finished != nil, run.tokens > 0 else { return nil }
+        let reviewed = run.repos.flatMap(\.prs).filter { $0.verdict == .approve || $0.verdict == .changes }
+        let sizes = reviewed.compactMap(\.changedLines)
+        guard !reviewed.isEmpty, sizes.count == reviewed.count, sizes.reduce(0, +) > 0 else { return nil }
+        let perPR = Double(run.tokens) / Double(reviewed.count)
+        let average = Double(sizes.reduce(0, +)) / Double(sizes.count)
+        return Int(perPR * Double(changedLines) / average)
+    }
+
+    /// The Review confirm text. The token sentence appears only when the last finished run allows an estimate.
+    static func reviewWarning(changedLines: Int, limit: Int, last: RunState?) -> String {
+        var text = "It changes \(changedLines.formatted()) lines, over your \(limit.formatted()) limit. "
+            + "It will be split across several reviewers and may use a lot of tokens"
+        if let last, last.finished != nil, last.tokens > 0 {
+            let reviewed = last.repos.flatMap(\.prs).filter { $0.verdict == .approve || $0.verdict == .changes }.count
+            if reviewed > 0 {
+                text += " (the last run used \(compactTokens(last.tokens)) for \(reviewed) PR\(reviewed == 1 ? "" : "s"))"
+            }
+            text += "."
+            if let estimate = reviewEstimate(last, changedLines: changedLines) {
+                text += " This PR is about \(compactTokens(estimate)) tokens, going by the last run."
+            }
+            return text
+        }
+        return text + "."
     }
 
     /// The first line of the run's error, or of the first repo error. nil when the run had none.

@@ -83,9 +83,11 @@ enum ReviewValidator {
     }
 
     /// Checks a draft against the PR's file list and the repo's posting mode, and builds the payload.
-    /// `head` comes from run state, never from the draft.
+    /// `head` comes from run state, never from the draft. `note` is the flag note, appended to the body.
     /// `own` is true when the PR is the user's own: GitHub accepts only COMMENT there, whatever `posting` says.
-    static func validate(_ d: Draft, files: Set<String>, posting: Posting, head: String, own: Bool = false) throws -> ReviewPayload {
+    /// Draft mode picks the same event as review mode; the user decides when it is posted.
+    static func validate(_ d: Draft, files: Set<String>, posting: Posting, head: String, own: Bool = false,
+                         note: String? = nil) throws -> ReviewPayload {
         guard ["approve", "changes"].contains(d.verdict) else {
             throw CommandError("verdict must be approve or changes")
         }
@@ -93,8 +95,9 @@ enum ReviewValidator {
         guard !reason.isEmpty, reason.count <= maxReason, !reason.contains("\n") else {
             throw CommandError("reason must be one line, 1 to \(maxReason) characters")
         }
-        let body = d.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        var body = d.body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { throw CommandError("body is empty") }
+        if let note { body += "\n\n" + note }
         try checkContent(body)
         guard body.count <= maxBody else { throw CommandError("body is \(body.count) characters; limit is \(maxBody)") }
         guard d.comments.count <= maxComments else {
@@ -102,29 +105,73 @@ enum ReviewValidator {
         }
         var comments: [PayloadComment] = []
         for c in d.comments {
-            guard files.contains(c.path) else { throw CommandError("comment path \(c.path) is not a file in this PR") }
-            guard c.line >= 1 else { throw CommandError("comment on \(c.path) has line \(c.line)") }
-            let text = c.body.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else {
-                throw CommandError("comment on \(c.path):\(c.line) is empty")
-            }
-            guard text.count <= maxCommentBody else {
-                throw CommandError("comment on \(c.path):\(c.line) is \(text.count) characters; limit is \(maxCommentBody)")
-            }
-            try checkContent(text)
-            if let side = c.side, side != "RIGHT" { throw CommandError("only side RIGHT is allowed") }
-            comments.append(PayloadComment(path: c.path, line: c.line, side: "RIGHT", body: text))
+            comments.append(try checkComment(c.path, c.line, c.side, c.body, files: files))
         }
 
+        let payload: ReviewPayload
         switch own ? Posting.comment : posting {
         case .comment:
             // COMMENT reviews carry the verdict in the first line of the body.
             let verdictLine = d.verdict == "approve" ? "Verdict: approve" : "Verdict: changes"
-            return ReviewPayload(commit_id: head, event: "COMMENT",
-                                 body: verdictLine + "\n\n" + body, comments: comments)
-        case .review:
+            payload = ReviewPayload(commit_id: head, event: "COMMENT",
+                                    body: verdictLine + "\n\n" + body, comments: comments)
+        case .review, .draft:
             let event = d.verdict == "approve" ? "APPROVE" : "REQUEST_CHANGES"
-            return ReviewPayload(commit_id: head, event: event, body: body, comments: comments)
+            payload = ReviewPayload(commit_id: head, event: event, body: body, comments: comments)
         }
+        try checkPayload(payload, files: files, own: own)
+        return payload
+    }
+
+    /// Room for the verdict line that a COMMENT payload adds in front of the body.
+    static let verdictLineRoom = 20
+
+    /// The checks a payload must pass before it is sent. `validate` runs them on what it built; `drafts post` runs
+    /// them again on the draft file, which is data on disk and is never trusted.
+    static func checkPayload(_ p: ReviewPayload, files: Set<String>, own: Bool) throws {
+        guard ["APPROVE", "REQUEST_CHANGES", "COMMENT"].contains(p.event) else {
+            throw CommandError("event must be APPROVE, REQUEST_CHANGES or COMMENT")
+        }
+        if own, p.event != "COMMENT" { throw CommandError("your own PR takes only COMMENT reviews") }
+        guard !p.body.isEmpty, p.body.count <= maxBody + verdictLineRoom else {
+            throw CommandError("body is \(p.body.count) characters; limit is \(maxBody)")
+        }
+        try checkContent(p.body)
+        guard p.comments.count <= maxComments else {
+            throw CommandError("\(p.comments.count) comments; the limit is \(maxComments)")
+        }
+        for c in p.comments {
+            _ = try checkComment(c.path, c.line, c.side, c.body, files: files)
+        }
+    }
+
+    /// One inline comment: a file in the PR, a line from 1, side RIGHT only, and a bounded body of plain text.
+    static func checkComment(_ path: String, _ line: Int, _ side: String?, _ body: String, files: Set<String>) throws -> PayloadComment {
+        guard files.contains(path) else { throw CommandError("comment path \(path) is not a file in this PR") }
+        guard line >= 1 else { throw CommandError("comment on \(path) has line \(line)") }
+        let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { throw CommandError("comment on \(path):\(line) is empty") }
+        guard text.count <= maxCommentBody else {
+            throw CommandError("comment on \(path):\(line) is \(text.count) characters; limit is \(maxCommentBody)")
+        }
+        try checkContent(text)
+        if let side, side != "RIGHT" { throw CommandError("only side RIGHT is allowed") }
+        return PayloadComment(path: path, line: line, side: "RIGHT", body: text)
+    }
+}
+
+/// `flag_paths`: prefix matches on a PR's changed files, computed by the wrappers from GitHub's file list.
+enum FlagPaths {
+    /// Changed files that start with one of the prefixes, in the order GitHub lists them.
+    static func matches(_ files: [String], prefixes: [String]) -> [String] {
+        files.filter { file in prefixes.contains { file.hasPrefix($0) } }
+    }
+
+    /// The line appended to a review body: the note and up to three matched paths. nil when nothing matched.
+    static func note(_ text: String, matches: [String]) -> String? {
+        guard !matches.isEmpty else { return nil }
+        let shown = matches.prefix(3).joined(separator: ", ")
+        let more = matches.count > 3 ? ", +\(matches.count - 3) more" : ""
+        return "**Note:** \(text) (\(shown)\(more))"
     }
 }

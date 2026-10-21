@@ -160,6 +160,27 @@ final class PresentationTests: XCTestCase {
         try Pause.set(false, paths)
         XCTAssertNil(Pause.since(paths))
     }
+    func testDraftsLineReplacesLastSweepWhenDraftsExist() {
+        let copy = HeaderCopy.make(.idle(changes: 1, next: nil, lastStarted: now, total: 4), now: now, drafts: 3)
+        XCTAssertEqual(copy.line2, "3 drafts to post")
+        XCTAssertEqual(HeaderCopy.make(.idle(changes: 1, next: nil, lastStarted: now, total: 4), now: now, drafts: 1).line2,
+                       "1 draft to post")
+        XCTAssertTrue(HeaderCopy.make(.idle(changes: 1, next: nil, lastStarted: now, total: 4), now: now).line2?.hasPrefix("Last sweep") == true)
+    }
+
+    func testSweepNotices() {
+        var changes = run([pr(1, verdict: .changes), pr(2, verdict: .changes), pr(3, verdict: .approve)], finished: true)
+        XCTAssertEqual(Presentation.notice(changes), SweepNotice(title: "Sweep done", body: "2 need changes · 1 approved"))
+        changes.repos[0].prs[0].draft = true
+        XCTAssertEqual(Presentation.notice(changes), SweepNotice(title: "Sweep done", body: "1 draft to post"))
+        let clear = run([pr(1, verdict: .approve), pr(2, verdict: .approve), pr(3, verdict: .approve),
+                         pr(4, verdict: .approve), pr(5, verdict: .approve)], finished: true)
+        XCTAssertEqual(Presentation.notice(clear), SweepNotice(title: "Sweep done", body: "All clear · 5 reviewed"))
+        XCTAssertNil(Presentation.notice(run([pr(1, verdict: .skipped)], finished: true)), "nothing reviewed says nothing")
+        XCTAssertNil(Presentation.notice(run([pr(1, verdict: .approve)])), "unfinished runs say nothing")
+        XCTAssertEqual(Presentation.notice(run([], finished: true, error: "gh is not authenticated")),
+                       SweepNotice(title: "Sweep failed", body: "gh is not authenticated"))
+    }
 }
 
 /// The text the row shows for a skipped PR.

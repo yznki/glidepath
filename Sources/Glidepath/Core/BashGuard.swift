@@ -84,6 +84,11 @@ enum BashGuard {
         case .failure(let refusal):
             return "\(refusal.reason) (review commands take plain words and single-quoted strings only)"
         case .success(let list):
+            // Drafts are posted by the user from the app or a terminal. A review session never posts a held draft,
+            // whatever the quoting.
+            if list.first?.text == "drafts" {
+                return "glidepath drafts is for the user, not for a review; the draft waits for them to post it"
+            }
             // A value that starts with -- must be quoted, so a flag cannot be smuggled in as a value.
             for (index, token) in list.enumerated() where index > 0 {
                 let previous = list[index - 1]

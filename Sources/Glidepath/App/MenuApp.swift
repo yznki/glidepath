@@ -46,6 +46,9 @@ enum Snapshotter {
             ("empty", Fixtures.empty(now)),
             ("first-run", Fixtures.firstRun(now)),
             ("hover", Fixtures.hover(now)),
+            ("drafts", Fixtures.drafts(now)),
+            ("flagged", Fixtures.flagged(now)),
+            ("too-large", Fixtures.tooLarge(now)),
             ("update", Fixtures.update(now)),
             ("updating", Fixtures.updating(now)),
         ]
@@ -59,6 +62,24 @@ enum Snapshotter {
             }
         }
         writeMenuBar(to: dir.appendingPathComponent("menubar.png"))
+        writeDashboard(to: dir.appendingPathComponent("index.html"), now: now)
+    }
+
+    /// The dashboard page for the fixture runs and one held draft. Written as HTML only; the browser screenshot is
+    /// taken by hand.
+    static func writeDashboard(to url: URL, now: Date) {
+        let runs = Fixtures.dashboardRuns(now)
+        let drafts = Fixtures.dashboardDrafts(now)
+        var snap = Fixtures.drafts(now)
+        snap.run = runs.first
+        let header = HeaderCopy.make(Presentation.headerKind(snap, now: now), now: now, drafts: drafts.count)
+        let html = DashboardPage.render(runs: runs, drafts: drafts, header: header, now: now)
+        do {
+            try Data(html.utf8).write(to: url, options: .atomic)
+            print("wrote \(url.path)")
+        } catch {
+            print("write failed: \(url.path): \(error.localizedDescription)")
+        }
     }
 
     static func write<V: View>(_ view: V, dark: Bool, to url: URL, scale: CGFloat) {
@@ -142,11 +163,20 @@ enum Fixtures {
 
     static func pr(_ repo: String, _ n: Int, _ author: String, _ title: String, reason: String? = nil,
                    stage: Stage = .gather, active: Bool = false, verdict: Verdict? = nil, tokens: Int = 0,
-                   carried: Bool = false) -> (String, PRState) {
+                   carried: Bool = false, draft: Bool = false, flagged: Bool = false) -> (String, PRState) {
         var state = PRState(n: n, author: author, title: title, stage: stage, active: active && verdict == nil,
                             verdict: verdict, reason: reason, tokens: tokens)
         if carried { state.carriedFrom = clockToday(10, 12, Date()) }
+        if draft { state.draft = true }
+        if flagged { state.flagged = true }
         return (repo, state)
+    }
+
+    static func shifted(_ run: RunState, by seconds: TimeInterval) -> RunState {
+        var r = run
+        r.started = r.started.addingTimeInterval(seconds)
+        r.finished = r.finished?.addingTimeInterval(seconds)
+        return r
     }
 
     static func run(_ id: String, now: Date, finished: Bool, prs: [(String, PRState)],
@@ -233,9 +263,71 @@ enum Fixtures {
     }
 
     /// A newer release is out: the dot on the glyph, the line above the footer, and the first menu item.
+    /// Draft mode: held reviews with Post and Discard on line 2, and a flagged row. The header says how many wait.
+    static func drafts(_ now: Date) -> Snapshot {
+        let r = run("fixture-drafts", now: now, finished: true, prs: [
+            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes, draft: true, flagged: true),
+            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve, draft: true),
+            pr("lumen/web", 88, "lea", "Fix the date picker timezone on CSV export", reason: "dates shift by a day", verdict: .changes),
+            pr("lumen/web", 84, "sam", "Bump next to 15.1", reason: "draft", verdict: .skipped),
+        ], tokens: 980_000)
+        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
+    }
+
+    /// Flag paths without drafts: the Flagged label after the author, on approved and changes rows.
+    static func flagged(_ now: Date) -> Snapshot {
+        let r = run("fixture-flagged", now: now, finished: true, prs: [
+            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve, flagged: true),
+            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes, flagged: true),
+            pr("lumen/web", 91, "kai", "Redesign the empty states for the projects list", verdict: .approve),
+        ], tokens: 610_000)
+        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
+    }
+
+    /// A PR over max_changed_lines: "Too large" on line 3 and Review on line 2.
+    static func tooLarge(_ now: Date) -> Snapshot {
+        var (repo, big) = pr("lumen/api", 1219, "tom", "Rewrite the invoice ledger as an append-only log", reason: "too large (12480 changed lines)", verdict: .skipped)
+        big.skipReason = "size"
+        big.changedLines = 12_480
+        let r = run("fixture-too-large", now: now, finished: true, prs: [
+            (repo, big),
+            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
+        ], tokens: 610_000)
+        var s = Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
+        s.maxChangedLines = 8_000
+        return s
+    }
+
+    /// Four finished runs for the dashboard, newest first, and the draft from the newest one.
+    static func dashboardRuns(_ now: Date) -> [RunState] {
+        let day: TimeInterval = 24 * 3600
+        return [
+            drafts(now).run!,
+            shifted(idleChanges(now).run!, by: -day),
+            shifted(failed(now).run!, by: -2 * day),
+            shifted(idleClear(now).run!, by: -3 * day),
+        ]
+    }
+
+    static func dashboardDrafts(_ now: Date) -> [Drafts.Found] {
+        let body = """
+        Two things to fix before this lands.
+
+        The rate limit is checked after the cache lookup, so a cached response skips it. Move the check above the lookup.
+
+        The new query has no test for a caller from another org.
+        """
+        let draft = DraftFile(slug: "lumen/api", n: 1212, head: "0f3c9a7", event: "REQUEST_CHANGES", body: body,
+                              comments: [PayloadComment(path: "internal/audit/cache.go", line: 42, side: "RIGHT",
+                                                        body: "The lookup runs before the limit check here.")],
+                              created: now.addingTimeInterval(-600))
+        return [Drafts.Found(runId: "fixture-drafts", path: "", draft: draft)]
+    }
+
+    /// A newer release is out: the dot on the glyph, the line above the footer, and the first menu item.
     static func update(_ now: Date) -> Snapshot {
         var s = idleChanges(now)
-        s.update = UpdateCache(checked: now, latest: "1.1.0", url: "https://github.com/yznki/glidepath/releases/tag/v1.1.0")
+        s.update = UpdateCache(checked: now, latest: "1.2.0", url: "https://github.com/yznki/glidepath/releases/tag/v1.2.0")
         return s
     }
 

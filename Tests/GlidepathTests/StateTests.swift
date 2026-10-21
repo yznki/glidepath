@@ -131,4 +131,34 @@ final class AtomicCounter: @unchecked Sendable {
     private var n = 0
     func add() { lock.lock(); n += 1; lock.unlock() }
     var value: Int { lock.lock(); defer { lock.unlock() }; return n }
+
+    /// A 1.0.x run file has none of the 1.1.0 fields. It must still decode, with them empty.
+    func testOneZeroRunFileDecodesWithoutNewFields() throws {
+        let json = """
+        {"error": null, "finished": "2026-10-20T10:14:00Z", "id": "20261020-101200-abc123", "repos": [
+          {"error": null, "prs": [
+            {"active": false, "n": 5, "reason": "missing test", "stage": "post", "tokens": 1200,
+             "verdict": "changes", "author": "ines", "title": "T"}
+          ], "slug": "acme/api"}
+        ], "started": "2026-10-20T10:12:00Z", "tokens": 1200}
+        """
+        let run = try RunStore.decoder().decode(RunState.self, from: Data(json.utf8))
+        let pr = try XCTUnwrap(run.repos.first?.prs.first)
+        XCTAssertEqual(pr.verdict, .changes)
+        XCTAssertNil(pr.draft)
+        XCTAssertNil(pr.flagged)
+        XCTAssertNil(pr.posted)
+    }
+
+    func testDraftAndFlagFieldsRoundTrip() throws {
+        var run = RunState.new(id: "r", now: Date(timeIntervalSince1970: 1_800_000_000))
+        try run.setPR(repo: "acme/api", n: 5, stage: nil, author: nil, title: nil, verdict: .approve, reason: nil)
+        try run.setFlagged(repo: "acme/api", n: 5)
+        run.setDraft(repo: "acme/api", n: 5, draft: true, posted: nil)
+        let data = try RunStore.encoder().encode(run)
+        let back = try RunStore.decoder().decode(RunState.self, from: data)
+        XCTAssertEqual(back, run)
+        XCTAssertEqual(back.repos[0].prs[0].draft, true)
+        XCTAssertEqual(back.repos[0].prs[0].flagged, true)
+    }
 }

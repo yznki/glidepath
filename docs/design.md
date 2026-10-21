@@ -17,6 +17,7 @@ Every header line starts at x = 16. No coloured dots before a headline.
 | running | "3 in flight, 4 landed" (in flight: active PRs; landed: PRs with a verdict) | "2 need changes" in changes text (13/500); with none, no line 2 | "Started 10:12 AM" |
 | idle, changes | "2 need changes" | "Last sweep 10:12 AM · 7 PRs" | "Next sweep 1:00 PM, in 38 min" |
 | idle, clear | "All clear" | "Last sweep 10:12 AM · 3 PRs" | "Next sweep 1:00 PM, in 38 min" |
+| idle, drafts waiting | "2 need changes" or "All clear" | "3 drafts to post" (13/500, ink; replaces the last-sweep line) | "Next sweep 1:00 PM, in 38 min" |
 | paused | "Paused" (changes text) | "Last sweep 10:12 AM · scheduled sweeps skipped" | "Paused since 10:35 AM" |
 | failed | "Last sweep failed" (error) | the one-line reason in plain words, e.g. "The review agent stopped early (exit 1)" | "Retrying at 1:00 PM · Open log" (Open log 13/500, error colour, no underline) |
 | empty | "No open PRs" | "Watching 2 repos · last sweep 10:12 AM" | "Next sweep 1:00 PM, in 38 min" |
@@ -76,7 +77,14 @@ Quiet (36 pt):
   on line 1 at the far right, at 50% opacity on hover, in space the title leaves free. Nothing moves on hover.
 - Line 2: left, "#1212 · omar", 12/400 secondary. A carried-over row adds " · from 10:12 AM" (the time in the user's
   locale). Right, the status: in flight, a four-dash meter 36 pt wide, then the label, then the mark.
-- Line 3, changes rows only: the review's reason, 12/400 in the changes text colour, one line.
+- Line 3, changes rows only: the review's reason, 12/400 in the changes text colour, one line. A failed Post or
+  Discard on a draft row shows its error here instead, in the error colour.
+- Too-large rows (skipped for size): line 3 reads "Too large · 12,480 lines" in secondary, and line 2 right has a
+  "Review" action (accent, link style) that asks first and runs `glidepath review`. Disabled while a sweep runs.
+- Flagged rows: a "Flagged" label (11/500, secondary) after the author on line 2.
+- Draft rows (held reviews): on line 2, right of the status, "Post" (accent, link style) and "Discard" (secondary).
+  Post asks for confirmation with the verdict and the first 300 characters. While a post runs, the status reads
+  "Posting…" and the actions are hidden. The actions sit beside the row's button, not inside it, so both are clickable.
 - Height: 44 pt (two lines) or 60 pt (three lines). Heights are fixed; a row does not grow.
 - Order within each repo: changes, no result, in flight, approved, skipped. In flight, the latest stage first, then
   queued. Ties go by PR number, highest first.
@@ -191,3 +199,11 @@ the sheet fits. The labels give the size.
 - Reduced motion turns off every slide and pulse. State changes are immediate.
 - Snapshot mode (`glidepath --snapshot <dir>`) renders the states above from fixtures, light and dark, plus the glyph
   strip. `glidepath --hero-gif <path>` writes the README hero as a looping GIF, with injected time.
+
+## 11. Dashboard
+
+The dashboard is a separate page in the browser, not part of the popover. One column, left aligned, system font, at
+most 760 pt wide, with the same colours and status idiom as the rows: changes in the changes colour with a triangle,
+approved with a disc, skipped with a dash, no result with a hollow circle. It has no script and no gradients, and
+follows light and dark mode. Top to bottom: the header line (the popover's header copy), the open drafts with their
+full text, and the run history. Each run is one block with its date, duration and tokens, then its rows per repo.

@@ -19,6 +19,9 @@ enum Decision: Equatable {
 }
 
 enum PRFilter {
+    /// The reason a PR over `max_changed_lines` is skipped. The runner keys the Review action on this prefix.
+    static let tooLargeReason = "too large"
+
     /// Rules from SPEC "Run flow" step 2. Cheap checks run first; the collaborator and reviews
     /// lookups are API calls and only happen for PRs that get that far. A lookup that fails skips
     /// the PR with a reason instead of failing the repo.
@@ -35,7 +38,7 @@ enum PRFilter {
         }
         if !listed && (pr.authorIsBot || pr.author.hasSuffix("[bot]")) { return .skip("bot author") }
         if pr.changedLines > limits.maxChangedLines {
-            return .skip("too large (\(pr.changedLines) changed lines)")
+            return .skip("\(tooLargeReason) (\(pr.changedLines) changed lines)")
         }
         switch authors {
         case .collaborators:

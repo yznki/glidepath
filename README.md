@@ -36,6 +36,7 @@ design is in [docs/security.md](docs/security.md).
 - [How a run works](#how-a-run-works)
 - [What it costs](#what-it-costs)
 - [The menu bar app](#the-menu-bar-app)
+- [Drafts](#drafts), [Dashboard](#dashboard), [Notifications](#notifications)
 - [Config](#config)
 - [Commands](#commands)
 - [Your review rules](#your-review-rules)
@@ -59,7 +60,8 @@ On each scheduled time, for each configured repo:
    not match the code. It keeps verified blockers. If the checker changes the verdict or a finding, one more check
    runs on the fixed draft.
 5. **Land.** One review per PR, posted as a comment by default. The comment's first line is the verdict. With
-   `posting = "review"`, the review is APPROVE or REQUEST_CHANGES instead.
+   `posting = "review"`, the review is APPROVE or REQUEST_CHANGES instead. With `posting = "draft"`, the review is
+   held for you to post from the app or the CLI (see [Drafts](#drafts)).
 
 Each run starts `claude -p` in the checkout with the `glidepath` skill. The skill gathers and reviews through the
 steps above, and posts with `glidepath post`.
@@ -115,7 +117,7 @@ PR is a dot on the slope at the stage it is in.
   title (one line), `#number · author`, and the status on the right. Changes rows also show the review's reason on a
   third line.
 - Footer: Run now (or Resume while paused, or Stop while running) on the left, and a menu on the right with Pause,
-  Open log, the last run's token count, Open at login and Quit. On a first run, Edit repos… opens the config file.
+  Open log, Open dashboard, the last run's token count, Open at login and Quit. On a first run, Edit repos… opens the config file.
 - The popover is at most 640 pt tall. Past that, the list scrolls.
 - Menu bar: a glyph echoing the app icon, a striped disc with a slot cut into it. A dot moves along the slot while
   running (with the count of active PRs), a count when changes are waiting (cleared when you open the popover), faded
@@ -130,6 +132,44 @@ Pause writes a marker file, so scheduled runs skip until you resume. Manual runs
 The app is the same binary as the CLI. Launched with no arguments, or with `app`, it opens the menu bar.
 
 
+## Drafts
+
+With `posting = "draft"`, a sweep runs the whole pipeline and checks each review exactly as `comment` or `review`
+would, but holds it instead of posting. A held review is a draft. Its row shows the verdict, with **Post** and
+**Discard** at the right of the second line, and the header says how many wait ("3 drafts to post").
+
+- **Post** asks first, with the verdict and the start of the review. It runs `glidepath drafts post`, which checks the
+  stored review again, fetches the PR, and refuses if its head has moved since the review. A refused draft is marked
+  stale, and the next sweep reviews the PR again. A post that works removes the draft.
+- **Discard** deletes the draft. The row keeps its verdict.
+- From a terminal: `glidepath drafts list`, `glidepath drafts post owner/name N` and `glidepath drafts discard owner/name N`
+  act on the newest open draft for that PR. Review sessions cannot run these commands.
+
+Drafts are kept under `~/.local/state/glidepath/drafts/`, one file per PR and run.
+
+## Reviewing a large PR
+
+A PR over `max_changed_lines` is skipped by sweeps and its row reads "Too large · 12,480 lines". Its **Review** action
+(line 2, right) asks first, with the size, the limit and, when the last run allows it, a rough token estimate. It runs
+`glidepath review owner/name N`, which reviews that PR alone and follows `posting` as usual.
+
+## Dashboard
+
+`glidepath dashboard`, or Open dashboard in the menu, writes one page to `~/.local/state/glidepath/dashboard/index.html`
+and opens it in your browser. It shows the open drafts, with their full text and the command that posts each one, then
+the last 50 runs: date, duration, tokens, and each PR's title, number (linked on GitHub), author, verdict and reason.
+The page has no script. Every string from GitHub or the model is escaped, and it follows light and dark mode.
+
+## Notifications
+
+When a sweep finishes, Glidepath posts one notification: "Sweep done" with the counts ("2 need changes · 3 approved",
+"All clear · 5 reviewed", or "3 drafts to post"), or "Sweep failed" with the run's error. A sweep with no PRs reviewed
+says nothing, and a dry run never notifies. Clicking the notification opens the popover. The first launch after an
+update asks for permission. If it is denied, the app logs that once and carries on.
+
+Turn notifications off with `notify = false` in the config. The app has no menu item for this; the config is the
+one place to change it.
+
 ## Config
 
 `~/.config/glidepath/config.toml`:
@@ -137,6 +177,7 @@ The app is the same binary as the CLI. Launched with no arguments, or with `app`
 ```toml
 schedule = ["07:00", "13:00", "19:00"]   # global; one launchd job
 check_updates = true          # false turns off the automatic check for new releases
+notify = true                 # false turns off the notification when a sweep finishes
 
 [limits]
 max_prs_per_run = 10
@@ -146,29 +187,36 @@ split_over_lines = 1500       # reviews are split by area above this
 [[repo]]
 slug = "acme/api"
 clone = "~/glidepath/clones/acme-api"   # init clones a dedicated detached checkout
-posting = "comment"           # comment | review
+posting = "comment"           # comment | review | draft
 authors = "collaborators"     # collaborators | anyone | ["login", ...]
 rules = "~/.config/glidepath/rules/acme-api.md"   # optional
 rules_mode = "extend"         # extend | replace
 gitnexus = "auto"             # auto | on | off
+gitnexus_refresh = true       # re-index the clone before a sweep that reviews something (GitNexus on only)
 include_own = false           # true to review your own PRs too
+flag_paths = ["infra/", ".github/workflows/"]   # optional: PRs touching these get a note
+flag_note = "Needs a devops code-owner approval."  # optional: the note text
 ```
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `schedule` | `07:00`, `13:00`, `19:00` | Local times for scheduled runs. One launchd job for all repos. |
 | `check_updates` | `true` | Check GitHub for a newer release at launch, daily and when the popover opens. `false` turns those checks off; "Check for updates…" still works. |
+| `notify` | `true` | Notify when a sweep finishes. See [Notifications](#notifications). |
 | `limits.max_prs_per_run` | `10` | PRs per repo per run. Extra PRs are skipped with reason "over max_prs_per_run". |
 | `limits.max_changed_lines` | `3000` | Additions plus deletions above this are skipped with reason "too large". |
 | `limits.split_over_lines` | `1500` | Above this, the review is split into one reviewer per area. |
 | `repo.slug` | required | `owner/name` on GitHub. |
 | `repo.clone` | `~/glidepath/clones/<owner>-<name>` | Detached checkout the skill reads. Never used for work. |
-| `repo.posting` | `comment` | `comment` posts a COMMENT review whose first line is `Verdict: approve` or `Verdict: changes`. `review` posts APPROVE or REQUEST_CHANGES. |
+| `repo.posting` | `comment` | `comment` posts a COMMENT review whose first line is `Verdict: approve` or `Verdict: changes`. `review` posts APPROVE or REQUEST_CHANGES. `draft` holds the review until you post it; see [Drafts](#drafts). |
 | `repo.authors` | `collaborators` | `collaborators` means write, maintain or admin access on the repo. `anyone` means any author. A list means only those logins. |
 | `repo.rules` | none | A Markdown file with extra review rules for this repo. |
 | `repo.rules_mode` | `extend` | `extend` adds the file to the built-in rubric. `replace` swaps out the rubric's review bar. Safety and output sections always apply. |
 | `repo.gitnexus` | `auto` | Use the GitNexus MCP tools for blast radius. `auto` uses them when the `gitnexus` command is on your PATH and `authors` is not `"anyone"`. Otherwise the skill uses grep. |
+| `repo.gitnexus_refresh` | `true` | Before a sweep that reviews something, run `gitnexus analyze --index-only` in the clone (10-minute limit). If that fails or times out, GitNexus is off for this repo in this run. Has no effect when GitNexus is off. |
 | `repo.include_own` | `false` | Review PRs you opened too. Off by default. GitHub accepts only a COMMENT review on your own PR, so `post` sends COMMENT for those whatever `posting` says. |
+| `repo.flag_paths` | none | Path prefixes that need an extra approval. A PR whose changed files start with one gets a final line on its review: the note, and up to three matched paths. The verdict does not change, and the row shows "Flagged". |
+| `repo.flag_note` | "Touches flagged paths; needs an extra approval." | The text of that note. Used only with `flag_paths`. |
 
 Edits take effect on the next run. `glidepath doctor` checks the file.
 
@@ -189,6 +237,9 @@ config directory to `~/.config/gh`).
 | `glidepath run [--dry-run] [--repo owner/name]` | Run now. `--dry-run` reviews and posts nothing. |
 | `glidepath state show [--run ID]` | Print a run as JSON. Defaults to the current run. |
 | `glidepath pr info` / `pr diff` / `pr threads` / `post` | Used by the review session. Run them only inside a run; see [docs/security.md](docs/security.md). |
+| `glidepath review owner/name N [--dry-run] [--again]` | Review one open PR now, including one over `max_changed_lines`. Other filters still apply; an already reviewed head is skipped unless `--again`. Refused while a run is in progress. |
+| `glidepath drafts list` / `post owner/name N` / `discard owner/name N` | List, post or discard held reviews. See [Drafts](#drafts). |
+| `glidepath dashboard` | Write the dashboard page and open it. See [Dashboard](#dashboard). |
 | `glidepath pause` / `resume` | Skip or allow scheduled runs. |
 | `glidepath doctor` | Check requirements and installed pieces. |
 | `glidepath uninstall [--purge]` | Remove the schedule, skill and app link. `--purge` also removes config and state. |

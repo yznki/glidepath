@@ -144,4 +144,16 @@ final class BashGuardTests: XCTestCase {
         let plain = #"{"tool_name":"Bash","tool_input":{"command":"glidepath post --repo a/b --pr 1"}}"#
         XCTAssertEqual(BashGuard.evaluate(stdin: Data(plain.utf8)).code, 0)
     }
+
+    func testRefusesDraftsInsideAReview() {
+        for command in [
+            "glidepath drafts list",
+            "glidepath drafts post acme/api 7",
+            "glidepath drafts discard acme/api 7",
+            "glidepath 'drafts' post acme/api 7",
+        ] {
+            XCTAssertNotNil(BashGuard.denial(for: command), command)
+        }
+        XCTAssertNil(BashGuard.denial(for: "glidepath post --repo acme/api --pr 7"))
+    }
 }

@@ -44,7 +44,8 @@ struct HeaderCopy: Equatable {
     /// "Open log" follows line 3 as a link.
     var openLog = false
 
-    static func make(_ kind: HeaderKind, now: Date) -> HeaderCopy {
+    /// `drafts` is the number of reviews waiting to be posted. Idle copy gives way to that count when it is not zero.
+    static func make(_ kind: HeaderKind, now: Date, drafts: Int = 0) -> HeaderCopy {
         switch kind {
         case .notScheduled:
             return HeaderCopy(headline: "Not scheduled", headlineTone: .changes,
@@ -76,10 +77,15 @@ struct HeaderCopy: Equatable {
         case .idle(let changes, let next, let lastStarted, let total):
             let count = "\(total) PR\(total == 1 ? "" : "s")"
             let last = lastStarted.map { "Last sweep \(clock($0)) · \(count)" } ?? count
-            return HeaderCopy(headline: changes > 0 ? "\(changes) need changes" : "All clear",
-                              line2: last,
-                              line3: next.map { "Next sweep \(clock($0)), in \(untilText($0, now))" } ?? "No sweep scheduled",
-                              line3Tone: .tertiary)
+            var copy = HeaderCopy(headline: changes > 0 ? "\(changes) need changes" : "All clear",
+                                  line2: last,
+                                  line3: next.map { "Next sweep \(clock($0)), in \(untilText($0, now))" } ?? "No sweep scheduled",
+                                  line3Tone: .tertiary)
+            if drafts > 0 {
+                copy.line2 = "\(drafts) draft\(drafts == 1 ? "" : "s") to post"
+                copy.line2Weight = 500
+            }
+            return copy
         case .noSweeps(let next, _):
             return HeaderCopy(headline: "Ready for the first sweep",
                               line2: "Pick the repos Glidepath should review.",
@@ -138,7 +144,8 @@ struct PopoverView: View {
                             justLanded: store.justLanded, motion: store.profileMotion, clock: clock,
                             onHover: { store.setHovered($0) })
             TimelineView(.periodic(from: .now, by: 30)) { context in
-                headerText(HeaderCopy.make(Presentation.headerKind(store.snap, now: context.date), now: context.date))
+                headerText(HeaderCopy.make(Presentation.headerKind(store.snap, now: context.date), now: context.date,
+                                           drafts: store.draftCount))
             }
         }
         .padding(.horizontal, Metrics.inset)
@@ -367,6 +374,7 @@ struct PopoverView: View {
                     Divider()
                     Button(store.snap.paused ? "Resume" : "Pause") { store.togglePause() }
                     Button("Open log") { store.openLog() }
+                    Button("Open dashboard") { store.openDashboard() }
                     Button("Check for updates…") { store.checkForUpdates(manual: true) }
                         .disabled(store.snap.updateChecking)
                     if let tokens = store.snap.run?.tokens, tokens > 0 {
@@ -487,6 +495,7 @@ struct PopoverView: View {
 
 /// One PR row (docs/design.md, pass 4): the title on line 1 with the full width; line 2 has `#number · author`
 /// on the left and the status (meter, then label, then mark) on the right; line 3 is the reason for changes.
+/// A held draft adds Post and Discard at the right of line 2, outside the row's button.
 struct PRRow: View {
     let row: RowModel
     let hovered: Bool
@@ -499,62 +508,36 @@ struct PRRow: View {
 
     private var p: Palette { Palette(scheme) }
     private var strip: Strip { row.strip }
+    /// A draft waiting for Post or Discard. A post that is running shows "Posting…" instead.
+    private var showsDraftActions: Bool { strip.draft && !strip.posting }
+    /// A PR skipped for size offers Review on line 2.
+    private var showsReview: Bool { strip.skipReason == "size" && strip.verdict == .skipped }
+    private var showsActions: Bool { showsDraftActions || showsReview }
 
     private var height: CGFloat {
+        if strip.draftError != nil { return Metrics.rowThreeLines }
+        if showsReview { return Metrics.rowThreeLines }
         if case .changes = row.status, strip.reason != nil { return Metrics.rowThreeLines }
         return Metrics.rowOneLine
     }
 
     var body: some View {
-        Button {
-            if let url = URL(string: "https://github.com/\(strip.repo)/pull/\(strip.number)") {
-                NSWorkspace.shared.open(url)
-            }
-        } label: {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(strip.title ?? "Untitled PR")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(p.ink)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .padding(.trailing, Metrics.chevronReserve)
-                HStack(spacing: 0) {
-                    // verbatim: a plain string, so PR numbers are never grouped as 1,212.
-                    Text(verbatim: metaText)
-                        .font(.system(size: 12))
-                        .foregroundStyle(p.secondary)
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    statusLine
+        ZStack(alignment: .topLeading) {
+            Button {
+                if let url = URL(string: "https://github.com/\(strip.repo)/pull/\(strip.number)") {
+                    NSWorkspace.shared.open(url)
                 }
-                if case .changes = row.status, let reason = strip.reason {
-                    Text(reason)
-                        .font(.system(size: 12))
-                        .foregroundStyle(p.changesText)
-                        .lineLimit(1)
-                        .help(reason)
-                }
+            } label: {
+                rowLabel
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Metrics.inset)
-            .frame(height: height)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(p.ink.opacity(hovered ? 0.05 : 0))
-                    .padding(.horizontal, 8)
-            )
-            .overlay(alignment: .topTrailing) {
-                // The chevron sits on line 1, in the strip the title leaves free.
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(p.secondary.opacity(hovered ? 0.5 : 0))
-                    .padding(.trailing, Metrics.inset)
-                    .padding(.top, 15)
+            .buttonStyle(.plain)
+            .focused($focused)
+            if showsReview {
+                reviewAction
+            } else if showsDraftActions {
+                draftActions
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .focused($focused)
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .stroke(p.doingMark, lineWidth: 2)
@@ -562,6 +545,132 @@ struct PRRow: View {
                 .opacity(focused ? 1 : 0)
         )
         .onHover { inside in store.setHovered(inside ? strip.id : nil) }
+    }
+
+    private var rowLabel: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(strip.title ?? "Untitled PR")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(p.ink)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.trailing, Metrics.chevronReserve)
+            HStack(spacing: 0) {
+                // verbatim: a plain string, so PR numbers are never grouped as 1,212.
+                Text(verbatim: metaText)
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.secondary)
+                    .lineLimit(1)
+                if strip.flagged {
+                    Text("Flagged")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(p.secondary)
+                        .lineLimit(1)
+                        .padding(.leading, 6)
+                }
+                Spacer(minLength: 8)
+                statusLine
+            }
+            .padding(.trailing, showsActions ? Metrics.draftActionsWidth : 0)
+            if let error = strip.draftError {
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.error)
+                    .lineLimit(1)
+                    .help(error)
+            } else if showsReview, let lines = strip.changedLines {
+                Text(Presentation.sizeText(lines))
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.secondary)
+                    .lineLimit(1)
+            } else if case .changes = row.status, let reason = strip.reason {
+                Text(reason)
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.changesText)
+                    .lineLimit(1)
+                    .help(reason)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Metrics.inset)
+        .frame(height: height)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(p.ink.opacity(hovered ? 0.05 : 0))
+                .padding(.horizontal, 8)
+        )
+        .overlay(alignment: .topTrailing) {
+            // The chevron sits on line 1, in the strip the title leaves free.
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(p.secondary.opacity(hovered ? 0.5 : 0))
+                .padding(.trailing, Metrics.inset)
+                .padding(.top, 15)
+        }
+        .contentShape(Rectangle())
+    }
+
+    /// Post (accent, link style) and Discard (secondary) at the right of line 2. Sits above the row button, so the
+    /// two never nest.
+    private var draftActions: some View {
+        HStack(spacing: 12) {
+            if offscreen {
+                Text("Post").font(.system(size: 12, weight: .medium)).foregroundStyle(p.doingText)
+                Text("Discard").font(.system(size: 12)).foregroundStyle(p.secondary)
+            } else {
+                Button("Post") { confirmAndPost() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(p.doingText)
+                Button("Discard") { store.discardDraft(strip) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.secondary)
+            }
+        }
+        .padding(.trailing, Metrics.inset)
+        .padding(.top, 23)
+        .frame(maxWidth: .infinity, alignment: .topTrailing)
+    }
+
+    /// Review for a PR over the size limit. Off while a sweep runs, since a second run would be refused.
+    private var reviewAction: some View {
+        HStack(spacing: 12) {
+            if offscreen {
+                Text("Review").font(.system(size: 12, weight: .medium)).foregroundStyle(p.doingText)
+            } else {
+                Button("Review") { confirmAndReview() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(p.doingText)
+                    .disabled(store.snap.running)
+            }
+        }
+        .padding(.trailing, Metrics.inset)
+        .padding(.top, 23)
+        .frame(maxWidth: .infinity, alignment: .topTrailing)
+    }
+
+    private func confirmAndReview() {
+        let alert = NSAlert()
+        alert.messageText = "Review #\(strip.number) anyway?"
+        alert.informativeText = store.reviewWarning(strip)
+        alert.addButton(withTitle: "Review")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        store.reviewPR(strip)
+    }
+
+    /// Posting is public and cannot be undone, so it asks first, with the verdict and the start of the body.
+    private func confirmAndPost() {
+        let preview = store.draftPreview(strip)
+        let alert = NSAlert()
+        alert.messageText = "Post the review on \(strip.repo) #\(strip.number)?"
+        alert.informativeText = preview.verdict + "\n\n" + preview.body
+        alert.addButton(withTitle: "Post")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        store.postDraft(strip)
     }
 
     private var metaText: String {
@@ -575,10 +684,12 @@ struct PRRow: View {
     /// Meter (in flight only), then the label, then the mark, in one line.
     private var statusLine: some View {
         HStack(spacing: 6) {
-            if let meter = row.meter {
+            if let meter = row.meter, !strip.posting {
                 meterView(meter)
             }
-            let (shape, colour, label, text) = statusParts
+            let (shape, colour, label, text) = strip.posting
+                ? (StatusShape.hollow, p.doingMark, "Posting…", p.doingText)
+                : statusParts
             Text(label)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(strip.carriedFrom == nil ? text : p.tertiary)
