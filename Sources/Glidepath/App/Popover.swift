@@ -594,6 +594,7 @@ struct PRRow: View {
                 rowLabel
             }
             .buttonStyle(.plain)
+            .focusEffectDisabled()
             .focused($focused)
             if showsReview {
                 reviewAction

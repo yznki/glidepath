@@ -41,6 +41,7 @@ struct OnboardingView: View {
             model.removeSelectedPin()
         }
         .focusable()
+        .focusEffectDisabled()
         .focused($rootFocused)
         .onAppear { rootFocused = true }
         .onDisappear {

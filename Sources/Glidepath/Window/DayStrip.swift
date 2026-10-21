@@ -28,6 +28,8 @@ struct DayStrip: View {
     let onMove: (ScheduleTime, Int) -> Void
     /// The pin the keyboard has selected. It gets a ring. Nil when none is.
     var selected: ScheduleTime?
+    /// Whether the strip has keyboard focus. The selected pin's ring (ink) shows only then.
+    var focused = false
 
     @StateObject private var drag = DayStripDrag()
 
@@ -115,8 +117,8 @@ struct DayStrip: View {
             Rectangle().fill(WinTheme.amber).frame(width: 2, height: 24).padding(.top, 4)
             Circle().fill(WinTheme.amber).frame(width: 12, height: 12)
                 .overlay {
-                    if selected == time {
-                        Circle().strokeBorder(WinTheme.blue, lineWidth: 2).frame(width: 20, height: 20)
+                    if selected == time && focused {
+                        Circle().strokeBorder(WinTheme.text, lineWidth: 2).frame(width: 20, height: 20)
                     }
                 }
         }

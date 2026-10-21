@@ -50,6 +50,7 @@ struct ReposView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .focusable()
+                .focusEffectDisabled()
                 .focused($focus, equals: .detail)
         }
         .sheet(isPresented: $model.addingRepo) {
@@ -154,6 +155,7 @@ struct ReposView: View {
             }
             .padding(.top, WinMetrics.s16)
             .focusable()
+            .focusEffectDisabled()
             .focused($focus, equals: .list)
         }
         .padding(.top, WinMetrics.titlebarZone)
@@ -189,7 +191,7 @@ struct ReposView: View {
             }
             .padding(.horizontal, WinMetrics.s8)
             .frame(height: 56)
-            .background(RoundedRectangle(cornerRadius: 10).fill(on ? WinTheme.active : Color.clear))
+            .background(RoundedRectangle(cornerRadius: 10).fill(on ? (focus == .list ? WinTheme.active : WinTheme.active.opacity(0.5)) : Color.clear))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

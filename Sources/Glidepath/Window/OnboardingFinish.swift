@@ -372,7 +372,7 @@ enum OnboardingSummary {
         guard !skipped.isEmpty else { return nil }
         var counts: [String: Int] = [:]
         for strip in skipped { counts[skipCategory(strip), default: 0] += 1 }
-        let order = ["yours", "draft", "too large", "already reviewed", "past the limit", "other"]
+        let order = ["yours", "draft", "too large", "already reviewed", "bots", "past the limit", "other"]
         let parts = order.compactMap { label in counts[label].map { "\($0) \(label)" } }
         return "\(skipped.count) skipped: " + parts.joined(separator: ", ")
     }
@@ -383,6 +383,7 @@ enum OnboardingSummary {
         if reason.hasPrefix("draft") { return "draft" }
         if strip.skipReason == "size" || reason.hasPrefix("too large") { return "too large" }
         if reason.hasPrefix("already reviewed") { return "already reviewed" }
+        if reason == "bot author" { return "bots" }
         if reason.hasPrefix("over max_prs_per_run") { return "past the limit" }
         return "other"
     }

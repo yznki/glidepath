@@ -149,9 +149,11 @@ struct ScheduleView: View {
             now: store.snap.now,
             onAdd: { minute in model.addTime(store, hour: minute / 60, minute: minute % 60) },
             onMove: { time, minute in model.movePin(store, time, hour: minute / 60, minute: minute % 60) },
-            selected: model.selectedPin
+            selected: model.selectedPin,
+            focused: stripFocused
         )
         .focusable()
+        .focusEffectDisabled()
         .focused($stripFocused)
         .onKeyPress(phases: .down) { handleKey($0) }
     }

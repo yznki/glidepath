@@ -138,6 +138,7 @@ struct RepoPicker: View {
                     }
                 }
                 .focusable()
+                .focusEffectDisabled()
                 .focused($listFocused)
                 .focusedValue(\.repoPicker, RepoPickerActions(selectAll: { selectAll(rows, on: true) },
                                                               selectNone: { selectAll(rows, on: false) }))
@@ -181,7 +182,8 @@ struct RepoPicker: View {
             }
             .contentShape(Rectangle())
             .opacity(isLocked ? 0.6 : 1)
-            .background(cursor.slug == repo.slug ? WinTheme.active : Color.clear)
+            // Mail and Finder: the cursor row is full `active` while the list has focus, half while it does not.
+            .background(cursor.slug == repo.slug ? WinTheme.active.opacity(listFocused ? 1 : 0.5) : Color.clear)
         }
         .buttonStyle(.plain)
         .focusable(false)

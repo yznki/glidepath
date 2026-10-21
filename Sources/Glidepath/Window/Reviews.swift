@@ -22,6 +22,7 @@ struct ReviewsView: View {
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .focusable()
+                .focusEffectDisabled()
                 .focused($focus, equals: .detail)
         }
         .onAppear {
@@ -57,6 +58,10 @@ struct ReviewsView: View {
         if focus == nil { focus = .list }
         guard focus == .list else { return .ignored }
         if press.key == .return, mods.isEmpty {
+            if case .skipped(let sweepID, _, _)? = model.selectedEntry {
+                model.toggleSkipped(sweepID)
+                return .handled
+            }
             focus = .detail
             return .handled
         }
@@ -79,10 +84,10 @@ struct ReviewsView: View {
 
 
     private func step(_ move: ListMove) {
-        let rows = model.visible.flatMap(\.rows)
-        let current = rows.firstIndex { $0.id == model.selected?.id }
-        guard let i = ListNav.move(move, from: current, count: rows.count, groupStarts: model.groupStarts) else { return }
-        model.selectedID = rows[i].id
+        let entries = model.visible.flatMap(\.entries)
+        let current = entries.firstIndex { $0.id == model.selectedEntry?.id }
+        guard let i = ListNav.move(move, from: current, count: entries.count, groupStarts: model.groupStarts) else { return }
+        model.selectedID = entries[i].id
     }
 
     /// Letters typed within a second make one search string. The first title that starts with it is selected.
@@ -90,11 +95,12 @@ struct ReviewsView: View {
         let now = Date()
         model.typed = (now.timeIntervalSince(model.typedAt) < 1 ? model.typed : "") + letter
         model.typedAt = now
-        let rows = model.visible.flatMap(\.rows)
-        let titles = rows.map { $0.title ?? "#\($0.number)" }
-        let current = rows.firstIndex { $0.id == model.selected?.id }
+        let entries = model.visible.flatMap(\.entries)
+        // The summary line has no title, so no letters select it.
+        let titles = entries.map(\.title)
+        let current = entries.firstIndex { $0.id == model.selectedEntry?.id }
         if let i = ListNav.typeSelect(model.typed, titles: titles, from: current) {
-            model.selectedID = rows[i].id
+            model.selectedID = entries[i].id
         }
     }
 
@@ -131,8 +137,11 @@ struct ReviewsView: View {
                             .padding(.horizontal, WinMetrics.s20)
                             .padding(.top, WinMetrics.s16)
                             .padding(.bottom, WinMetrics.s4)
-                        ForEach(sweep.rows) { row in
-                            listRow(row)
+                        ForEach(sweep.entries) { entry in
+                            switch entry {
+                            case .row(let row): listRow(row)
+                            case .skipped(let sweepID, let text, let expanded): skippedRow(sweepID, text, expanded)
+                            }
                         }
                     }
                     if model.visible.isEmpty {
@@ -150,9 +159,45 @@ struct ReviewsView: View {
             }
             }
             .focusable()
+            .focusEffectDisabled()
             .focused($focus, equals: .list)
         }
         .padding(.top, WinMetrics.titlebarZone)
+    }
+
+    /// The selected line's fill: full `active` while the list has focus, half while it does not (Mail and Finder).
+    private var selectionFill: Color {
+        focus == .list ? WinTheme.active : WinTheme.active.opacity(0.5)
+    }
+
+    /// The muted line that folds a sweep's skipped PRs (All filter). A click or Return expands or collapses them in place.
+    private func skippedRow(_ sweepID: String, _ text: String, _ expanded: Bool) -> some View {
+        let entryID = ReviewEntry.skippedID(sweepID)
+        let on = model.selectedEntry?.id == entryID
+        return Button {
+            model.selectedID = entryID
+            model.toggleSkipped(sweepID)
+            focus = .list
+        } label: {
+            HStack(spacing: WinMetrics.s8) {
+                Text(text)
+                    .font(.system(size: 12))
+                    .foregroundStyle(WinTheme.muted)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(WinTheme.faint)
+            }
+            .padding(.horizontal, WinMetrics.s20)
+            .padding(.vertical, WinMetrics.s8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(on ? selectionFill : Color.clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .id(entryID)
     }
 
     private func segment(_ filter: ReviewFilter) -> WinSegmented<ReviewFilter>.Segment {
@@ -163,7 +208,7 @@ struct ReviewsView: View {
     /// A 56 pt row: title (13 medium) over meta (12 faint), the status in its fixed column. The selected row takes
     /// the active fill.
     private func listRow(_ row: ReviewRow) -> some View {
-        let on = model.selected?.id == row.id
+        let on = model.selectedEntry?.id == row.id
         return Button {
             model.selectedID = row.id
             focus = .list
@@ -188,7 +233,7 @@ struct ReviewsView: View {
             }
             .padding(.horizontal, WinMetrics.s20)
             .frame(height: 56)
-            .background(on ? WinTheme.active : Color.clear)
+            .background(on ? selectionFill : Color.clear)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -227,11 +272,7 @@ struct ReviewDetail: View {
     private var p: Palette { Palette(scheme) }
 
     /// The row as the store's post, discard and review actions see it.
-    private var strip: Strip {
-        Strip(repo: row.repo, number: row.number, author: row.author, title: row.title, reason: row.reason,
-              stage: 4, active: false, verdict: row.verdict, tokens: row.tokens, draft: row.draft,
-              skipReason: row.skipReason, changedLines: row.changedLines)
-    }
+    private var strip: Strip { row.strip }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -314,7 +355,7 @@ struct ReviewDetail: View {
 
     private var verdictWord: String {
         if row.tooLarge { return "Too large" }
-        if row.verdict == .skipped { return "Skipped" }
+        if row.verdict == .skipped { return row.reason.map { "Skipped · \($0)" } ?? "Skipped" }
         if text?.event == "COMMENT" { return "Comment" }
         switch row.verdict {
         case .changes: return "Changes requested"
@@ -412,7 +453,8 @@ struct ReviewDetail: View {
                 }
             }
         } else if row.verdict == .skipped {
-            note(row.reason ?? "Skipped")
+            // The verdict bar already says why it was skipped.
+            EmptyView()
         } else {
             note("Review text not recorded (before 1.2)", faint: true)
         }
@@ -449,11 +491,14 @@ struct ReviewDetail: View {
 
     private var footer: some View {
         HStack(spacing: WinMetrics.s16) {
-            if let duration = row.duration {
-                Text("Reviewed in \(Self.duration(duration))")
-            }
-            if row.tokens > 0 {
-                Text("\(compactTokens(row.tokens)) tokens")
+            // A skipped PR was never reviewed, so it has no duration or tokens.
+            if row.verdict != .skipped {
+                if let duration = row.duration {
+                    Text("Reviewed in \(Self.duration(duration))")
+                }
+                if row.tokens > 0 {
+                    Text("\(compactTokens(row.tokens)) tokens")
+                }
             }
             Spacer(minLength: 0)
             if RepoConfig.isValidSlug(row.repo) {
@@ -564,7 +609,8 @@ enum ReviewFilter: String, CaseIterable, Hashable {
 
     func includes(_ row: ReviewRow) -> Bool {
         switch self {
-        case .all: return true
+        // Skipped PRs are listed under the Skipped segment, except too-large ones, which offer Review anyway.
+        case .all: return row.verdict != .skipped || row.tooLarge
         case .changes: return row.verdict == .changes
         case .drafts: return row.draft
         case .skipped: return row.verdict == .skipped
@@ -597,6 +643,13 @@ struct ReviewRow: Identifiable {
     /// The key the store uses for a PR's draft actions.
     var stripID: String { "\(repo)#\(number)" }
     var tooLarge: Bool { skipReason == "size" }
+    /// A skip that the All filter folds into its sweep's summary line: every skip but a too-large one.
+    var isFoldedSkip: Bool { verdict == .skipped && !tooLarge }
+    /// The row as the store's post, discard and skip summary see it.
+    var strip: Strip {
+        Strip(repo: repo, number: number, author: author, title: title, reason: reason, stage: 4, active: false,
+              verdict: verdict, tokens: tokens, draft: draft, skipReason: skipReason, changedLines: changedLines)
+    }
 
     var status: WinStatus.Kind? {
         if tooLarge { return .tooLarge }
@@ -625,13 +678,53 @@ struct ReviewRow: Identifiable {
     }
 }
 
+/// One line of the list: a PR's row, or a sweep's summary of its skipped PRs (All filter).
+enum ReviewEntry: Identifiable {
+    case row(ReviewRow)
+    case skipped(sweepID: String, text: String, expanded: Bool)
+
+    static func skippedID(_ sweepID: String) -> String { "skipped|\(sweepID)" }
+
+    var id: String {
+        switch self {
+        case .row(let row): return row.id
+        case .skipped(let sweepID, _, _): return Self.skippedID(sweepID)
+        }
+    }
+
+    var row: ReviewRow? {
+        if case .row(let row) = self { return row }
+        return nil
+    }
+
+    /// The row's title for type-to-select. The summary line has none.
+    var title: String {
+        guard let row else { return "" }
+        return row.title ?? "#\(row.number)"
+    }
+}
+
 /// One sweep (or one review run), with its rows. The title is "Today, 1:00 PM sweep".
 struct ReviewSweep: Identifiable {
     let id: String
     let started: Date
     let isReview: Bool
     let duration: TimeInterval?
+    /// The rows shown, in sweep order.
     var rows: [ReviewRow]
+    /// The skipped rows the All filter folds into the summary line. Empty under the other filters.
+    var folded: [ReviewRow] = []
+    /// Whether the folded rows are listed under the summary line.
+    var expanded = false
+
+    /// The sweep's lines: its rows, then the summary of its folded skips, then those skips when expanded.
+    var entries: [ReviewEntry] {
+        var out = rows.map(ReviewEntry.row)
+        guard let text = OnboardingSummary.skippedLine(folded.map(\.strip)) else { return out }
+        out.append(.skipped(sweepID: id, text: text, expanded: expanded))
+        if expanded { out += folded.map(ReviewEntry.row) }
+        return out
+    }
 
     /// `posted` gives when a PR's review was posted, from its text record: the text store in the app, the fixture in
     /// snapshots. The text itself is not kept here.
@@ -656,12 +749,15 @@ struct ReviewSweep: Identifiable {
         }
     }
 
-    init(id: String, started: Date, isReview: Bool, duration: TimeInterval?, rows: [ReviewRow]) {
+    init(id: String, started: Date, isReview: Bool, duration: TimeInterval?, rows: [ReviewRow],
+         folded: [ReviewRow] = [], expanded: Bool = false) {
         self.id = id
         self.started = started
         self.isReview = isReview
         self.duration = duration
         self.rows = rows
+        self.folded = folded
+        self.expanded = expanded
     }
 
     var title: String {
@@ -677,9 +773,16 @@ struct ReviewSweep: Identifiable {
         return "\(day), \(HeaderCopy.clock(started)) \(isReview ? "review" : "sweep")"
     }
 
-    func filtered(by filter: ReviewFilter) -> ReviewSweep {
-        ReviewSweep(id: id, started: started, isReview: isReview, duration: duration,
-                    rows: rows.filter { filter.includes($0) })
+    /// Under All, the skipped PRs (but the too-large ones) are folded into the summary. The other filters show their rows.
+    static func split(_ rows: [ReviewRow], filter: ReviewFilter) -> (shown: [ReviewRow], folded: [ReviewRow]) {
+        guard filter == .all else { return (rows.filter { filter.includes($0) }, []) }
+        return (rows.filter { !$0.isFoldedSkip }, rows.filter(\.isFoldedSkip))
+    }
+
+    func filtered(by filter: ReviewFilter, expanded: Bool) -> ReviewSweep {
+        let split = Self.split(rows, filter: filter)
+        return ReviewSweep(id: id, started: started, isReview: isReview, duration: duration,
+                           rows: split.shown, folded: split.folded, expanded: expanded)
     }
 }
 
@@ -690,21 +793,28 @@ final class ReviewsModel: ObservableObject {
 
     @Published var filter: ReviewFilter = .all
     @Published var selectedID: String?
+    /// The sweeps whose skipped summary is expanded.
+    @Published private(set) var expanded: Set<String> = []
     @Published private(set) var sweeps: [ReviewSweep] = []
     private var loadTask: Task<Void, Never>?
     /// Type-to-select: the letters typed so far, and when the last one came.
     var typed = ""
     var typedAt = Date.distantPast
 
-    /// The index of each visible sweep's first row, in the flat list. Group jumps (⌥↑ ⌥↓) move between these.
+    /// The index of each visible sweep's first line, in the flat list. Group jumps (⌥↑ ⌥↓) move between these.
     var groupStarts: [Int] {
         var starts: [Int] = []
         var index = 0
         for sweep in visible {
             starts.append(index)
-            index += sweep.rows.count
+            index += sweep.entries.count
         }
         return starts
+    }
+
+    /// Expands or collapses one sweep's skipped summary.
+    func toggleSkipped(_ sweepID: String) {
+        if expanded.contains(sweepID) { expanded.remove(sweepID) } else { expanded.insert(sweepID) }
     }
 
     /// Keeps the newest 50 sweeps. Live, the run files are read off the main actor, after a 300 ms pause: a burst of
@@ -740,18 +850,22 @@ final class ReviewsModel: ObservableObject {
         }
     }
 
-    /// The sweeps with the filter applied. Sweeps left empty are dropped.
+    /// The sweeps with the filter applied. Sweeps left with no lines are dropped.
     var visible: [ReviewSweep] {
-        sweeps.map { $0.filtered(by: filter) }.filter { !$0.rows.isEmpty }
+        sweeps.map { $0.filtered(by: filter, expanded: expanded.contains($0.id)) }.filter { !$0.entries.isEmpty }
     }
 
     func count(_ filter: ReviewFilter) -> Int {
         sweeps.reduce(0) { total, sweep in total + sweep.rows.filter { filter.includes($0) }.count }
     }
 
-    /// The selected row, or the first visible row when the selection is filtered out.
-    var selected: ReviewRow? {
-        let rows = visible.flatMap(\.rows)
-        return rows.first { $0.id == selectedID } ?? rows.first
+    /// The selected line, or the first row when the selection is filtered out. Nil when the summary line is selected.
+    var selectedEntry: ReviewEntry? {
+        let entries = visible.flatMap(\.entries)
+        if let selectedID, let hit = entries.first(where: { $0.id == selectedID }) { return hit }
+        return entries.first { $0.row != nil }
     }
+
+    /// The selected row. Nil while the selected line is a summary.
+    var selected: ReviewRow? { selectedEntry?.row }
 }
