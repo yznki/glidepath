@@ -32,6 +32,12 @@ final class LaunchdTests: XCTestCase {
         XCTAssertEqual(p.plistFile, "/fake/home/Library/LaunchAgents/dev.reviewradar.run.plist")
     }
 
+    func testGitHubConfigStaysOnRealHomeUnlessSet() {
+        let env = ["XDG_CONFIG_HOME": "/x/cfg"]
+        XCTAssertEqual(Runner.pinGitHubConfig(env, home: "/fake/home")["GH_CONFIG_DIR"], "/fake/home/.config/gh")
+        XCTAssertEqual(Runner.pinGitHubConfig(["GH_CONFIG_DIR": "/mine"], home: "/fake/home")["GH_CONFIG_DIR"], "/mine")
+    }
+
     func testRelativeOrEmptyXDGValuesAreIgnored() {
         let p = Paths(home: "/fake/home", env: ["XDG_CONFIG_HOME": "relative/cfg", "XDG_STATE_HOME": ""])
         XCTAssertEqual(p.configFile, "/fake/home/.config/review-radar/config.toml")

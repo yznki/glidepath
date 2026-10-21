@@ -170,8 +170,16 @@ final class Runner {
     }
 
     /// The launchd job's PATH when it is installed, so `run now` from the app finds claude and gh.
+    /// gh reads its config from $XDG_CONFIG_HOME/gh when that is set, which would hide the user's sign-in
+    /// when review-radar's config folder is moved. Pin gh to the real HOME location unless told otherwise.
+    static func pinGitHubConfig(_ env: [String: String], home: String) -> [String: String] {
+        var out = env
+        if out["GH_CONFIG_DIR"] == nil { out["GH_CONFIG_DIR"] = home + "/.config/gh" }
+        return out
+    }
+
     static func environment(_ paths: Paths) -> [String: String] {
-        var env = ProcessInfo.processInfo.environment
+        var env = pinGitHubConfig(ProcessInfo.processInfo.environment, home: paths.home)
         if let data = FileManager.default.contents(atPath: paths.plistFile),
            let dict = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
            let vars = dict["EnvironmentVariables"] as? [String: String],
