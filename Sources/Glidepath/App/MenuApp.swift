@@ -46,6 +46,8 @@ enum Snapshotter {
             ("empty", Fixtures.empty(now)),
             ("first-run", Fixtures.firstRun(now)),
             ("hover", Fixtures.hover(now)),
+            ("update", Fixtures.update(now)),
+            ("updating", Fixtures.updating(now)),
         ]
         for (name, var snap) in states {
             snap.repoCount = 2
@@ -81,9 +83,9 @@ enum Snapshotter {
 
     /// The glyph family on a light and a dark menu bar ground: a 4x row and a 1x row (the real size), in one PNG.
     static func writeMenuBar(to url: URL) {
-        let states: [(String, GlyphState)] = [
-            ("idle", .idle), ("running", .running(active: 3)), ("changes", .changesWaiting(count: 2)),
-            ("paused", .paused), ("failed", .failed),
+        let states: [(String, GlyphState, Bool)] = [
+            ("idle", .idle, false), ("running", .running(active: 3), false), ("changes", .changesWaiting(count: 2), false),
+            ("paused", .paused, false), ("failed", .failed, false), ("update", .idle, true),
         ]
         let strip = VStack(alignment: .leading, spacing: 0) {
             bar(states, dark: false)
@@ -115,14 +117,14 @@ enum Snapshotter {
         return renderer.cgImage
     }
 
-    private static func bar(_ states: [(String, GlyphState)], dark: Bool) -> some View {
+    private static func bar(_ states: [(String, GlyphState, Bool)], dark: Bool) -> some View {
         let ground = dark ? Color(hex: "1E1E1E") : Color(hex: "ECECEC")
         let ink = dark ? NSColor.white : NSColor.black
         return HStack(spacing: 28) {
             ForEach(0..<states.count, id: \.self) { i in
-                let (label, state) = states[i]
+                let (label, state, update) = states[i]
                 VStack(spacing: 4) {
-                    Image(nsImage: MenuGlyph.image(state, progress: 0.45, ink: ink, template: false))
+                    Image(nsImage: MenuGlyph.image(state, progress: 0.45, ink: ink, template: false, update: update))
                     Text(label).font(.system(size: 9)).foregroundColor(dark ? .white : .black).fixedSize()
                 }
             }
@@ -227,6 +229,19 @@ enum Fixtures {
     static func hover(_ now: Date) -> Snapshot {
         var s = running(now)
         s.hovered = "lumen/api#1113"
+        return s
+    }
+
+    /// A newer release is out: the dot on the glyph, the line above the footer, and the first menu item.
+    static func update(_ now: Date) -> Snapshot {
+        var s = idleChanges(now)
+        s.update = UpdateCache(checked: now, latest: "1.1.0", url: "https://github.com/yznki/glidepath/releases/tag/v1.1.0")
+        return s
+    }
+
+    static func updating(_ now: Date) -> Snapshot {
+        var s = update(now)
+        s.updatePhase = .updating
         return s
     }
 }

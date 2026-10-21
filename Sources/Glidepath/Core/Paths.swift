@@ -33,6 +33,7 @@ struct Paths {
     var runsDir: String { stateDir + "/runs" }
     var currentLink: String { stateDir + "/current" }
     var pausedFile: String { stateDir + "/paused" }
+    var updateFile: String { stateDir + "/update.json" }
     var lockFile: String { stateDir + "/run.lock" }
     /// The running sweep's process id, which is also its process group: Stop signals the whole group.
     var pidFile: String { stateDir + "/run.pid" }

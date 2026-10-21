@@ -36,6 +36,12 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(r.gitnexus, .off)
     }
 
+    func testCheckUpdatesDefaultsOnAndParses() throws {
+        XCTAssertTrue(try Config.parse("schedule = [\"07:00\"]\n", home: home).checkUpdates)
+        XCTAssertFalse(try Config.parse("check_updates = false\n", home: home).checkUpdates)
+        XCTAssertThrowsError(try Config.parse("check_updates = \"no\"\n", home: home))
+    }
+
     func testDefaults() throws {
         let c = try Config.parse("[[repo]]\nslug = \"acme/web\"\n", home: home)
         XCTAssertEqual(c.schedule.map(\.text), ["07:00", "13:00", "19:00"])

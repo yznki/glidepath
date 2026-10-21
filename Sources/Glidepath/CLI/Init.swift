@@ -5,6 +5,7 @@ import Foundation
 enum InitCommand {
     static func main(_ args: [String]) -> Int32 {
         let a = Args(args, valued: ["--repo", "--clone"])
+        if a.has("--refresh") { return refresh() }
         let paths = Paths()
         let fm = FileManager.default
 
@@ -74,7 +75,7 @@ enum InitCommand {
 
         if let app = findApp(from: binary) {
             do {
-                try linkApp(app, at: paths.appLink)
+                try linkApp(InstallKind.appTarget(binary: binary, app: app), at: paths.appLink)
                 print("Linked \(paths.appLink)")
             } catch {
                 eprint("could not link the app: \(error.localizedDescription)")
@@ -98,6 +99,55 @@ enum InitCommand {
         print(status == 0 ? "Done. Scheduled reviews will post with posting = \"\(config.repos[0].posting.rawValue)\"."
                           : "Dry run failed; fix the issue above, then run glidepath doctor.")
         return status == 0 ? 0 : 1
+    }
+
+    /// `init --refresh`, run by `glidepath update` from the new binary after a brew upgrade. Non-interactive: the
+    /// skill, the app link and the job are brought in line with this binary. Config, state and pause are left alone.
+    static func refresh() -> Int32 {
+        let paths = Paths()
+        let binary = binaryPath()
+        let config: Config
+        do {
+            config = try Config.load(paths)
+        } catch {
+            eprint("\(error)")
+            return 1
+        }
+        guard let skill = findInstalledDir(relative: "share/glidepath", fallback: "skill/glidepath",
+                                           requiredFile: "SKILL.md", from: binary) else {
+            eprint("skill files not found next to \(binary)")
+            return 1
+        }
+        do {
+            try installSkill(from: skill, to: paths.skillDir)
+            print("Installed skill to \(paths.skillDir)")
+        } catch {
+            eprint("could not install skill: \(error)")
+            return 1
+        }
+        if let app = findApp(from: binary) {
+            do {
+                try linkApp(InstallKind.appTarget(binary: binary, app: app), at: paths.appLink)
+                print("Linked \(paths.appLink)")
+            } catch {
+                eprint("could not link the app: \(error.localizedDescription)")
+            }
+        }
+        // The job is rewritten (and reloaded) only when its content would change.
+        let path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+        let wanted = try? Launchd.data(binary: binary, schedule: config.schedule, path: path, logFile: paths.logFile)
+        if wanted != nil && wanted == (try? Data(contentsOf: URL(fileURLWithPath: paths.plistFile))) {
+            print("Scheduled job is current")
+        } else {
+            do {
+                try installJob(paths: paths, config: config, binary: binary)
+                print("Rewrote the scheduled job at \(paths.plistFile)")
+            } catch {
+                eprint("could not install the scheduled job: \(error)")
+                return 1
+            }
+        }
+        return 0
     }
 
     /// Directory of the binary that is running now, with symlinks resolved.

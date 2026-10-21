@@ -114,6 +114,7 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             list
+            updateLine
             footer
         }
         .frame(width: Metrics.popoverWidth)
@@ -266,6 +267,80 @@ struct PopoverView: View {
         }
     }
 
+    // MARK: Update
+
+    /// One line above the footer: an update on offer, its progress or failure, or the result of "Check for updates…".
+    @ViewBuilder
+    private var updateLine: some View {
+        if store.snap.updatePhase == .updating, let update = store.availableUpdate {
+            updateRow {
+                HStack(spacing: 6) {
+                    if offscreen {
+                        // ImageRenderer draws ProgressView as a prohibition sign; a symbol stands in for it.
+                        Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 11))
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text("Updating to \(update.latest)…")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(p.secondary)
+                }
+            }
+        } else if store.snap.updatePhase == .failed {
+            updateRow {
+                HStack(spacing: 0) {
+                    Text("Update failed · ")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(p.error)
+                    openLogLink
+                }
+            }
+        } else if let note = store.snap.updateNote {
+            updateRow {
+                Text(note)
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.secondary)
+            }
+        } else if store.snap.updateChecking {
+            updateRow {
+                Text("Checking for updates…")
+                    .font(.system(size: 12))
+                    .foregroundStyle(p.secondary)
+            }
+        } else if let update = store.availableUpdate {
+            updateRow {
+                HStack(spacing: 0) {
+                    Text("Glidepath \(update.latest) is available")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(p.ink)
+                    Spacer(minLength: 8)
+                    linkButton("What's new") {
+                        if let url = URL(string: update.url) { NSWorkspace.shared.open(url) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func updateRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Metrics.inset)
+            .padding(.top, 12)
+    }
+
+    @ViewBuilder
+    private func linkButton(_ label: String, _ action: @escaping () -> Void) -> some View {
+        if offscreen {
+            Text(label).font(.system(size: 12, weight: .medium)).foregroundStyle(p.doingText)
+        } else {
+            Button(label, action: action)
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(p.doingText)
+        }
+    }
+
     // MARK: Footer
 
     /// 12 pt above the footer row and 12 pt below it: the popover ends where the buttons end.
@@ -280,11 +355,18 @@ struct PopoverView: View {
                     .foregroundStyle(p.ink)
             } else {
                 Menu {
-                    Button("Glidepath 1.0") {}
-                        .disabled(true)
+                    if let update = store.availableUpdate {
+                        Button("Update to \(update.latest)…") { confirmAndUpdate(update) }
+                            .disabled(store.snap.updatePhase == .updating)
+                    } else {
+                        Button("Glidepath \(Version.current)") {}
+                            .disabled(true)
+                    }
                     Divider()
                     Button(store.snap.paused ? "Resume" : "Pause") { store.togglePause() }
                     Button("Open log") { store.openLog() }
+                    Button("Check for updates…") { store.checkForUpdates(manual: true) }
+                        .disabled(store.snap.updateChecking)
                     if let tokens = store.snap.run?.tokens, tokens > 0 {
                         Divider()
                         Button("Last run: \(compactTokens(tokens)) tokens") {}
@@ -372,6 +454,22 @@ struct PopoverView: View {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
         store.runNow()
+    }
+
+    /// Homebrew installs update after a confirmation; anything else opens the release page.
+    private func confirmAndUpdate(_ update: UpdateCache) {
+        guard store.updatesWithBrew else {
+            if let url = URL(string: update.url) { NSWorkspace.shared.open(url) }
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Update Glidepath to \(update.latest)?"
+        alert.informativeText = "Homebrew rebuilds it from source, which takes about a minute. The app restarts when it's done."
+            + (store.snap.running ? " A sweep is running, so the update starts when it ends." : "")
+        alert.addButton(withTitle: "Update")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        store.startUpdate()
     }
 
     private func confirmAndStop() {

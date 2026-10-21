@@ -122,8 +122,14 @@ The primary button on the left (small, bordered unless noted):
 | first run (no run yet) | "Edit repos…", prominent. Opens the config in the default editor, creating it from the commented template if missing |
 | otherwise | "Run now" (disabled when the schedule is not installed) |
 
-On the right, the ellipsis menu: a disabled "Glidepath 1.0" title, Pause or Resume, Open log, the last run's tokens
-(disabled), Open at login (a native checkmark), and Quit Glidepath (⌘Q).
+On the right, the ellipsis menu: a disabled "Glidepath 1.0.3" title (or "Update to 1.1.0…" when a newer release is out),
+Pause or Resume, Open log, "Check for updates…", the last run's tokens (disabled), Open at login (a native checkmark),
+and Quit Glidepath (⌘Q).
+
+When a newer release is out, one line sits above the footer: "Glidepath 1.1.0 is available" (12 pt, 500) with "What's
+new" in the doing colour, which opens the release page. While an update runs it reads "Updating to 1.1.0…" with a small
+indeterminate spinner. A failed update reads "Update failed · Open log" in the error colour. A manual check reports its
+result on this line for 4 s: "You're on the latest version", the available line, or "Couldn't check for updates".
 
 ## 6. Colour and type
 
@@ -150,6 +156,9 @@ T = (11.5, 6.5), where the dot sits (radius 1.1 pt). The slot is cut with a clea
 | failed | idle mark with a 4 pt cross (1.5 pt strokes, round caps) centred on T in place of the dot; the slot stays cut |
 
 Counts are 12 pt semibold, the same in every state. Changes waiting clears when the popover opens after the run ends.
+
+An update on offer adds a 3 pt dot centred at (16, 16), at the top right, in template ink. It appears in every state
+and clears when the app is on the latest release.
 
 ## 8. App icon
 

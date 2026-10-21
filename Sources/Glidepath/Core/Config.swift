@@ -58,6 +58,8 @@ struct Config: Equatable {
     var schedule: [ScheduleTime]
     var limits: Limits
     var repos: [RepoConfig]
+    /// Automatic update checks. Off disables them; "Check for updates…" and `glidepath update` still work.
+    var checkUpdates = true
 
     static func load(_ paths: Paths) throws -> Config {
         guard let text = try? String(contentsOfFile: paths.configFile, encoding: .utf8) else {
@@ -73,7 +75,7 @@ struct Config: Equatable {
         } catch let e as TOMLError {
             throw ConfigError(message: "config.toml: \(e)")
         }
-        try checkKeys(doc, allowed: ["schedule", "limits", "repo"], where: "top level")
+        try checkKeys(doc, allowed: ["schedule", "limits", "repo", "check_updates"], where: "top level")
 
         let scheduleText = try strings(doc["schedule"], key: "schedule") ?? defaultSchedule
         guard !scheduleText.isEmpty else { throw ConfigError(message: "schedule must list at least one time") }
@@ -103,7 +105,8 @@ struct Config: Equatable {
                 repos.append(repo)
             }
         }
-        return Config(schedule: schedule, limits: limits, repos: repos)
+        let checkUpdates = try bool(doc["check_updates"], key: "check_updates") ?? true
+        return Config(schedule: schedule, limits: limits, repos: repos, checkUpdates: checkUpdates)
     }
 
     private static func parseRepo(_ t: [String: TOMLValue], home: String) throws -> RepoConfig {
@@ -154,6 +157,7 @@ struct Config: Equatable {
     /// Renders the config in the same subset `parse` reads. Used by `init`.
     func render() -> String {
         var out = "schedule = [" + schedule.map { "\"\($0.text)\"" }.joined(separator: ", ") + "]\n"
+        out += "check_updates = \(checkUpdates)\n"
         out += "\n[limits]\n"
         out += "max_prs_per_run = \(limits.maxPRsPerRun)\n"
         out += "max_changed_lines = \(limits.maxChangedLines)\n"
@@ -205,6 +209,12 @@ private func strings(_ v: TOMLValue?, key: String) throws -> [String]? {
         guard case .string(let s) = item else { throw ConfigError(message: "\(key) must be a list of strings") }
         return s
     }
+}
+
+private func bool(_ v: TOMLValue?, key: String) throws -> Bool? {
+    guard let v else { return nil }
+    guard case .bool(let b) = v else { throw ConfigError(message: "\(key) must be true or false") }
+    return b
 }
 
 private func positiveInt(_ v: TOMLValue?, key: String) throws -> Int? {

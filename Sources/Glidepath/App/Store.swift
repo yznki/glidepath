@@ -19,6 +19,11 @@ struct Strip: Identifiable, Equatable {
     var id: String { "\(repo)#\(number)" }
 }
 
+/// The menu bar app's own update work. `updating` runs `glidepath update --wait`; `failed` stays until the next try.
+enum UpdatePhase: Equatable {
+    case idle, updating, failed
+}
+
 /// Everything the popover shows. `Store` fills it from disk; snapshot rendering fills it with fixtures.
 struct Snapshot {
     var run: RunState?
@@ -31,6 +36,13 @@ struct Snapshot {
     var schedule: [ScheduleTime] = []
     var repoCount = 0
     var hovered: String?
+    /// The cached latest release. The popover offers it when it is newer than this build.
+    var update: UpdateCache?
+    var checkUpdates = true
+    var updateChecking = false
+    var updatePhase: UpdatePhase = .idle
+    /// The result of "Check for updates…", shown for 4 s.
+    var updateNote: String?
 }
 
 /// Watches the state folders with DispatchSource, so the popover updates on each write without polling.
@@ -91,6 +103,7 @@ final class Store: ObservableObject {
     var popoverOpen = false
     private var watcher: DirectoryWatcher?
     private var acknowledgedRunID: String?
+    private var loggedUpdateFailure = false
 
     /// `snapshot == nil` is the live app: registers at login and watches the state folders.
     /// A non-nil snapshot is fixed state for snapshot rendering.
@@ -114,9 +127,26 @@ final class Store: ObservableObject {
             MainActor.assumeIsolated { Store.shared.reload() }
         }
         reload()
+        checkIfDue(maxAge: Updates.maxAge)
+        Timer.scheduledTimer(withTimeInterval: Updates.maxAge, repeats: true) { _ in
+            MainActor.assumeIsolated { Store.shared.checkIfDue(maxAge: Updates.maxAge) }
+        }
     }
 
     var strips: [Strip] { Store.strips(from: snap.run) }
+
+    /// The cached release, when it is newer than this build.
+    var availableUpdate: UpdateCache? {
+        guard let update = snap.update, Updates.isNewer(update.latest, than: Version.current) else { return nil }
+        return update
+    }
+
+    /// A Homebrew install updates in place; anything else sends the user to the release page.
+    var updatesWithBrew: Bool {
+        guard let path = Bundle.main.executablePath else { return false }
+        if case .homebrew = InstallKind.of(binary: path) { return true }
+        return false
+    }
     var errorText: String? { actionError ?? snap.run.flatMap { Presentation.failureMessage($0) } }
     var headerKind: HeaderKind { Presentation.headerKind(snap, now: Date()) }
 
@@ -157,6 +187,11 @@ final class Store: ObservableObject {
         s.schedule = config?.schedule ?? []
         s.repoCount = config?.repos.count ?? 0
         s.hovered = snap.hovered
+        s.update = Updates.cached(paths)
+        s.checkUpdates = config?.checkUpdates ?? true
+        s.updateChecking = snap.updateChecking
+        s.updatePhase = snap.updatePhase
+        s.updateNote = snap.updateNote
 
         let landed = Set(Store.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
         if popoverOpen && !landed.isEmpty {
@@ -178,6 +213,7 @@ final class Store: ObservableObject {
             UserDefaults.standard.set(run.id, forKey: Store.ackKey)
         }
         reload()
+        checkIfDue(maxAge: Updates.popoverMaxAge)
     }
 
     func popoverClosed() {
@@ -226,7 +262,17 @@ final class Store: ObservableObject {
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = ["run"]
         process.environment = Runner.environment(paths)
-        // Append to the log. createFile would truncate it.
+        attachLog(process)
+        do {
+            try process.run()
+            actionError = nil
+        } catch {
+            actionError = "run now: \(error.localizedDescription)"
+        }
+    }
+
+    /// Points a child's stdout and stderr at the log, appending. createFile would truncate it.
+    private func attachLog(_ process: Process) {
         try? FileManager.default.createDirectory(atPath: (paths.logFile as NSString).deletingLastPathComponent,
                                                  withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: paths.logFile) {
@@ -237,11 +283,87 @@ final class Store: ObservableObject {
             process.standardOutput = log
             process.standardError = log
         }
+    }
+
+    // MARK: Updates
+
+    /// Checks GitHub off the main thread. A manual check reports what it found for 4 s; an automatic one is silent
+    /// except for its first failure, which goes to the log.
+    func checkForUpdates(manual: Bool) {
+        guard !snap.updateChecking, snap.updatePhase != .updating else { return }
+        snap.updateChecking = true
+        let paths = self.paths
+        Task {
+            let result = await Task.detached { Result { try Updates.fetchLatest() } }.value
+            snap.updateChecking = false
+            switch result {
+            case .success(let release):
+                try? Updates.store(UpdateCache(checked: Date(), latest: release.version, url: release.url), paths)
+                reload()
+                if manual {
+                    flashNote(availableUpdate == nil ? "You're on the latest version" : "Glidepath \(release.version) is available")
+                }
+            case .failure(let error):
+                if !loggedUpdateFailure {
+                    loggedUpdateFailure = true
+                    Updates.log("\(error)", paths)
+                }
+                if manual { flashNote("Couldn't check for updates") }
+            }
+        }
+    }
+
+    /// Automatic checks run when the cache is missing or older than `maxAge`, and only while checks are on.
+    func checkIfDue(maxAge: TimeInterval) {
+        guard snap.checkUpdates, Updates.isDue(snap.update, now: Date(), maxAge: maxAge) else { return }
+        checkForUpdates(manual: false)
+    }
+
+    private func flashNote(_ text: String) {
+        snap.updateNote = text
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self, self.snap.updateNote == text else { return }
+            self.snap.updateNote = nil
+        }
+    }
+
+    /// Runs `glidepath update --wait`. It waits for a sweep to end, upgrades through brew and exits; the app then
+    /// relaunches from its link, which the upgrade has pointed at the new version.
+    func startUpdate() {
+        guard let binary = Bundle.main.executablePath else {
+            snap.updatePhase = .failed
+            return
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: binary)
+        process.arguments = ["update", "--wait"]
+        attachLog(process)
+        process.terminationHandler = { p in
+            let ok = p.terminationStatus == 0
+            DispatchQueue.main.async { MainActor.assumeIsolated { Store.shared.finishUpdate(ok: ok) } }
+        }
         do {
             try process.run()
-            actionError = nil
+            snap.updatePhase = .updating
         } catch {
-            actionError = "run now: \(error.localizedDescription)"
+            snap.updatePhase = .failed
+        }
+    }
+
+    private func finishUpdate(ok: Bool) {
+        guard ok else {
+            snap.updatePhase = .failed
+            return
+        }
+        // The sleep gives the upgrade's new link time to settle before `open` reads it.
+        let relaunch = Process()
+        relaunch.executableURL = URL(fileURLWithPath: "/bin/sh")
+        relaunch.arguments = ["-c", "sleep 1; /usr/bin/open -n \"$0\"", paths.appLink]
+        do {
+            try relaunch.run()
+            NSApp.terminate(nil)
+        } catch {
+            snap.updatePhase = .failed
         }
     }
 

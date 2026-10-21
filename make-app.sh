@@ -19,6 +19,11 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$ICONSET"
 
 cp "$BIN" "$APP/Contents/MacOS/glidepath"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+# The version comes from the Swift constant, so the bundle cannot drift from `glidepath --version`.
+VERSION=$(sed -n 's/.*static let current = "\(.*\)".*/\1/p' Sources/Glidepath/Core/Version.swift)
+[[ -n "$VERSION" ]] || { echo "no version found in Sources/Glidepath/Core/Version.swift" >&2; exit 1; }
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $VERSION" \
+    "$APP/Contents/Info.plist"
 
 # App icon: the iconset comes from the brand PNGs with sips; iconutil packs the .icns.
 sips -z 16 16 "$SMALL" --out "$ICONSET/icon_16x16.png" >/dev/null

@@ -138,3 +138,10 @@ Reviews appear under your GitHub account. "Run now" in the app asks for confirma
 The run file holds PR numbers, titles, authors, verdicts and token counts. It holds no tokens, and the session
 transcript stays in Claude Code's own folder.
 
+## Update check
+
+The update check is the one network call glidepath makes itself. It is an unauthenticated GET to GitHub's latest-release
+endpoint (`api.github.com/repos/yznki/glidepath/releases/latest`), with a 10 s timeout. No token or other credential is
+sent, and the reply is kept in `update.json` in the state folder. `check_updates = false` turns the automatic checks off.
+Installing an update runs `brew`, which fetches from Homebrew and GitHub as it always does.
+

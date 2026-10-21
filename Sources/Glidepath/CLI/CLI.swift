@@ -32,6 +32,8 @@ enum CLI {
 
     Usage:
       glidepath init                      set up config, skill, schedule, app; ends with a dry run
+      glidepath init --refresh            re-link the skill, app and job from this binary (no prompts, no dry run)
+      glidepath update [--wait]           update a Homebrew install to the latest release (--wait: wait for a sweep to end)
       glidepath run [--dry-run] [--repo owner/name]
                                              run the review pipeline now
       glidepath state set --run ID --repo owner/name --pr N [--stage gather|review|check] [--reason TEXT]
@@ -60,8 +62,9 @@ enum CLI {
         case "resume": return setPaused(false)
         case "doctor": return Doctor.main()
         case "uninstall": return Uninstall.main(rest)
+        case "update": return UpdateCommand.main(rest)
         case "--version", "version":
-            print("glidepath 1.0.2")
+            print("glidepath \(Version.current)")
             return 0
         case "-h", "--help", "help":
             print(usage)
@@ -290,6 +293,83 @@ enum Uninstall {
         } catch {
             eprint("could not remove \(label) at \(path): \(error.localizedDescription)")
         }
+    }
+}
+
+/// `glidepath update`: checks GitHub. A Homebrew install is upgraded through brew, then the new binary runs
+/// `init --refresh`. A source build is told how to update by hand.
+enum UpdateCommand {
+    static func main(_ args: [String]) -> Int32 {
+        let wait = args == ["--wait"]
+        guard args.isEmpty || wait else {
+            eprint("usage: glidepath update [--wait]")
+            return 2
+        }
+        let paths = Paths()
+        let release: Release
+        do {
+            release = try Updates.fetchLatest()
+        } catch {
+            eprint("could not check for updates: \(error)")
+            return 1
+        }
+        try? Updates.store(UpdateCache(checked: Date(), latest: release.version, url: release.url), paths)
+        guard Updates.isNewer(release.version, than: Version.current) else {
+            print("glidepath \(Version.current) is the latest")
+            return 0
+        }
+        guard case .homebrew(let prefix) = InstallKind.of(binary: InitCommand.binaryPath()) else {
+            print("glidepath \(release.version) is out: \(release.url)")
+            print("This build came from source. Update with: git pull && swift build -c release && ./make-app.sh")
+            return 0
+        }
+        // Held through the upgrade, so a scheduled sweep cannot start on a half-replaced install.
+        let lock: RunLock
+        do {
+            guard let held = try acquireLock(wait: wait, paths.lockFile) else {
+                eprint("A review run is in progress; try again when it ends")
+                return 1
+            }
+            lock = held
+        } catch {
+            eprint("\(error)")
+            return 1
+        }
+        return withExtendedLifetime(lock) { upgrade(prefix: prefix, to: release) }
+    }
+
+    private static func acquireLock(wait: Bool, _ path: String) throws -> RunLock? {
+        while true {
+            if let lock = try RunLock.acquire(path) { return lock }
+            guard wait else { return nil }
+            sleep(10)
+        }
+    }
+
+    private static func upgrade(prefix: String, to release: Release) -> Int32 {
+        let brew = prefix + "/bin/brew"
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = prefix + "/bin:" + (env["PATH"] ?? "/usr/bin:/bin")
+        env["HOMEBREW_NO_ENV_HINTS"] = "1"
+        print("Updating Homebrew")
+        guard Shell.inherit(brew, ["update", "--quiet"], env: env) == 0 else {
+            eprint("brew update failed")
+            return 1
+        }
+        var upgradeEnv = env
+        upgradeEnv["HOMEBREW_NO_AUTO_UPDATE"] = "1"
+        print("Upgrading glidepath to \(release.version)")
+        guard Shell.inherit(brew, ["upgrade", "yznki/tap/glidepath"], env: upgradeEnv) == 0 else {
+            eprint("brew upgrade failed")
+            return 1
+        }
+        // The new binary refreshes the skill, app link and job, so this process never runs the old code's steps.
+        guard Shell.inherit(prefix + "/bin/glidepath", ["init", "--refresh"], env: env) == 0 else {
+            eprint("init --refresh failed; run glidepath init --refresh")
+            return 1
+        }
+        print("Updated to \(release.version)")
+        return 0
     }
 }
 

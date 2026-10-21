@@ -119,7 +119,9 @@ PR is a dot on the slope at the stage it is in.
 - The popover is at most 640 pt tall. Past that, the list scrolls.
 - Menu bar: a glyph echoing the app icon, a striped disc with a slot cut into it. A dot moves along the slot while
   running (with the count of active PRs), a count when changes are waiting (cleared when you open the popover), faded
-  stripes while paused, and a cross at the touchdown point for a failed run.
+  stripes while paused, and a cross at the touchdown point for a failed run. A small dot at the top right means a newer
+  release is out.
+- Footer menu: when a newer release is out, its first item is "Update to 1.1.0…". "Check for updates…" checks now.
 - Stop signals the running sweep's process group. Reviews already posted stay posted; the PRs not yet reviewed show
   "No result".
 
@@ -134,6 +136,7 @@ The app is the same binary as the CLI. Launched with no arguments, or with `app`
 
 ```toml
 schedule = ["07:00", "13:00", "19:00"]   # global; one launchd job
+check_updates = true          # false turns off the automatic check for new releases
 
 [limits]
 max_prs_per_run = 10
@@ -154,6 +157,7 @@ include_own = false           # true to review your own PRs too
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `schedule` | `07:00`, `13:00`, `19:00` | Local times for scheduled runs. One launchd job for all repos. |
+| `check_updates` | `true` | Check GitHub for a newer release at launch, daily and when the popover opens. `false` turns those checks off; "Check for updates…" still works. |
 | `limits.max_prs_per_run` | `10` | PRs per repo per run. Extra PRs are skipped with reason "over max_prs_per_run". |
 | `limits.max_changed_lines` | `3000` | Additions plus deletions above this are skipped with reason "too large". |
 | `limits.split_over_lines` | `1500` | Above this, the review is split into one reviewer per area. |
@@ -180,6 +184,8 @@ config directory to `~/.config/gh`).
 | Command | What it does |
 | --- | --- |
 | `glidepath init` | Set up config, clones, skill, app link and schedule. Ends with a dry run. |
+| `glidepath init --refresh` | Re-link the skill, app and schedule to the installed binary. No prompts, no dry run. `update` runs it after an upgrade. |
+| `glidepath update` | Upgrade a Homebrew install to the latest release. See [Updating](#updating). |
 | `glidepath run [--dry-run] [--repo owner/name]` | Run now. `--dry-run` reviews and posts nothing. |
 | `glidepath state show [--run ID]` | Print a run as JSON. Defaults to the current run. |
 | `glidepath pr info` / `pr diff` / `pr threads` / `post` | Used by the review session. Run them only inside a run; see [docs/security.md](docs/security.md). |
@@ -243,6 +249,21 @@ Tools do not include XCTest.
    and posts nothing.
 
 After the dry run, open the menu bar app and check the output. Posting starts at the next scheduled time.
+
+## Updating
+
+A newer release shows as a line above the footer, with a link to its notes, and as a dot on the menu bar glyph.
+For a Homebrew install, "Update to 1.1.0…" in the footer menu (or `glidepath update`) runs `brew update` and
+`brew upgrade yznki/tap/glidepath`, then refreshes the skill, app link and schedule. Homebrew rebuilds from source, so
+expect about a minute. The menu bar app restarts itself when it is done. If a sweep is running, the update waits for it
+to end. A source build is not updated in place: the update opens the release page instead.
+
+```sh
+glidepath update              # checks now; upgrades a Homebrew install
+glidepath update --wait       # same, but waits for a running sweep to end first
+```
+
+Automatic checks can be turned off with `check_updates = false` in the config.
 
 ## Uninstall
 

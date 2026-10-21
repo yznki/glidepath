@@ -28,7 +28,8 @@ enum MenuGlyph {
     private static let dotRadius: CGFloat = 1.1
 
     /// The glyph in `ink`. `template` marks it for the menu bar; snapshots pass false so the ink shows.
-    static func image(_ state: GlyphState, progress: Double, ink: NSColor, template: Bool) -> NSImage {
+    /// `update` adds the update dot at the top right, in every state.
+    static func image(_ state: GlyphState, progress: Double, ink: NSColor, template: Bool, update: Bool = false) -> NSImage {
         let count: Int? = {
             switch state {
             case .running(let n), .changesWaiting(let n): return n
@@ -55,6 +56,11 @@ enum MenuGlyph {
                 default:
                     dot(at: touchdown)
                 }
+            }
+            if update {
+                // The update dot: 3 pt, centred at (16, 16), which clears the disc by about half a point.
+                ink.set()
+                NSBezierPath(ovalIn: NSRect(x: 14.5, y: 14.5, width: 3, height: 3)).fill()
             }
             label?.draw(at: NSPoint(x: canvas + 3, y: (canvas - label!.size().height) / 2 - 0.5))
             return true
@@ -145,7 +151,8 @@ struct MenuBarLabel: View {
 
     var body: some View {
         let glyph = store.glyph
-        Image(nsImage: MenuGlyph.image(glyph, progress: ticker.progress, ink: .black, template: true))
+        Image(nsImage: MenuGlyph.image(glyph, progress: ticker.progress, ink: .black, template: true,
+                                       update: store.availableUpdate != nil))
             .onAppear { ticker.setRunning(store.snap.running) }
             .onChange(of: store.snap.running) { _, running in ticker.setRunning(running) }
     }
