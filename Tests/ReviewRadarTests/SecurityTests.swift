@@ -180,6 +180,12 @@ final class SecurityTests: XCTestCase {
         XCTAssertThrowsError(try StrictFlags.reason(["--reason": "a\nb"]))
     }
 
+    func testSessionGetsPinnedGitHubConfigDir() {
+        let env = Claude.childEnvironment(parent: ["PATH": "/bin", "GH_CONFIG_DIR": "/Users/u/.config/gh"], binding: [:])
+        XCTAssertEqual(env["GH_CONFIG_DIR"], "/Users/u/.config/gh")
+        XCTAssertNil(Claude.childEnvironment(parent: ["PATH": "/bin", "GH_TOKEN": "t"], binding: [:])["GH_TOKEN"])
+    }
+
     func testClonesUseHTTPS() {
         XCTAssertEqual(RepoClone.cloneURL("acme/api"), "https://github.com/acme/api.git")
     }

@@ -69,10 +69,11 @@ enum Claude {
     }
 
     /// Environment for the claude process. Only these pass through; GH_TOKEN and GITHUB_TOKEN never do.
-    /// The review wrappers call gh with the user's own sign-in, which lives in the keychain and gh's config.
+    /// The review wrappers call gh with the user's own sign-in. GH_CONFIG_DIR is pinned by the runner to
+    /// the real gh config folder, so gh in the session finds that sign-in even when XDG folders move.
     static func childEnvironment(parent: [String: String], binding: [String: String]) -> [String: String] {
         var env: [String: String] = [:]
-        for key in ["PATH", "HOME", "USER", "LANG", "TMPDIR"] {
+        for key in ["PATH", "HOME", "USER", "LANG", "TMPDIR", "GH_CONFIG_DIR"] {
             if let v = parent[key] { env[key] = v }
         }
         for (key, value) in parent where key == "ANTHROPIC_API_KEY" || key.hasPrefix("CLAUDE_CODE_") {
