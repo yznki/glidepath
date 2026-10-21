@@ -4,15 +4,18 @@ import AppKit
 /// questions, so a menu shortcut cannot skip one the buttons show.
 @MainActor
 enum Confirm {
-    /// Runs a sweep. A run that posts reviews for real asks first.
-    static func run(_ store: Store) {
-        if store.snap.postsReviews {
-            let asked = ask("Run the review pipeline now?",
+    /// Runs a sweep, or one repo's review when `repo` is given. A run that posts reviews for real asks first: any repo
+    /// on posting = "review" for a sweep, or that repo for a single-repo run.
+    static func run(_ store: Store, repo slug: String? = nil) {
+        let posts = slug.map { name in store.snap.config?.repos.first { $0.slug == name }?.posting == .review }
+            ?? store.snap.postsReviews
+        if posts {
+            let asked = ask(slug.map { "Run the review pipeline for \($0) now?" } ?? "Run the review pipeline now?",
                             "Some repos post reviews with posting = \"review\", which show as real reviews on GitHub.",
                             confirm: "Run now", cancel: "Cancel")
             guard asked else { return }
         }
-        store.runNow()
+        store.runNow(repo: slug)
     }
 
     /// Stops the sweep, or the dry run.

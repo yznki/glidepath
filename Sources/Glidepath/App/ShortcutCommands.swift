@@ -163,7 +163,7 @@ extension FocusedValues {
     }
 }
 
-/// What a menu shortcut does while a text field has focus. Plain keys belong to the field; ⌘ letters are the menus'.
+/// What a menu shortcut does while a text field has focus. Plain keys belong to the field; ⌘ combinations are the menus'.
 /// Delete-type actions hand their key to the field as a delete, so ⌘⌫ still deletes a word.
 enum ShortcutRoute: Equatable {
     case perform, forwardDelete, ignore
@@ -171,10 +171,10 @@ enum ShortcutRoute: Equatable {
     static func route(_ action: ShortcutAction, editing: Bool) -> ShortcutRoute {
         guard editing else { return .perform }
         if [ShortcutAction.discardDraft, .removeRepo, .deletePin].contains(action) { return .forwardDelete }
+        // Every ⌘ combination is the menus' and performs (⌘1, ⌘, and ⌘/ included). Keys without ⌘ are the field's.
         let shortcut = Shortcuts.shortcut(action)
-        guard let key = shortcut.key else { return .perform }
-        if case .character(let c) = key, c.isLetter, shortcut.modifiers.contains(.command) { return .perform }
-        return .ignore
+        guard shortcut.key != nil else { return .perform }
+        return shortcut.modifiers.contains(.command) ? .perform : .ignore
     }
 }
 
@@ -237,7 +237,7 @@ enum ShortcutDispatch {
         case .about: NSApp.orderFrontStandardAboutPanel(nil)
         case .hide: NSApp.hide(nil)
         case .quit:
-            ScheduleModel.flushLive(store)
+            // The app delegate waits for a pending schedule save before the app exits.
             NSApp.terminate(nil)
         case .closeWindow: NSApp.keyWindow?.performClose(nil)
         case .minimize: NSApp.keyWindow?.miniaturize(nil)

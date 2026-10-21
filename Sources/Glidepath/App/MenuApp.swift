@@ -3,6 +3,8 @@ import AppKit
 
 /// The menu bar app. Same binary as the CLI: `glidepath` with no arguments (or `app`) lands here.
 struct GlidepathApp: App {
+    @NSApplicationDelegateAdaptor(GlidepathAppDelegate.self) private var appDelegate
+
     init() {
         let args = CommandLine.arguments
         // Snapshot rendering: draw the fixtures to PNGs, then exit before any UI starts.

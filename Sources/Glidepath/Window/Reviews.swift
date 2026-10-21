@@ -53,7 +53,8 @@ struct ReviewsView: View {
             ScrollPager.pageDown()
             return .handled
         }
-        // The list's keys belong to the list only: a list that does not have focus leaves them alone.
+        // With no focus (after a sheet, or a click on the filter), the list takes the keys.
+        if focus == nil { focus = .list }
         guard focus == .list else { return .ignored }
         if press.key == .return, mods.isEmpty {
             focus = .detail

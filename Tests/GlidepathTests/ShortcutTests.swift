@@ -135,13 +135,25 @@ final class ShortcutGuardTests: XCTestCase {
         XCTAssertTrue(ShortcutAvailability.enabled(.shortcuts, s))
     }
 
-    func testWhileEditingOnlyCommandLettersPerform() {
-        XCTAssertEqual(ShortcutRoute.route(.find, editing: true), .perform)
-        XCTAssertEqual(ShortcutRoute.route(.closeWindow, editing: true), .perform)
-        XCTAssertEqual(ShortcutRoute.route(.stopSweep, editing: true), .ignore)
-        XCTAssertEqual(ShortcutRoute.route(.shortcuts, editing: true), .ignore)
-        XCTAssertEqual(ShortcutRoute.route(.settings, editing: true), .ignore)
-        XCTAssertEqual(ShortcutRoute.route(.postReview, editing: true), .ignore)
+    func testWhileEditingEveryCommandComboPerforms() {
+        // ⌘1–5, ⌘, ⌘. ⌘/ and ⌥⌘1–4 must keep working inside a text field.
+        for action: ShortcutAction in [.find, .closeWindow, .showOverview, .showSettings, .settings, .stopSweep,
+                                       .shortcuts, .filterAll, .filterSkipped, .postReview, .runSweep] {
+            XCTAssertEqual(ShortcutRoute.route(action, editing: true), .perform, "\(action)")
+        }
+    }
+
+    func testWhileEditingPlainKeysBelongToTheField() {
+        // Table entries without ⌘ (pin arrows, Space, Esc) are the field's while it has focus.
+        for action: ShortcutAction in [.selectPrevPin, .pinLater, .toggleRow, .popoverClose] {
+            XCTAssertEqual(ShortcutRoute.route(action, editing: true), .ignore, "\(action)")
+        }
+    }
+
+    func testRouteTableWhenNotEditingAlwaysPerforms() {
+        for action in ShortcutAction.allCases {
+            XCTAssertEqual(ShortcutRoute.route(action, editing: false), .perform, "\(action)")
+        }
     }
 
     func testDeleteWhileEditingGoesToTheFieldAsADelete() {

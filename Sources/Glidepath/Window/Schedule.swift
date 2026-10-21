@@ -404,15 +404,29 @@ final class ScheduleModel: ObservableObject {
         }
     }
 
-    /// Saves the pending nudge now: when the section changes, the window closes, or the app quits.
+    /// Saves the pending nudge now: when the section changes, or the window closes.
     func flush(_ store: Store) {
         saveTask?.cancel()
         commitDraft(store)
     }
 
+    /// True while a nudge is waiting to be saved or a save is running.
+    var hasPendingSave: Bool { draft != nil || saveInFlight }
+
+    /// Saves the pending nudge and waits for the save to land, for quitting. Gives up after `timeout`.
+    func flushAndWait(_ store: Store, timeout: TimeInterval) async {
+        flush(store)
+        let deadline = Date().addingTimeInterval(timeout)
+        while hasPendingSave && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
+
     /// Saves the draft as one move from its time on disk. One save is in flight at a time. When the keys moved the pin
     /// again meanwhile, the draft is rebased on the time now saved and the next save follows.
-    private func commitDraft(_ store: Store) {
+    /// `undoable` is false for the rebased saves of a burst: the burst's first save already registered the undo entry
+    /// that restores the schedule from before the burst.
+    private func commitDraft(_ store: Store, undoable: Bool = true) {
         guard !saveInFlight, let saving = draft else { return }
         guard saving.from != saving.to else {
             draft = nil
@@ -420,11 +434,11 @@ final class ScheduleModel: ObservableObject {
             return
         }
         saveInFlight = true
-        commit("time", store, undoTo: burstStart, then: { [self] ok in
+        commit("time", store, undoTo: undoable ? burstStart : nil, then: { [self] ok in
             saveInFlight = false
             if ok {
                 draft = PinMove.settle(draft, saved: saving)
-                if draft != nil { commitDraft(store) } else { burstStart = nil }
+                if draft != nil { commitDraft(store, undoable: false) } else { burstStart = nil }
             } else {
                 draft = nil
                 burstStart = nil

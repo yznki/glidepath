@@ -55,7 +55,11 @@ struct ReposView: View {
         .sheet(isPresented: $model.addingRepo) {
             AddRepoSheet(store: store, model: model)
         }
-        .onChange(of: model.addingRepo) { _, open in ShortcutContext.shared.repoSheetOpen = open }
+        .onChange(of: model.addingRepo) { _, open in
+            ShortcutContext.shared.repoSheetOpen = open
+            // The sheet took focus; when it closes the list has it again.
+            if !open { focus = .list }
+        }
         .onDisappear { ShortcutContext.shared.repoSheetOpen = false }
         .onAppear { focus = .list }
         .onChange(of: selected?.slug) { _ in ShortcutContext.shared.repoSelected = selected != nil }
@@ -78,8 +82,10 @@ struct ReposView: View {
             WindowRouter.shared.deliver(.editRules, section: nil)
             return .handled
         }
-        // The list's keys belong to the list only.
-        guard !TextFocus.isEditing, focus == .list else { return .ignored }
+        guard !TextFocus.isEditing else { return .ignored }
+        // With no focus (after the add sheet, or a click elsewhere), the list takes the keys.
+        if focus == nil { focus = .list }
+        guard focus == .list else { return .ignored }
         if press.key == .return, mods.isEmpty {
             focus = .detail
             return .handled
@@ -110,7 +116,7 @@ struct ReposView: View {
         case .addRepo, .find:
             model.openAddRepo()
         case .reviewRepoNow:
-            if let slug = selected?.slug, !store.snap.running { store.runNow(repo: slug) }
+            if let slug = selected?.slug, !store.snap.running { Confirm.run(store, repo: slug) }
         default:
             break
         }
@@ -276,7 +282,7 @@ struct RepoDetail: View {
                 }
             }
             Spacer(minLength: WinMetrics.s16)
-            WinButton(title: "Review now", style: .outline) { store.runNow(repo: repo.slug) }
+            WinButton(title: "Review now", style: .outline) { Confirm.run(store, repo: repo.slug) }
                 .disabled(store.snap.running)
         }
         .padding(.bottom, WinMetrics.s16)
