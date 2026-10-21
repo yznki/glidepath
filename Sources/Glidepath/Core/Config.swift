@@ -21,6 +21,38 @@ struct ScheduleTime: Equatable, Hashable {
     var text: String { String(format: "%02d:%02d", hour, minute) }
 }
 
+/// Weekday in the order a week reads (Monday first). `launchd` is the number launchd's StartCalendarInterval uses,
+/// where Sunday is 0.
+enum Weekday: Int, CaseIterable, Equatable {
+    case mon, tue, wed, thu, fri, sat, sun
+
+    var launchd: Int { (rawValue + 1) % 7 }
+    var name: String { "\(self)" }
+}
+
+/// Which days the sweeps run on. `all` is the default, so configs written before `days` existed keep their behaviour.
+enum ScheduleDays: Equatable {
+    case weekdays, all, custom(Set<Weekday>)
+
+    /// The days a sweep runs on, Monday first.
+    var active: [Weekday] {
+        switch self {
+        case .weekdays: return Array(Weekday.allCases.prefix(5))
+        case .all: return Weekday.allCases
+        case .custom(let set): return Weekday.allCases.filter(set.contains)
+        }
+    }
+
+    /// The value as `days` is written in config.toml.
+    var tomlText: String {
+        switch self {
+        case .weekdays: return "\"weekdays\""
+        case .all: return "\"all\""
+        case .custom: return "[" + active.map { tomlQuoted($0.name) }.joined(separator: ", ") + "]"
+        }
+    }
+}
+
 struct Limits: Equatable {
     var maxPRsPerRun = 10
     var maxChangedLines = 3000
@@ -70,6 +102,7 @@ struct Config: Equatable {
     var checkUpdates = true
     /// Notification when a sweep finishes. The menu bar app reads it; nothing writes it.
     var notify = true
+    var days: ScheduleDays = .all
 
     static func load(_ paths: Paths) throws -> Config {
         guard let text = try? String(contentsOfFile: paths.configFile, encoding: .utf8) else {
@@ -85,7 +118,7 @@ struct Config: Equatable {
         } catch let e as TOMLError {
             throw ConfigError(message: "config.toml: \(e)")
         }
-        try checkKeys(doc, allowed: ["schedule", "limits", "repo", "check_updates", "notify"], where: "top level")
+        try checkKeys(doc, allowed: ["schedule", "days", "limits", "repo", "check_updates", "notify"], where: "top level")
 
         let scheduleText = try strings(doc["schedule"], key: "schedule") ?? defaultSchedule
         guard !scheduleText.isEmpty else { throw ConfigError(message: "schedule must list at least one time") }
@@ -93,6 +126,8 @@ struct Config: Equatable {
             guard let t = ScheduleTime(text) else { throw ConfigError(message: "schedule: \"\(text)\" is not HH:MM") }
             return t
         }
+
+        let days = try scheduleDays(doc["days"])
 
         var limits = Limits()
         if let value = doc["limits"] {
@@ -117,7 +152,30 @@ struct Config: Equatable {
         }
         let checkUpdates = try bool(doc["check_updates"], key: "check_updates") ?? true
         let notify = try bool(doc["notify"], key: "notify") ?? true
-        return Config(schedule: schedule, limits: limits, repos: repos, checkUpdates: checkUpdates, notify: notify)
+        return Config(schedule: schedule, limits: limits, repos: repos, checkUpdates: checkUpdates, notify: notify, days: days)
+    }
+
+    /// `days`: "weekdays", "all" (the default when absent) or a list of mon..sun.
+    private static func scheduleDays(_ v: TOMLValue?) throws -> ScheduleDays {
+        guard let v else { return .all }
+        if case .string(let s) = v {
+            switch s {
+            case "all": return .all
+            case "weekdays": return .weekdays
+            default: throw ConfigError(message: "days must be \"weekdays\", \"all\" or a list of mon, tue, wed, thu, fri, sat, sun")
+            }
+        }
+        guard let names = try strings(v, key: "days"), !names.isEmpty else {
+            throw ConfigError(message: "days must list at least one day")
+        }
+        var set = Set<Weekday>()
+        for name in names {
+            guard let day = Weekday.allCases.first(where: { $0.name == name }) else {
+                throw ConfigError(message: "days: \"\(name)\" is not mon, tue, wed, thu, fri, sat or sun")
+            }
+            set.insert(day)
+        }
+        return .custom(set)
     }
 
     private static func parseRepo(_ t: [String: TOMLValue], home: String) throws -> RepoConfig {
@@ -177,6 +235,7 @@ struct Config: Equatable {
         var out = "schedule = [" + schedule.map { tomlQuoted($0.text) }.joined(separator: ", ") + "]\n"
         out += "check_updates = \(checkUpdates)\n"
         out += "notify = \(notify)\n"
+        if days != .all { out += "days = \(days.tomlText)\n" }
         out += "\n[limits]\n"
         out += "max_prs_per_run = \(limits.maxPRsPerRun)\n"
         out += "max_changed_lines = \(limits.maxChangedLines)\n"

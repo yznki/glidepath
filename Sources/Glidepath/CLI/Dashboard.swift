@@ -16,7 +16,7 @@ enum DashboardCommand {
         snap.paused = Pause.isPaused(paths)
         snap.pausedSince = snap.paused ? Pause.since(paths) : nil
         if let config = try? Config.load(paths) {
-            snap.nextRun = Store.nextSweep(schedule: config.schedule, after: now)
+            snap.nextRun = Store.nextSweep(schedule: config.schedule, days: config.days, after: now)
         }
         let header = HeaderCopy.make(Presentation.headerKind(snap, now: now), now: now, drafts: drafts.count)
         let html = DashboardPage.render(runs: runs, drafts: drafts, header: header, now: now)

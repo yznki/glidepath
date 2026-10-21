@@ -339,3 +339,37 @@ final class RunLock {
         close(fd)
     }
 }
+
+/// The Schedule section's "This week" counts. Rows carried over from an earlier run are left out, so a PR counts once,
+/// in the run that decided it. Pure: the caller passes the runs.
+struct WeekStats: Equatable {
+    var reviews = 0
+    var needChanges = 0
+    var tokens = 0
+
+    static func compute(runs: [RunState], since: Date) -> WeekStats {
+        var out = WeekStats()
+        for run in runs where run.started >= since {
+            out.tokens += run.tokens
+            for repo in run.repos {
+                for pr in repo.prs where pr.carriedFrom == nil {
+                    switch pr.verdict {
+                    case .approve?: out.reviews += 1
+                    case .changes?:
+                        out.reviews += 1
+                        out.needChanges += 1
+                    case .skipped?, nil: break
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    /// Monday 00:00 in the calendar's time zone, of the week that holds `date`.
+    static func weekStart(of date: Date, calendar: Calendar = .current) -> Date? {
+        var cal = calendar
+        cal.firstWeekday = 2
+        return cal.dateInterval(of: .weekOfYear, for: date)?.start
+    }
+}

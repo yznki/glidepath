@@ -1,8 +1,8 @@
 import SwiftUI
 import AppKit
 
-/// The main window: sidebar beside the canvas. Overview, Reviews and Repos are built; the other section bodies are placeholders
-/// until their phases land.
+/// The main window: sidebar beside the canvas. Overview, Reviews, Repos and Schedule are built; Settings is a placeholder
+/// until its phase lands.
 struct MainWindowView: View {
     @ObservedObject var router = WindowRouter.shared
     @ObservedObject var store = Store.shared
@@ -26,6 +26,8 @@ struct MainWindowView: View {
             } else if router.section == .repos {
                 // Repos is master-detail too, with the same edge-to-edge layout.
                 ReposView(store: store)
+            } else if router.section == .schedule {
+                ScheduleView(store: store)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     if router.section == .overview {

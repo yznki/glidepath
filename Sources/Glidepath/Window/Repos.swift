@@ -123,7 +123,7 @@ struct ReposView: View {
     @ViewBuilder
     private var detail: some View {
         if let repo = selected {
-            RepoDetail(repo: repo, store: store, model: model)
+            RepoDetail(repo: repo, store: store, model: model, saved: model.saved)
         } else {
             VStack(alignment: .leading, spacing: WinMetrics.s16) {
                 Text("No repos yet. Add one to start reviewing.")
@@ -143,6 +143,8 @@ struct RepoDetail: View {
     let repo: RepoConfig
     @ObservedObject var store: Store
     @ObservedObject var model: ReposModel
+    /// Observed here too, so the Saved stamp redraws when a save flashes it.
+    @ObservedObject var saved: SavedFlash
 
     private enum AuthorChoice: Hashable { case collaborators, anyone, people }
 
@@ -182,11 +184,7 @@ struct RepoDetail: View {
                         .tracking(-0.4)
                         .foregroundStyle(WinTheme.text)
                         .frame(height: 32, alignment: .leading)
-                    Text("Saved")
-                        .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.faint)
-                        .opacity(model.stamped ? 1 : 0)
-                        .animation(.easeOut(duration: 0.3), value: model.stamped)
+                    SavedStamp(shown: model.saved.shown)
                 }
                 if !subline.isEmpty {
                     Text(subline)
@@ -452,36 +450,7 @@ struct RepoDetail: View {
     /// first line is centred on a 32 pt control row.
     private func section<Control: View>(_ title: String, _ detail: String, error: String?,
                                         @ViewBuilder control: () -> Control) -> some View {
-        HStack(alignment: .top, spacing: WinMetrics.s24) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(WinTheme.text)
-                    .frame(height: 20, alignment: .leading)
-                    .padding(.top, 6)
-                Text(detail)
-                    .font(.system(size: 12))
-                    .foregroundStyle(WinTheme.faint)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 2)
-            }
-            .frame(width: 200, alignment: .leading)
-            VStack(alignment: .leading, spacing: 0) {
-                control()
-                if let error {
-                    Text(error)
-                        .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.amberInk)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, WinMetrics.s8)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.vertical, WinMetrics.s16)
-        .overlay(alignment: .top) {
-            Rectangle().fill(WinTheme.line).frame(height: 1)
-        }
+        SettingRow(title: title, detail: detail, error: error, control: control)
     }
 
     /// A chip (base.css `.chip`): 28 tall, raised fill, a × that removes it.
@@ -559,7 +528,7 @@ final class ReposModel: ObservableObject {
     /// The message for each control's row, kept until that row saves.
     @Published var rowErrors: [String: String] = [:]
     /// True for 2 s after a successful save.
-    @Published var stamped = false
+    let saved = SavedFlash()
     @Published var addingRepo = false
     @Published var addText = ""
     @Published var confirmRemove = false
@@ -569,7 +538,6 @@ final class ReposModel: ObservableObject {
     @Published var flagText = ""
     @Published var editingNote = false
     @Published var noteText = ""
-    private var stampCount = 0
 
     /// Selects a repo and drops any open field or message from the last one.
     func select(_ slug: String) {
@@ -619,13 +587,7 @@ final class ReposModel: ObservableObject {
     }
 
     private func flashSaved() {
-        stamped = true
-        stampCount += 1
-        let count = stampCount
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            guard let self, self.stampCount == count else { return }
-            self.stamped = false
-        }
+        saved.flash()
     }
 }
 

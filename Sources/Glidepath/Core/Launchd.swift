@@ -4,12 +4,26 @@ enum Launchd {
     static let label = "dev.glidepath.run"
 
     /// The LaunchAgent dictionary. `binary` must be the stable path the user installed (not a build folder).
-    static func plist(binary: String, schedule: [ScheduleTime], path: String, logFile: String) -> [String: Any] {
-        let times: [[String: Any]] = schedule.map { ["Hour": $0.hour, "Minute": $0.minute] }
+    /// One StartCalendarInterval entry per time, and per day when the days are not all of them (launchd reads a
+    /// missing Weekday as every day).
+    static func intervals(schedule: [ScheduleTime], days: ScheduleDays) -> [[String: Any]] {
+        schedule.flatMap { time -> [[String: Any]] in
+            let base: [String: Any] = ["Hour": time.hour, "Minute": time.minute]
+            guard days != .all else { return [base] }
+            return days.active.map { day -> [String: Any] in
+                var entry = base
+                entry["Weekday"] = day.launchd
+                return entry
+            }
+        }
+    }
+
+    static func plist(binary: String, schedule: [ScheduleTime], days: ScheduleDays = .all, path: String,
+                      logFile: String) -> [String: Any] {
         return [
             "Label": label,
             "ProgramArguments": [binary, "run", "--scheduled"],
-            "StartCalendarInterval": times,
+            "StartCalendarInterval": intervals(schedule: schedule, days: days),
             "EnvironmentVariables": ["PATH": path],
             "StandardOutPath": logFile,
             "StandardErrorPath": logFile,
@@ -17,9 +31,10 @@ enum Launchd {
         ]
     }
 
-    static func data(binary: String, schedule: [ScheduleTime], path: String, logFile: String) throws -> Data {
+    static func data(binary: String, schedule: [ScheduleTime], days: ScheduleDays = .all, path: String,
+                     logFile: String) throws -> Data {
         try PropertyListSerialization.data(
-            fromPropertyList: plist(binary: binary, schedule: schedule, path: path, logFile: logFile),
+            fromPropertyList: plist(binary: binary, schedule: schedule, days: days, path: path, logFile: logFile),
             format: .xml, options: 0)
     }
 }

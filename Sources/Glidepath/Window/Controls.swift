@@ -168,3 +168,83 @@ struct WinToggle: View {
         .buttonStyle(.plain)
     }
 }
+
+/// Times the "Saved" stamp for a view model: `flash()` after each save, and `shown` is true for 2 s. A save during
+/// those 2 s starts the count again.
+@MainActor
+final class SavedFlash: ObservableObject {
+    @Published private(set) var shown = false
+    private var count = 0
+
+    func flash() {
+        shown = true
+        count += 1
+        let mine = count
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self, self.count == mine else { return }
+            self.shown = false
+        }
+    }
+}
+
+/// The "Saved" word beside a title (12 faint). It fades in and out with `shown`.
+struct SavedStamp: View {
+    let shown: Bool
+
+    var body: some View {
+        Text("Saved")
+            .font(.system(size: 12))
+            .foregroundStyle(WinTheme.faint)
+            .opacity(shown ? 1 : 0)
+            .animation(.easeOut(duration: 0.3), value: shown)
+    }
+}
+
+/// One setting (base.css `.sec`): a 200 pt label column with a detail line, and the control column, with a rule above.
+/// The label's first line is centred on a 32 pt control row. A message in `error` shows in amber under the control.
+struct SettingRow<Control: View>: View {
+    let title: String
+    let detail: String
+    var error: String?
+    let control: Control
+
+    init(title: String, detail: String, error: String?, @ViewBuilder control: () -> Control) {
+        self.title = title
+        self.detail = detail
+        self.error = error
+        self.control = control()
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: WinMetrics.s24) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(WinTheme.text)
+                    .frame(height: 20, alignment: .leading)
+                    .padding(.top, 6)
+                Text(detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(WinTheme.faint)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
+            }
+            .frame(width: 200, alignment: .leading)
+            VStack(alignment: .leading, spacing: 0) {
+                control
+                if let error {
+                    Text(error)
+                        .font(.system(size: 12))
+                        .foregroundStyle(WinTheme.amberInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, WinMetrics.s8)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, WinMetrics.s16)
+        .overlay(alignment: .top) {
+            Rectangle().fill(WinTheme.line).frame(height: 1)
+        }
+    }
+}

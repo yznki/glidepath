@@ -146,7 +146,8 @@ enum InitCommand {
         // The job is rewritten (and reloaded) only when its content would change. A sweep in progress keeps its job.
         let path = GitNexus.jobPath(base: Runner.jobPath(paths) ?? ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
                                     home: paths.home)
-        let wanted = try? Launchd.data(binary: binary, schedule: config.schedule, path: path, logFile: paths.logFile)
+        let wanted = try? Launchd.data(binary: binary, schedule: config.schedule, days: config.days, path: path,
+                                         logFile: paths.logFile)
         if wanted != nil && wanted == (try? Data(contentsOf: URL(fileURLWithPath: paths.plistFile))) {
             print("Scheduled job is current")
         } else if !holdingLock && RunLock.isHeld(paths.lockFile) {
@@ -238,7 +239,8 @@ enum InitCommand {
         try fm.createDirectory(atPath: paths.agentsDir, withIntermediateDirectories: true)
         try fm.createDirectory(atPath: (paths.logFile as NSString).deletingLastPathComponent,
                                withIntermediateDirectories: true)
-        let data = try Launchd.data(binary: binary, schedule: config.schedule, path: path, logFile: paths.logFile)
+        let data = try Launchd.data(binary: binary, schedule: config.schedule, days: config.days, path: path,
+                                         logFile: paths.logFile)
         try data.write(to: URL(fileURLWithPath: paths.plistFile), options: .atomic)
         let uid = getuid()
         _ = Shell.run("launchctl", ["bootout", "gui/\(uid)/\(Launchd.label)"])

@@ -89,6 +89,8 @@ enum WinTheme {
     static let green = token(0x1B7A47, dark: 0x3DD68C)
     static let greenBg = token(0xDDF3E5, dark: 0x12301F)
     static let blue = token(0x0062D1, dark: 0x4DA3FF)
+    /// The night bands on the Schedule day strip.
+    static let night = token(0xE9E9EC, dark: 0x0E0E10)
     /// The error colour (Palette.error): destructive text.
     static let red = token(0xC4242A, dark: 0xFF6B6B)
     /// A repo's square avatar: #e4e4e8 light, #26262a dark.

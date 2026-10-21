@@ -237,7 +237,7 @@ final class Store: ObservableObject {
         s.pausedSince = s.paused ? Pause.since(paths) : nil
         s.jobInstalled = FileManager.default.fileExists(atPath: paths.plistFile)
         let config = try? Config.load(paths)
-        s.nextRun = config.flatMap { Store.nextSweep(schedule: $0.schedule, after: Date()) }
+        s.nextRun = config.flatMap { Store.nextSweep(schedule: $0.schedule, days: $0.days, after: Date()) }
         s.postsReviews = config?.repos.contains { $0.posting == .review } ?? false
         s.schedule = config?.schedule ?? []
         s.repoCount = config?.repos.count ?? 0
@@ -582,12 +582,15 @@ final class Store: ObservableObject {
         }
     }
 
-    /// The first scheduled time after `date`, today or tomorrow.
-    nonisolated static func nextSweep(schedule: [ScheduleTime], after date: Date) -> Date? {
+    /// The first scheduled time after `date`, on one of `days`. Looks a week ahead, the longest gap a single day allows.
+    nonisolated static func nextSweep(schedule: [ScheduleTime], days: ScheduleDays = .all, after date: Date) -> Date? {
         let cal = Calendar.current
         let times = schedule.sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
-        for dayOffset in 0...1 {
+        let launchdDays = Set(days.active.map(\.launchd))
+        for dayOffset in 0...7 {
             guard let day = cal.date(byAdding: .day, value: dayOffset, to: date) else { continue }
+            // Calendar's weekday runs Sunday = 1; launchd's runs Sunday = 0.
+            guard launchdDays.contains(cal.component(.weekday, from: day) - 1) else { continue }
             for t in times {
                 if let candidate = cal.date(bySettingHour: t.hour, minute: t.minute, second: 0, of: day),
                    candidate > date {
