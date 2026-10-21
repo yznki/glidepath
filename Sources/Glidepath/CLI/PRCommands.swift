@@ -335,7 +335,7 @@ enum PRCommands {
         }
         let me = try GH.run(["api", "user", "--jq", ".login"]).trimmingCharacters(in: .whitespacesAndNewlines)
         let own = view.author?.login.caseInsensitiveCompare(me) == .orderedSame
-        let paths = view.files.map(\.path)
+        let paths = try GH.changedFiles(slug, n)
         let matches = repo.flagPaths.isEmpty ? [] : FlagPaths.matches(paths, prefixes: repo.flagPaths)
         let payload = try ReviewValidator.validate(draft, files: Set(paths), posting: repo.posting, head: head, own: own,
                                                    note: FlagPaths.note(repo.flagNote, matches: matches))
@@ -350,7 +350,8 @@ enum PRCommands {
         if repo.posting == .draft {
             // Held for the user. The row carries the verdict as usual, plus the draft mark.
             let file = DraftFile(slug: slug, n: n, head: head, event: payload.event, body: payload.body,
-                                 comments: payload.comments, created: Date())
+                                 comments: payload.comments, created: Date(), title: view.title,
+                                 author: view.author?.login)
             try Drafts.write(file, runId: binding.runId, store.paths)
             try store.mutate(binding.runId) { run in
                 try run.setPR(repo: slug, n: n, stage: .post, author: nil, title: nil,
@@ -440,5 +441,14 @@ enum GH {
 
     static func lines(_ args: [String]) throws -> [String] {
         try run(args).split(separator: "\n").map(String.init)
+    }
+
+    /// Every changed file of a PR. `pr view --json files` is cut short on large PRs, so this pages the REST list.
+    /// `env` is the runner's environment when a sweep asks, so its gh config pinning applies.
+    static func changedFiles(_ slug: String, _ n: Int, env: [String: String]? = nil) throws -> [String] {
+        let r = Shell.run("gh", ["api", "repos/\(slug)/pulls/\(n)/files", "--paginate", "--jq", ".[].filename"],
+                          env: env, timeout: 120)
+        guard r.ok else { throw CommandError("gh failed: \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))") }
+        return r.stdout.split(separator: "\n").map(String.init)
     }
 }

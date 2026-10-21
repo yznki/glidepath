@@ -261,7 +261,11 @@ final class Runner {
         let now = Date()
         id = Runner.makeID(now)
         do {
-            try store.save(RunState.new(id: id, now: now))
+            var fresh = RunState.new(id: id, now: now, kind: onlyPR == nil ? nil : "review")
+            if let target = onlyPR, !dryRun, let previous = try? store.loadCurrent() {
+                fresh.carryRows(from: previous, except: target)
+            }
+            try store.save(fresh)
             if !dryRun { try store.makeCurrent(id) }
         } catch {
             eprint("cannot create run \(id): \(error)")
@@ -313,12 +317,16 @@ final class Runner {
 
         var kept: [PRInfo] = []
         var skipped: [(PRInfo, String)] = []
+        let drafts = Drafts.all(paths)
         for pr in prs {
+            let again = self.again && self.onlyPR?.n == pr.n
+            let heldHeads = Set(drafts.filter { $0.draft.slug == repo.slug && $0.draft.n == pr.n }.map(\.draft.head))
             let decision = PRFilter.evaluate(
                 pr, me: me, includeOwn: repo.includeOwn, authors: repo.authors,
                 limits: Runner.limits(config.limits, for: pr.n, reviewing: onlyPR?.n),
+                draftHeads: again ? [] : heldHeads,
                 isCollaborator: { self.isCollaborator(repo, login: pr.author) },
-                reviewedHeads: { self.again && self.onlyPR?.n == pr.n ? Set<String>() : self.reviewedHeads(repo, pr.n) })
+                reviewedHeads: { again ? Set<String>() : self.reviewedHeads(repo, pr.n) })
             switch decision {
             case .keep where kept.count < config.limits.maxPRsPerRun:
                 kept.append(pr)
@@ -379,12 +387,10 @@ final class Runner {
         guard !repo.flagPaths.isEmpty else { return [] }
         var out = Set<Int>()
         for pr in kept {
-            let r = gh(["pr", "view", String(pr.n), "-R", repo.slug, "--json", "files", "--jq", ".files[].path"])
-            guard r.ok else {
+            guard let files = try? GH.changedFiles(repo.slug, pr.n, env: env) else {
                 print("\(repo.slug) #\(pr.n): could not read changed files for flag_paths")
                 continue
             }
-            let files = r.stdout.split(separator: "\n").map(String.init)
             if !FlagPaths.matches(files, prefixes: repo.flagPaths).isEmpty { out.insert(pr.n) }
         }
         return out

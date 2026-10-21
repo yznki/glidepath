@@ -125,17 +125,18 @@ enum DashboardPage {
     }
 
     /// `&`, `<`, `>`, `"` and `'` as entities. Every string placed in the page passes through here.
+    /// Walks unicode scalars, not Characters: `"` followed by a combining mark is one Character that is not `"`.
     static func esc(_ text: String) -> String {
         var out = ""
-        out.reserveCapacity(text.count)
-        for ch in text {
-            switch ch {
+        out.reserveCapacity(text.utf8.count)
+        for scalar in text.unicodeScalars {
+            switch scalar {
             case "&": out += "&amp;"
             case "<": out += "&lt;"
             case ">": out += "&gt;"
             case "\"": out += "&quot;"
             case "'": out += "&#39;"
-            default: out.append(ch)
+            default: out.unicodeScalars.append(scalar)
             }
         }
         return out

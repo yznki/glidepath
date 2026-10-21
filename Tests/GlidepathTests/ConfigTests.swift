@@ -162,4 +162,15 @@ final class ConfigTests: XCTestCase {
         """, home: home)
         XCTAssertEqual(try Config.parse(original.render(), home: home), original)
     }
+
+    func testRenderEscapesStringsSoTheyReadBack() throws {
+        var repo = RepoConfig(slug: "acme/api", clone: "/tmp/a \"b\" \\c")
+        repo.flagPaths = ["infra\\\"x/"]
+        repo.flagNote = "Say \"hi\" \\ then\nnext\ttab"
+        let config = Config(schedule: Config.defaultSchedule.compactMap(ScheduleTime.init), limits: Limits(), repos: [repo])
+        let back = try Config.parse(config.render(), home: home)
+        XCTAssertEqual(back.repos[0].clone, repo.clone)
+        XCTAssertEqual(back.repos[0].flagPaths, repo.flagPaths)
+        XCTAssertEqual(back.repos[0].flagNote, repo.flagNote)
+    }
 }

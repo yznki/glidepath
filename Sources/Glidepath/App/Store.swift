@@ -3,6 +3,25 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 
+/// The end of a child's output, kept as it is read. The buffer is capped, so a chatty child cannot grow it without limit.
+private final class OutputTail: @unchecked Sendable {
+    private let lock = NSLock()
+    private var text = ""
+
+    func append(_ data: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        text += String(decoding: data, as: UTF8.self)
+        if text.count > 4096 { text = String(text.suffix(4096)) }
+    }
+
+    var lastLine: String {
+        lock.lock()
+        defer { lock.unlock() }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init) ?? ""
+    }
+}
+
 /// One PR as the popover and the radar draw it.
 struct Strip: Identifiable, Equatable {
     let repo: String
@@ -17,8 +36,9 @@ struct Strip: Identifiable, Equatable {
     var carriedFrom: Date? = nil
     var draft = false
     var flagged = false
-    /// A draft post is running for this row: the status reads "Posting…".
-    var posting = false
+    /// A draft post or discard is running for this row: the status reads "Posting…" or "Discarding…".
+    var draftAction: DraftAction? = nil
+    var posting: Bool { draftAction == .posting }
     /// The last draft post or discard failed: its last output line, shown on line 3.
     var draftError: String? = nil
     /// "size" on a PR skipped for size: its row offers Review.
@@ -26,6 +46,11 @@ struct Strip: Identifiable, Equatable {
     var changedLines: Int? = nil
 
     var id: String { "\(repo)#\(number)" }
+}
+
+/// A draft command the app is running for one row.
+enum DraftAction: Equatable {
+    case posting, discarding
 }
 
 /// The menu bar app's own update work. `updating` runs `glidepath update --wait`; `failed` stays until the next try.
@@ -109,7 +134,7 @@ final class Store: ObservableObject {
     @Published private(set) var justLanded: Set<String> = []
     @Published var hovered: String?
     /// Draft posts and discards running from this app, and the last error of each.
-    @Published private(set) var draftBusy: Set<String> = []
+    @Published private(set) var draftBusy: [String: DraftAction] = [:]
     @Published private(set) var draftErrors: [String: String] = [:]
 
     let paths = Paths()
@@ -154,13 +179,13 @@ final class Store: ObservableObject {
     var strips: [Strip] {
         Store.strips(from: snap.run).map { strip in
             var s = strip
-            s.posting = draftBusy.contains(strip.id)
+            s.draftAction = draftBusy[strip.id]
             s.draftError = draftErrors[strip.id]
             return s
         }
     }
 
-    /// Reviews held as drafts in the current run.
+    /// Reviews held as drafts, from every run.
     var draftCount: Int { strips.filter(\.draft).count }
 
     /// The cached release, when it is newer than this build.
@@ -234,6 +259,8 @@ final class Store: ObservableObject {
             }
         }
 
+        // Held drafts are shown from disk, whichever run wrote them. Notifications above used the run alone.
+        s.run?.showDrafts(Drafts.all(paths))
         let landed = Set(Store.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
         if popoverOpen && !landed.isEmpty {
             justLanded = landed
@@ -285,11 +312,19 @@ final class Store: ObservableObject {
 
     /// Posts a held draft through `glidepath drafts post`, the same command a terminal would run.
     func postDraft(_ strip: Strip) {
-        runCommand(["drafts", "post", strip.repo, String(strip.number)], id: strip.id, showsBusy: true)
+        guard !snap.running else {
+            draftErrors[strip.id] = "a sweep is running; try again when it ends"
+            return
+        }
+        runCommand(["drafts", "post", strip.repo, String(strip.number)], id: strip.id, action: .posting)
     }
 
     func discardDraft(_ strip: Strip) {
-        runCommand(["drafts", "discard", strip.repo, String(strip.number)], id: strip.id, showsBusy: true)
+        guard !snap.running else {
+            draftErrors[strip.id] = "a sweep is running; try again when it ends"
+            return
+        }
+        runCommand(["drafts", "discard", strip.repo, String(strip.number)], id: strip.id, action: .discarding)
     }
 
     /// Reviews a PR skipped for size, through `glidepath review`. The run shows its progress on the slope, so the row
@@ -299,7 +334,7 @@ final class Store: ObservableObject {
             draftErrors[strip.id] = "a sweep is running; try again when it ends"
             return
         }
-        runCommand(["review", strip.repo, String(strip.number)], id: strip.id, showsBusy: false)
+        runCommand(["review", strip.repo, String(strip.number)], id: strip.id, action: nil)
     }
 
     /// The Review confirm text for a PR over the limit: its size, the limit, and a rough token estimate when the last
@@ -316,37 +351,44 @@ final class Store: ObservableObject {
         return (verdict, body.count > 300 ? String(body.prefix(300)) + "…" : body)
     }
 
-    /// Runs a draft command as a process. Its last output line becomes the row's error if it fails.
-    private func runCommand(_ args: [String], id: String, showsBusy: Bool) {
+    /// Runs a draft command as a process. Its output is read as it is written, so a child never waits on a full pipe;
+    /// its last line becomes the row's error if it fails.
+    private func runCommand(_ args: [String], id: String, action: DraftAction?) {
         guard let binary = Bundle.main.executablePath else {
             draftErrors[id] = "cannot find the glidepath binary"
             return
         }
         draftErrors[id] = nil
-        if showsBusy { draftBusy.insert(id) }
+        if let action { draftBusy[id] = action }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = args
         process.environment = Runner.environment(paths)
         let output = Pipe()
+        let tail = OutputTail()
+        output.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty { handle.readabilityHandler = nil } else { tail.append(data) }
+        }
         process.standardOutput = output
         process.standardError = output
         process.terminationHandler = { p in
-            let text = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            let last = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init) ?? ""
+            output.fileHandleForReading.readabilityHandler = nil
+            tail.append(output.fileHandleForReading.readDataToEndOfFile())
+            let last = tail.lastLine
             let ok = p.terminationStatus == 0
             DispatchQueue.main.async { MainActor.assumeIsolated { Store.shared.finishDraftCommand(id, ok: ok, message: last) } }
         }
         do {
             try process.run()
         } catch {
-            draftBusy.remove(id)
+            draftBusy[id] = nil
             draftErrors[id] = "run failed: \(error.localizedDescription)"
         }
     }
 
     private func finishDraftCommand(_ id: String, ok: Bool, message: String) {
-        draftBusy.remove(id)
+        draftBusy[id] = nil
         draftErrors[id] = ok ? nil : (message.isEmpty ? "failed; see the log" : message)
         reload()
     }

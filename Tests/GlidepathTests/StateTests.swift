@@ -41,6 +41,53 @@ final class StateTests: XCTestCase {
         XCTAssertEqual(later.repos[0].prs[0].carriedFrom, t0, "carrying again keeps the original start")
     }
 
+    func testReviewRunCarriesOtherRowsAndLeavesTheTargetToItself() throws {
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        var sweep = RunState.new(id: "sweep", now: t0)
+        try sweep.setPR(repo: "acme/api", n: 1, stage: nil, author: "ines", title: "one", verdict: .approve, reason: nil)
+        try sweep.setPR(repo: "acme/api", n: 2, stage: nil, author: "bo", title: "two", verdict: .changes, reason: "fix it")
+        try sweep.setPR(repo: "acme/web", n: 9, stage: nil, author: "cy", title: "nine", verdict: .approve, reason: nil)
+        sweep.finish(at: t0, error: nil)
+
+        var review = RunState.new(id: "review", now: t0.addingTimeInterval(60), kind: "review")
+        review.carryRows(from: sweep, except: (slug: "acme/api", n: 2))
+        XCTAssertEqual(review.kind, "review")
+        XCTAssertEqual(review.repos.map(\.slug), ["acme/api", "acme/web"])
+        XCTAssertEqual(review.repos[0].prs.map(\.n), [1])
+        XCTAssertEqual(review.repos[0].prs[0].verdict, .approve)
+        XCTAssertEqual(review.repos[0].prs[0].carriedFrom, t0, "a carried row says when it was decided")
+        XCTAssertEqual(review.repos[1].prs.map(\.n), [9])
+        // The target is written by this run, so its row is not in the way.
+        XCTAssertNoThrow(try review.setPR(repo: "acme/api", n: 2, stage: nil, author: "bo", title: "two",
+                                          verdict: .changes, reason: "new"))
+    }
+
+    func testHeldDraftsShowFromAnyRunAndKeepTheirRow() throws {
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        var run = RunState.new(id: "now", now: t0)
+        try run.setPR(repo: "acme/api", n: 1, stage: nil, author: "ines", title: "one", verdict: .approve, reason: nil)
+        try run.setPR(repo: "acme/api", n: 2, stage: nil, author: "bo", title: "two", verdict: .changes, reason: nil)
+        run.setDraft(repo: "acme/api", n: 2, draft: true, posted: nil)
+        run.finish(at: t0, error: nil)
+        let found = [
+            Drafts.Found(runId: "old", path: "", draft: DraftFile(slug: "acme/api", n: 2, head: "h", event: "REQUEST_CHANGES",
+                                                                  body: "b", comments: [], created: t0)),
+            Drafts.Found(runId: "old", path: "", draft: DraftFile(slug: "acme/web", n: 5, head: "h", event: "APPROVE",
+                                                                  body: "b", comments: [], created: t0,
+                                                                  title: "Five", author: "dee")),
+        ]
+        run.showDrafts(found)
+        XCTAssertEqual(run.repos[0].prs.map(\.draft), [false, true])
+        let added = try XCTUnwrap(run.repos[1].prs.first)
+        XCTAssertEqual(added.n, 5)
+        XCTAssertEqual(added.title, "Five")
+        XCTAssertEqual(added.verdict, .approve)
+        XCTAssertEqual(added.draft, true)
+        XCTAssertNil(added.carriedFrom)
+        run.showDrafts([])
+        XCTAssertEqual(run.repos[0].prs.map(\.draft), [false, false], "a draft that is gone is no longer marked")
+    }
+
     func testStagesMoveForwardOnly() throws {
         var run = RunState.new(id: "r1", now: Date())
         try run.setPR(repo: "a/b", n: 7, stage: .gather, author: "x", title: "t", verdict: nil, reason: nil)

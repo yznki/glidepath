@@ -232,6 +232,11 @@ enum Doctor {
             print(item.ok ? "ok    \(item.name)" : "FAIL  \(item.name): \(item.fix)")
         }
         print(Pause.isPaused(paths) ? "note  scheduled runs are paused (glidepath resume)" : "ok    scheduled runs are active")
+        if let found = GitNexus.find(path: Runner.environment(paths)["PATH"], home: paths.home) {
+            print("ok    gitnexus: found at \(found)")
+        } else {
+            print("note  gitnexus: not found (optional)")
+        }
         for note in Checks.userSettingsNotes() {
             print("warn  ~/.claude/settings.json: \(note)")
         }

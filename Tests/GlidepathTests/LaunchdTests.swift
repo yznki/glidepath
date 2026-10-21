@@ -52,4 +52,24 @@ final class LaunchdTests: XCTestCase {
         XCTAssertEqual(p.configFile, "/fake/home/.config/glidepath/config.toml")
         XCTAssertEqual(p.stateDir, "/fake/home/.local/state/glidepath")
     }
+
+    func testGitNexusDirectoryIsAppendedOnce() {
+        XCTAssertEqual(GitNexus.addingDirectory(of: "/opt/x/bin/gitnexus", to: "/usr/bin:/bin"), "/usr/bin:/bin:/opt/x/bin")
+        XCTAssertEqual(GitNexus.addingDirectory(of: "/usr/bin/gitnexus", to: "/usr/bin:/bin"), "/usr/bin:/bin")
+        XCTAssertEqual(GitNexus.addingDirectory(of: nil, to: "/usr/bin"), "/usr/bin")
+        XCTAssertEqual(GitNexus.addingDirectory(of: "/x/gitnexus", to: ""), "/x")
+    }
+
+    func testJobPathFindsGitNexusInACommonFolder() throws {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("rr-gitnexus-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: home) }
+        let dir = home + "/Library/pnpm"
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let binary = dir + "/gitnexus"
+        XCTAssertTrue(FileManager.default.createFile(atPath: binary, contents: Data("#!/bin/sh\n".utf8),
+                                                     attributes: [.posixPermissions: 0o755]))
+        XCTAssertEqual(GitNexus.find(path: "/usr/bin:/bin", home: home), binary)
+        XCTAssertEqual(GitNexus.jobPath(base: "/usr/bin:/bin", home: home), "/usr/bin:/bin:" + dir)
+        XCTAssertEqual(GitNexus.jobPath(base: "/usr/bin:/bin:" + dir, home: home), "/usr/bin:/bin:" + dir)
+    }
 }

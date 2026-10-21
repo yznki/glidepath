@@ -174,7 +174,7 @@ struct Config: Equatable {
 
     /// Renders the config in the same subset `parse` reads. Used by `init`.
     func render() -> String {
-        var out = "schedule = [" + schedule.map { "\"\($0.text)\"" }.joined(separator: ", ") + "]\n"
+        var out = "schedule = [" + schedule.map { tomlQuoted($0.text) }.joined(separator: ", ") + "]\n"
         out += "check_updates = \(checkUpdates)\n"
         out += "notify = \(notify)\n"
         out += "\n[limits]\n"
@@ -183,29 +183,46 @@ struct Config: Equatable {
         out += "split_over_lines = \(limits.splitOverLines)\n"
         for r in repos {
             out += "\n[[repo]]\n"
-            out += "slug = \"\(r.slug)\"\n"
-            out += "clone = \"\(r.clone)\"\n"
-            out += "posting = \"\(r.posting.rawValue)\"\n"
+            out += "slug = \(tomlQuoted(r.slug))\n"
+            out += "clone = \(tomlQuoted(r.clone))\n"
+            out += "posting = \(tomlQuoted(r.posting.rawValue))\n"
             switch r.authors {
             case .collaborators: out += "authors = \"collaborators\"\n"
             case .anyone: out += "authors = \"anyone\"\n"
             case .logins(let logins):
-                out += "authors = [" + logins.map { "\"\($0)\"" }.joined(separator: ", ") + "]\n"
+                out += "authors = [" + logins.map { tomlQuoted($0) }.joined(separator: ", ") + "]\n"
             }
             if let rules = r.rules {
-                out += "rules = \"\(rules)\"\n"
-                out += "rules_mode = \"\(r.rulesMode.rawValue)\"\n"
+                out += "rules = \(tomlQuoted(rules))\n"
+                out += "rules_mode = \(tomlQuoted(r.rulesMode.rawValue))\n"
             }
-            out += "gitnexus = \"\(r.gitnexus.rawValue)\"\n"
+            out += "gitnexus = \(tomlQuoted(r.gitnexus.rawValue))\n"
             out += "include_own = \(r.includeOwn)\n"
             out += "gitnexus_refresh = \(r.gitnexusRefresh)\n"
             if !r.flagPaths.isEmpty {
-                out += "flag_paths = [" + r.flagPaths.map { "\"\($0)\"" }.joined(separator: ", ") + "]\n"
-                out += "flag_note = \"\(r.flagNote)\"\n"
+                out += "flag_paths = [" + r.flagPaths.map { tomlQuoted($0) }.joined(separator: ", ") + "]\n"
+                out += "flag_note = \(tomlQuoted(r.flagNote))\n"
             }
         }
         return out
     }
+}
+
+/// A TOML basic string that reads back as `text`: backslash, quote and the line breaks are escaped. Walks scalars,
+/// so a `"` followed by a combining mark is still escaped.
+func tomlQuoted(_ text: String) -> String {
+    var out = "\""
+    for scalar in text.unicodeScalars {
+        switch scalar {
+        case "\\": out += "\\\\"
+        case "\"": out += "\\\""
+        case "\n": out += "\\n"
+        case "\r": out += "\\r"
+        case "\t": out += "\\t"
+        default: out.unicodeScalars.append(scalar)
+        }
+    }
+    return out + "\""
 }
 
 // MARK: - Typed readers

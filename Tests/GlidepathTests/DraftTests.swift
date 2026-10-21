@@ -37,9 +37,10 @@ final class DraftTests: XCTestCase {
         try Drafts.write(draft(created: now), runId: "run-old", paths)
         try Drafts.write(draft(created: now.addingTimeInterval(60)), runId: "run-new", paths)
         XCTAssertEqual(Drafts.newest(paths, slug: "acme/api", n: 7)?.runId, "run-new")
+        XCTAssertEqual(Drafts.all(paths, includeStale: true).count, 1, "the newer draft replaced the older one")
         try Drafts.write(draft(created: now.addingTimeInterval(60), stale: true), runId: "run-new", paths)
-        XCTAssertEqual(Drafts.newest(paths, slug: "acme/api", n: 7)?.runId, "run-old", "a stale draft is not offered")
-        XCTAssertEqual(Drafts.all(paths, includeStale: true).count, 2)
+        XCTAssertNil(Drafts.newest(paths, slug: "acme/api", n: 7), "a stale draft is not offered")
+        XCTAssertEqual(Drafts.all(paths, includeStale: true).count, 1)
         XCTAssertNil(Drafts.newest(paths, slug: "acme/api", n: 8))
     }
 
@@ -99,5 +100,14 @@ final class DraftTests: XCTestCase {
         let d = Draft(verdict: "changes", reason: "x", body: "Fix it.", comments: [])
         XCTAssertThrowsError(try ReviewValidator.validate(d, files: files, posting: .review, head: "h",
                                                           note: "**Note:** see <b>this</b>"))
+    }
+
+    func testNewerDraftReplacesOlderDraftsForTheSamePROnly() throws {
+        try Drafts.write(draft(created: now), runId: "run-old", paths)
+        try Drafts.write(draft(8, created: now), runId: "run-old", paths)
+        try Drafts.write(draft(created: now.addingTimeInterval(60)), runId: "run-new", paths)
+        XCTAssertEqual(Drafts.all(paths, includeStale: true).map { "\($0.runId)/\($0.draft.n)" }.sorted(),
+                       ["run-new/7", "run-old/8"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: Drafts.path(paths, runId: "run-old", slug: "acme/api", n: 7)))
     }
 }

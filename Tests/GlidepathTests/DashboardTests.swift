@@ -41,4 +41,9 @@ final class DashboardTests: XCTestCase {
         XCTAssertFalse(html.lowercased().contains("<script"))
         XCTAssertTrue(html.contains("href=\"https://github.com/acme/api/pull/9\""))
     }
+
+    func testAQuoteWithACombiningMarkIsStillEscaped() {
+        XCTAssertEqual(DashboardPage.esc("\"\u{0301}<"), "&quot;\u{0301}&lt;")
+        XCTAssertEqual(DashboardPage.esc("'\u{0301}"), "&#39;\u{0301}")
+    }
 }

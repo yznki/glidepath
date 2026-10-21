@@ -25,8 +25,9 @@ enum PRFilter {
     /// Rules from SPEC "Run flow" step 2. Cheap checks run first; the collaborator and reviews
     /// lookups are API calls and only happen for PRs that get that far. A lookup that fails skips
     /// the PR with a reason instead of failing the repo.
+    /// `draftHeads` are the heads of this PR's open drafts: a draft at the current head counts as reviewed.
     static func evaluate(_ pr: PRInfo, me: String, includeOwn: Bool = false, authors: AuthorPolicy, limits: Limits,
-                         isCollaborator: () -> Bool?, reviewedHeads: () -> Set<String>?) -> Decision {
+                         draftHeads: Set<String> = [], isCollaborator: () -> Bool?, reviewedHeads: () -> Set<String>?) -> Decision {
         if !includeOwn && pr.author.caseInsensitiveCompare(me) == .orderedSame { return .skip("your own PR") }
         if pr.isDraft { return .skip("draft") }
         // A bot listed by name in `authors` is an explicit opt-in.
@@ -52,6 +53,7 @@ enum PRFilter {
         case .logins:
             if !listed { return .skip("author not in authors list") }
         }
+        if draftHeads.contains(pr.headSha) { return .skip("draft waiting") }
         guard let heads = reviewedHeads() else { return .skip("could not read existing reviews") }
         if heads.contains(pr.headSha) { return .skip("already reviewed at this head") }
         return .keep

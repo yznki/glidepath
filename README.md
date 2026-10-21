@@ -129,7 +129,8 @@ PR is a dot on the slope at the stage it is in.
 
 Pause writes a marker file, so scheduled runs skip until you resume. Manual runs still work.
 
-The app is the same binary as the CLI. Launched with no arguments, or with `app`, it opens the menu bar.
+The app is the same binary as the CLI. Launched with no arguments, or with `app`, it opens the menu bar. Only one copy
+runs: a second start prints "Glidepath is already running in the menu bar" and exits.
 
 
 ## Drafts
@@ -145,7 +146,7 @@ would, but holds it instead of posting. A held review is a draft. Its row shows 
 - From a terminal: `glidepath drafts list`, `glidepath drafts post owner/name N` and `glidepath drafts discard owner/name N`
   act on the newest open draft for that PR. Review sessions cannot run these commands.
 
-Drafts are kept under `~/.local/state/glidepath/drafts/`, one file per PR and run.
+Drafts are kept under `~/.local/state/glidepath/drafts/`, one file per PR. A newer draft for a PR replaces the older one.
 
 ## Reviewing a large PR
 
@@ -164,7 +165,8 @@ The page has no script. Every string from GitHub or the model is escaped, and it
 
 When a sweep finishes, Glidepath posts one notification: "Sweep done" with the counts ("2 need changes · 3 approved",
 "All clear · 5 reviewed", or "3 drafts to post"), or "Sweep failed" with the run's error. A sweep with no PRs reviewed
-says nothing, and a dry run never notifies. Clicking the notification opens the popover. The first launch after an
+says nothing, and a dry run never notifies. A one-PR review from `glidepath review` notifies only when it fails ("Review failed").
+Clicking the notification opens the popover. The first launch after an
 update asks for permission. If it is denied, the app logs that once and carries on.
 
 Turn notifications off with `notify = false` in the config. The app has no menu item for this; the config is the
@@ -294,8 +296,10 @@ Tools do not include XCTest.
 5. **App.** Links `Glidepath.app` into `~/Applications/`. Skipped if the app is not next to the binary.
 6. **Schedule.** Writes `~/Library/LaunchAgents/dev.glidepath.run.plist` and loads it with
    `launchctl bootstrap`. The plist runs `glidepath run --scheduled` at each `schedule` time, with
-   the `PATH` from the shell you ran `init` in. If you change tools later (for example, move `gh`),
-   run `init` again.
+   the `PATH` from the shell you ran `init` in, plus the folder of `gitnexus` when `init` finds it (on the PATH, in
+   `~/Library/pnpm`, `~/.local/share/pnpm`, `~/.npm-global/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, or npm's global
+   bin). If you change tools later (for example, move `gh`), run `init` again. `init --refresh` keeps the job's PATH
+   and adds the `gitnexus` folder if it is missing. `glidepath doctor` says whether `gitnexus` is found.
 7. **Dry run.** Runs `glidepath run --dry-run` on the first repo. It reviews, prints the drafts,
    and posts nothing.
 

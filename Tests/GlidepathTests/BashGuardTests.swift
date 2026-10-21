@@ -156,4 +156,14 @@ final class BashGuardTests: XCTestCase {
         }
         XCTAssertNil(BashGuard.denial(for: "glidepath post --repo acme/api --pr 7"))
     }
+
+    func testReviewAndDashboardAreNamedDenials() {
+        XCTAssertEqual(BashGuard.denial(for: "glidepath review acme/api 3"),
+                       "glidepath review starts a review run; it is for the user, not for a review session")
+        XCTAssertEqual(BashGuard.denial(for: "glidepath review 'acme/api' 3 --again"),
+                       "glidepath review starts a review run; it is for the user, not for a review session")
+        XCTAssertEqual(BashGuard.denial(for: "glidepath dashboard"),
+                       "glidepath dashboard writes a page and opens a browser; it is for the user, not for a review session")
+        XCTAssertEqual(BashGuard.evaluate(stdin: Data(#"{"tool_name":"Bash","tool_input":{"command":"glidepath review a/b 1"}}"#.utf8)).code, 2)
+    }
 }

@@ -86,8 +86,15 @@ enum BashGuard {
         case .success(let list):
             // Drafts are posted by the user from the app or a terminal. A review session never posts a held draft,
             // whatever the quoting.
-            if list.first?.text == "drafts" {
+            switch list.first?.text {
+            case "drafts"?:
                 return "glidepath drafts is for the user, not for a review; the draft waits for them to post it"
+            case "review"?:
+                return "glidepath review starts a review run; it is for the user, not for a review session"
+            case "dashboard"?:
+                return "glidepath dashboard writes a page and opens a browser; it is for the user, not for a review session"
+            default:
+                break
             }
             // A value that starts with -- must be quoted, so a flag cannot be smuggled in as a value.
             for (index, token) in list.enumerated() where index > 0 {

@@ -80,6 +80,10 @@ enum Presentation {
     /// sweep with nothing reviewed says nothing, unless it failed.
     static func notice(_ run: RunState) -> SweepNotice? {
         guard run.finished != nil else { return nil }
+        if run.kind == "review" {
+            // A one-PR review by hand is not a sweep: it notifies only when it fails.
+            return failureMessage(run).map { SweepNotice(title: "Review failed", body: $0) }
+        }
         if let message = failureMessage(run) {
             return SweepNotice(title: "Sweep failed", body: message)
         }

@@ -248,7 +248,10 @@ struct PopoverView: View {
                     Rectangle().fill(p.rule).frame(height: 1)
                         .padding(.horizontal, Metrics.inset)
                 }
-                if groups.count > 1 {
+                // A heading only over rows: a repo with nothing to show gets no empty heading. Its error, if any, leads with
+                // the repo name instead.
+                let heading = groups.count > 1 && !group.rows.isEmpty
+                if heading {
                     Text(group.repo)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(p.secondary)
@@ -259,7 +262,7 @@ struct PopoverView: View {
                     Spacer().frame(height: 12)
                 }
                 if let error = group.error {
-                    Text(error)
+                    Text(groups.count > 1 && !heading ? "\(group.repo): \(error)" : error)
                         .font(.system(size: 12))
                         .foregroundStyle(p.error)
                         .lineLimit(2)
@@ -508,8 +511,8 @@ struct PRRow: View {
 
     private var p: Palette { Palette(scheme) }
     private var strip: Strip { row.strip }
-    /// A draft waiting for Post or Discard. A post that is running shows "Posting…" instead.
-    private var showsDraftActions: Bool { strip.draft && !strip.posting }
+    /// A draft waiting for Post or Discard. A post or discard that is running shows its word instead.
+    private var showsDraftActions: Bool { strip.draft && strip.draftAction == nil }
     /// A PR skipped for size offers Review on line 2.
     private var showsReview: Bool { strip.skipReason == "size" && strip.verdict == .skipped }
     private var showsActions: Bool { showsDraftActions || showsReview }
@@ -622,10 +625,12 @@ struct PRRow: View {
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(p.doingText)
+                    .disabled(store.snap.running)
                 Button("Discard") { store.discardDraft(strip) }
                     .buttonStyle(.plain)
                     .font(.system(size: 12))
                     .foregroundStyle(p.secondary)
+                    .disabled(store.snap.running)
             }
         }
         .padding(.trailing, Metrics.inset)
@@ -684,12 +689,12 @@ struct PRRow: View {
     /// Meter (in flight only), then the label, then the mark, in one line.
     private var statusLine: some View {
         HStack(spacing: 6) {
-            if let meter = row.meter, !strip.posting {
+            if let meter = row.meter, strip.draftAction == nil {
                 meterView(meter)
             }
-            let (shape, colour, label, text) = strip.posting
-                ? (StatusShape.hollow, p.doingMark, "Posting…", p.doingText)
-                : statusParts
+            let (shape, colour, label, text) = strip.draftAction.map { action in
+                (StatusShape.hollow, p.doingMark, action == .posting ? "Posting…" : "Discarding…", p.doingText)
+            } ?? statusParts
             Text(label)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(strip.carriedFrom == nil ? text : p.tertiary)

@@ -51,9 +51,49 @@ struct RunState: Codable, Equatable {
     var repos: [RepoState]
     var tokens: Int
     var error: String?
+    /// "review" for `glidepath review` (one PR, by hand). nil for a sweep. Optional so older run files decode.
+    var kind: String? = nil
 
-    static func new(id: String, now: Date) -> RunState {
-        RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil)
+    static func new(id: String, now: Date, kind: String? = nil) -> RunState {
+        RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil, kind: kind)
+    }
+
+    /// A review run starts from the rows of the run it replaces, so the popover keeps the last sweep's results.
+    /// Rows for `target` (the PR this run reviews) are left out; this run writes them. Carried rows keep their
+    /// verdict and reason, and show when they were decided, as rows carried over from a failed run do.
+    mutating func carryRows(from previous: RunState, except target: (slug: String, n: Int)?) {
+        for repo in previous.repos {
+            for old in repo.prs {
+                if let target, target.slug == repo.slug, target.n == old.n { continue }
+                let ri = repoIndex(repo.slug)
+                guard !repos[ri].prs.contains(where: { $0.n == old.n }) else { continue }
+                var row = old
+                row.active = false
+                row.carriedFrom = old.carriedFrom ?? previous.started
+                repos[ri].prs.append(row)
+            }
+        }
+    }
+
+    /// The popover's view of held drafts: every open draft on disk shows, whichever run wrote it. Its row gets the
+    /// draft mark, and a draft with no row gets one, so it can still be posted after its run was replaced.
+    /// Only the in-memory copy changes; nothing is saved.
+    mutating func showDrafts(_ found: [Drafts.Found]) {
+        for ri in repos.indices {
+            for pi in repos[ri].prs.indices {
+                let n = repos[ri].prs[pi].n
+                repos[ri].prs[pi].draft = found.contains { $0.draft.slug == repos[ri].slug && $0.draft.n == n }
+            }
+        }
+        for item in found {
+            let d = item.draft
+            let listed = repos.first { $0.slug == d.slug }?.prs.contains { $0.n == d.n } ?? false
+            guard !listed else { continue }
+            let ri = repoIndex(d.slug)
+            repos[ri].prs.append(PRState(n: d.n, author: d.author, title: d.title, stage: .post, active: false,
+                                         verdict: d.event == "APPROVE" ? .approve : .changes, reason: nil, tokens: 0,
+                                         draft: true))
+        }
     }
 
     /// Applies one stage transition for a PR. Stages only move forward, and a verdict is final.

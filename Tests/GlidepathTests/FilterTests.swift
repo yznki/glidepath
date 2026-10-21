@@ -63,4 +63,14 @@ final class FilterTests: XCTestCase {
                               isCollaborator: { lookups += 1; return true }, reviewedHeads: { lookups += 1; return [] })
         XCTAssertEqual(lookups, 2)
     }
+
+    func testADraftAtTheCurrentHeadMeansWaiting() {
+        func decide(_ draftHeads: Set<String>) -> Decision {
+            PRFilter.evaluate(pr(sha: "abc"), me: "me", authors: .collaborators, limits: limits, draftHeads: draftHeads,
+                              isCollaborator: { true }, reviewedHeads: { [] })
+        }
+        XCTAssertEqual(decide(["abc"]), .skip("draft waiting"))
+        XCTAssertEqual(decide(["older"]), .keep, "a draft at an old head does not hold back the new head")
+        XCTAssertEqual(decide([]), .keep)
+    }
 }

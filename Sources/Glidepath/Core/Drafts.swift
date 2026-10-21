@@ -13,6 +13,10 @@ struct DraftFile: Codable, Equatable {
     var created: Date
     /// Set when the PR moved after the draft was written. A stale draft is not offered again.
     var stale: Bool? = nil
+    /// The PR's title and author at post time, so a held draft can be listed after its run is replaced. Optional for
+    /// drafts written before they were recorded.
+    var title: String? = nil
+    var author: String? = nil
 }
 
 enum Drafts {
@@ -35,7 +39,13 @@ enum Drafts {
         let dir = folder(paths, runId: runId, slug: draft.slug)
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let data = try RunStore.encoder().encode(draft)
-        try data.write(to: URL(fileURLWithPath: path(paths, runId: runId, slug: draft.slug, n: draft.n)), options: .atomic)
+        let file = path(paths, runId: runId, slug: draft.slug, n: draft.n)
+        try data.write(to: URL(fileURLWithPath: file), options: .atomic)
+        // A new draft for a PR replaces every older one, in any run. Marking a draft stale does not replace anything.
+        guard draft.stale != true else { return }
+        for old in all(paths, includeStale: true) where old.draft.slug == draft.slug && old.draft.n == draft.n && old.path != file {
+            try? FileManager.default.removeItem(atPath: old.path)
+        }
     }
 
     /// Every draft on disk, newest first. Stale ones are included only when `includeStale` is set.

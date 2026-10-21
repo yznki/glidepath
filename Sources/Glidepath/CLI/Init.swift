@@ -86,7 +86,8 @@ enum InitCommand {
 
         do {
             try installJob(paths: paths, config: config, binary: binary,
-                           path: ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin")
+                           path: GitNexus.jobPath(base: ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
+                                                  home: paths.home))
             print("Scheduled \(config.schedule.map(\.text).joined(separator: ", ")) via \(paths.plistFile)")
         } catch {
             eprint("could not install the scheduled job: \(error)")
@@ -143,7 +144,8 @@ enum InitCommand {
             return 1
         }
         // The job is rewritten (and reloaded) only when its content would change. A sweep in progress keeps its job.
-        let path = Runner.jobPath(paths) ?? ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+        let path = GitNexus.jobPath(base: Runner.jobPath(paths) ?? ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
+                                    home: paths.home)
         let wanted = try? Launchd.data(binary: binary, schedule: config.schedule, path: path, logFile: paths.logFile)
         if wanted != nil && wanted == (try? Data(contentsOf: URL(fileURLWithPath: paths.plistFile))) {
             print("Scheduled job is current")

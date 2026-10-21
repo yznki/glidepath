@@ -181,6 +181,15 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(Presentation.notice(run([], finished: true, error: "gh is not authenticated")),
                        SweepNotice(title: "Sweep failed", body: "gh is not authenticated"))
     }
+
+    func testManualReviewNotifiesOnlyWhenItFails() {
+        var review = run([pr(1, verdict: .approve)], finished: true)
+        review.kind = "review"
+        XCTAssertNil(Presentation.notice(review), "a one-PR review by hand is not a sweep")
+        var failed = run([], finished: true, error: "claude exited 1")
+        failed.kind = "review"
+        XCTAssertEqual(Presentation.notice(failed), SweepNotice(title: "Review failed", body: "claude exited 1"))
+    }
 }
 
 /// The text the row shows for a skipped PR.
