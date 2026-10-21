@@ -1,9 +1,11 @@
 import SwiftUI
 import AppKit
 
-/// The main window: sidebar beside the canvas. Section bodies are placeholders until their phases land.
+/// The main window: sidebar beside the canvas. Overview is built; other section bodies are placeholders until their
+/// phases land.
 struct MainWindowView: View {
     @ObservedObject var router = WindowRouter.shared
+    @ObservedObject var store = Store.shared
 
     var body: some View {
         HStack(spacing: 0) {
@@ -18,14 +20,19 @@ struct MainWindowView: View {
 
     private var canvas: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(router.section.title)
-                .font(.system(size: 24, weight: .bold))
-                .tracking(-0.4)
-                .foregroundStyle(WinTheme.text)
-                .frame(height: 32, alignment: .leading)
-                .id(router.section)
-                .transition(.opacity)
-            Spacer(minLength: 0)
+            if router.section == .overview {
+                // The hero starts on the title line, so Overview has no title row of its own.
+                OverviewView(store: store)
+            } else {
+                Text(router.section.title)
+                    .font(.system(size: 24, weight: .bold))
+                    .tracking(-0.4)
+                    .foregroundStyle(WinTheme.text)
+                    .frame(height: 32, alignment: .leading)
+                    .id(router.section)
+                    .transition(.opacity)
+                Spacer(minLength: 0)
+            }
         }
         .padding(.leading, WinMetrics.canvasLeft)
         .padding(.trailing, WinMetrics.canvasRight)
