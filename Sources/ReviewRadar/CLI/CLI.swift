@@ -53,6 +53,8 @@ enum CLI {
         case "run": return RunCommand.main(rest)
         case "init": return InitCommand.main(rest)
         case "state": return StateCommand.main(rest)
+        case "pr": return PRCommands.main(rest)
+        case "post": return PRCommands.post(rest)
         case "pause": return setPaused(true)
         case "resume": return setPaused(false)
         case "doctor": return Doctor.main()
@@ -108,9 +110,20 @@ enum StateCommand {
                     guard let v = Verdict(rawValue: text) else { throw StateError("unknown verdict \(text)") }
                     return v
                 }
+                // Bound to the run in the environment. Stamps belong to `review-radar post`, never here.
+                let binding = try RunBinding.current()
+                guard runId == binding.runId, slug == binding.repo else {
+                    throw StateError("state set is limited to the run and repo in this session")
+                }
+                guard verdict == nil, stage != .post else {
+                    throw StateError("verdicts and the post stage are set by review-radar post")
+                }
                 try store.mutate(runId) { run in
+                    guard run.repos.first(where: { $0.slug == slug })?.prs.contains(where: { $0.n == n }) == true else {
+                        throw StateError("unknown PR for this run: \(slug) #\(n)")
+                    }
                     try run.setPR(repo: slug, n: n, stage: stage, author: a.value("--author"),
-                                  title: a.value("--title"), verdict: verdict, reason: a.value("--reason"))
+                                  title: a.value("--title"), verdict: nil, reason: nil)
                 }
                 print("ok")
                 return 0
