@@ -64,9 +64,12 @@
       <circle cx="340" cy="712" r="10" fill="#FF5A4E"/>
     </g>
 
+    <!-- glide slope onto the landing light (the brand mark) -->
+    <line x1="232" y1="236" x2="478" y2="446" stroke="#4DA3FF" stroke-opacity="0.25" stroke-width="54" stroke-linecap="round"/>
+    <line x1="232" y1="236" x2="478" y2="446" stroke="#4DA3FF" stroke-width="26" stroke-linecap="round"/>
     <!-- threshold: the landing light, brand amber -->
     <circle cx="512" cy="470" r="70" fill="url(#glow)"/>
-    <circle cx="512" cy="470" r="14" fill="#FFB020"/>
+    <circle cx="512" cy="470" r="24" fill="#FFB020"/>
   </g>
 
   <!-- top-edge highlight -->
