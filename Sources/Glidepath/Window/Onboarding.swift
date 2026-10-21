@@ -678,28 +678,46 @@ final class OnboardingModel: ObservableObject {
 
     // MARK: Repos
 
-    /// Lists the user's repos and orgs' repos. Runs off the main thread; a failure shows in place of the list.
+    /// The last complete repo list, open PR counts included. Reused for 10 minutes, so reopening the step or the window is instant.
+    private static var repoCache: (at: Date, repos: [DiscoveredRepo])?
+    private static let repoCacheTTL: TimeInterval = 600
+
+    /// Lists the user's repos and orgs' repos, then fills in the open PR counts. Each phase runs off the main thread;
+    /// the list shows as soon as the first one lands. A failed list shows in place of the list.
     func loadRepos() {
         guard repoList != .loading else { return }
+        if let cache = Self.repoCache, Date().timeIntervalSince(cache.at) < Self.repoCacheTTL {
+            repos = cache.repos
+            repoList = .loaded
+            return
+        }
         repoList = .loading
         let env = Runner.environment(paths)
         Task {
-            let result = await Task.detached(priority: .userInitiated) { () -> Result<[DiscoveredRepo], ConfigError> in
+            let listed = await Task.detached(priority: .userInitiated) { () -> Result<RepoDiscovery.Listing, ConfigError> in
                 do {
-                    return .success(try RepoDiscovery.load(env: env))
+                    return .success(try RepoDiscovery.loadRepos(env: env))
                 } catch let error as ConfigError {
                     return .failure(error)
                 } catch {
                     return .failure(ConfigError(message: "\(error)"))
                 }
             }.value
-            switch result {
+            let listing: RepoDiscovery.Listing
+            switch listed {
             case .success(let found):
-                repos = found
-                repoList = .loaded
+                listing = found
             case .failure(let error):
                 repoList = .failed(error.message)
+                return
             }
+            repos = listing.repos
+            repoList = .loaded
+            let counts = await Task.detached(priority: .userInitiated) {
+                RepoDiscovery.loadOpenCounts(owners: listing.owners, env: env)
+            }.value
+            repos = RepoDiscovery.applyOpenCounts(counts.counts, searched: counts.searched, to: repos)
+            Self.repoCache = (Date(), repos)
         }
     }
 

@@ -126,6 +126,16 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(RepoDiscovery.parseOpenCounts(Data(json.utf8)), ["acme/api": 2, "acme/web": 1])
     }
 
+    func testMergeDedupesSortsAndCapsOwnerLists() {
+        func repo(_ slug: String, _ pushed: TimeInterval) -> DiscoveredRepo {
+            DiscoveredRepo(slug: slug, language: nil, pushedAt: Date(timeIntervalSince1970: pushed), openPRs: nil)
+        }
+        let mine = [repo("me/old", 100), repo("me/new", 300)]
+        let org = [repo("org/shared", 200), repo("me/new", 50), repo("org/tie", 300)]
+        XCTAssertEqual(RepoDiscovery.merge([mine, org]).map(\.slug), ["me/new", "org/tie", "org/shared", "me/old"])
+        XCTAssertEqual(RepoDiscovery.merge([mine, org], cap: 2).map(\.slug), ["me/new", "org/tie"])
+    }
+
     func testLandingSummaryCountsVerdicts() {
         func strip(_ n: Int, _ verdict: Verdict?, skip: String? = nil) -> Strip {
             Strip(repo: "acme/api", number: n, author: nil, title: nil, reason: nil, stage: 4, active: false,
