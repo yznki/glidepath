@@ -6,8 +6,8 @@ private let stateSpring = Animation.spring(response: 0.45, dampingFraction: 0.86
 private let stageWords = ["starting", "gathering", "reviewing", "checking", "posting"]
 private let rowMaxVisible: CGFloat = 6 * 64
 
-/// View-local state. `@State` is a macro in the SDK and Command Line Tools cannot load its plugin,
-/// so views keep their few mutable values in this object instead.
+/// View-local state. SwiftUI's state wrapper is a macro, and Command Line Tools cannot load its
+/// plugin, so views keep their few mutable values in this object instead.
 final class LocalState: ObservableObject {
     @Published var loginOn = false
     @Published var rowsHeight: CGFloat = 0
