@@ -250,7 +250,7 @@ extension OnboardingView {
     private func sweepLead(_ first: String) -> String {
         switch model.state.firstSweep {
         case .notRun:
-            return "Glidepath dry-runs \(first): it reviews the open PRs and posts nothing. The schedule stays paused until you turn it on."
+            return "Glidepath dry-runs \(first): it reviews the open PRs and posts nothing. \(model.scheduleCopy)"
         case .running:
             return "Reviewing \(first) now. Nothing is posted."
         case .finished(_, let summary):
@@ -365,7 +365,9 @@ enum OnboardingSetup {
     static func run(config: Config, paths: Paths, env: [String: String]) throws -> ShellResult {
         let binary = InitCommand.binaryPath()
         // Paused before the job is written, so a sweep that starts before the user turns the schedule on skips itself.
-        try Pause.set(true, paths)
+        if Pause.pausesOnSetup(jobInstalled: FileManager.default.fileExists(atPath: paths.plistFile)) {
+            try Pause.set(true, paths)
+        }
         for repo in config.repos {
             do {
                 try RepoClone.sync(repo, env: env)

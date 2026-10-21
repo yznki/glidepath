@@ -596,6 +596,21 @@ final class OnboardingModel: ObservableObject {
         let existing = try? Config.load(paths)
         base = existing
         state = OnboardingState.initial(existing: existing)
+        // A first sweep that failed after its config was written reopens on that step, with its failure.
+        state.step = OnboardingState.resumeStep(configExists: existing != nil, failedSweep: OnboardingResume.failedSweep)
+        if state.step == .firstSweep, let failure = OnboardingResume.failedSweep {
+            state.firstSweep = .failed(failure)
+        }
+    }
+
+    /// The schedule line on the first sweep step: setup leaves an installed job as it is, and a new job starts paused.
+    var scheduleCopy: String {
+        guard keepsSchedule else { return "The schedule stays paused until you turn it on." }
+        return Pause.isPaused(paths) ? "Your current schedule stays paused." : "Your current schedule stays on."
+    }
+
+    private var keepsSchedule: Bool {
+        !Pause.pausesOnSetup(jobInstalled: FileManager.default.fileExists(atPath: paths.plistFile))
     }
 
     /// Snapshot rendering: a model with the given fields and nothing read from disk, run or launched.
@@ -803,6 +818,7 @@ final class OnboardingModel: ObservableObject {
         guard state.firstSweep != .running else { return }
         if base == nil && FileManager.default.fileExists(atPath: paths.configFile) {
             state.firstSweep = .failed("config.toml exists but does not parse. Fix it, or choose another with Use my config file.")
+            OnboardingResume.failedSweep = OnboardingState.failure(of: state.firstSweep)
             return
         }
         guard let first = state.repos.first else { return }
@@ -820,6 +836,7 @@ final class OnboardingModel: ObservableObject {
         let paths = self.paths
         let started = Date()
         state.firstSweep = .running
+        OnboardingResume.failedSweep = nil
         liveStrips = []
         message = nil
 
@@ -852,6 +869,7 @@ final class OnboardingModel: ObservableObject {
                 let summary = OnboardingSummary.landing(liveStrips, posting: state.posting, repo: first)
                 state.firstSweep = .finished(reviews: summary.reviews, summary: summary.text)
             }
+            OnboardingResume.failedSweep = OnboardingState.failure(of: state.firstSweep)
         }
     }
 

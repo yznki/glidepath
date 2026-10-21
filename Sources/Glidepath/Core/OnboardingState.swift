@@ -36,6 +36,26 @@ enum FirstSweep: Equatable {
     case failed(String)
 }
 
+extension OnboardingState {
+    /// The step a reopened window starts on. A config that exists and a first sweep that failed reopen on the first
+    /// sweep step, so "Try again" is there; anything else starts at the welcome step.
+    static func resumeStep(configExists: Bool, failedSweep: String?) -> OnboardingStep {
+        configExists && failedSweep != nil ? .firstSweep : .welcome
+    }
+
+    /// The failure text of a first sweep that failed, or nil.
+    static func failure(of sweep: FirstSweep) -> String? {
+        if case .failed(let text) = sweep { return text }
+        return nil
+    }
+}
+
+/// The failure of the last first sweep, kept across closing the window (the app stays running), so the window can
+/// reopen on it. Cleared when a sweep starts or succeeds.
+enum OnboardingResume {
+    static var failedSweep: String?
+}
+
 /// The onboarding wizard's state. Pure: the window fills it in and drives it; nothing here touches disk or the network.
 struct OnboardingState: Equatable {
     var step: OnboardingStep = .welcome

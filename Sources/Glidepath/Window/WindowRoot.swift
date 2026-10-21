@@ -35,9 +35,10 @@ final class WindowRouter: ObservableObject {
         self.showOnboarding = showOnboarding ?? WindowRouter.needsSetup()
     }
 
-    /// True when there is no config file yet, so the window opens on onboarding.
+    /// True when there is no config file yet, or a first sweep failed and has not been retried, so the window opens
+    /// on onboarding.
     static func needsSetup(paths: Paths = Paths()) -> Bool {
-        !FileManager.default.fileExists(atPath: paths.configFile)
+        !FileManager.default.fileExists(atPath: paths.configFile) || OnboardingResume.failedSweep != nil
     }
 
     /// Selects `section` (when given), opens the main window and brings the app forward. With no config file the

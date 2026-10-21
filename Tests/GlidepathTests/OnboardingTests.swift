@@ -137,4 +137,24 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(summary.text, "Would post 2 reviews to acme/api as comment: 1 need changes, 1 approve. 1 too large to review on their own.")
         XCTAssertEqual(OnboardingSummary.landing([], posting: .draft, repo: "acme/api").reviews, 0)
     }
+
+    /// Setup pauses a new job, and leaves an installed one as it is.
+    func testSetupPausesOnlyWhenNoJobIsInstalled() {
+        XCTAssertTrue(Pause.pausesOnSetup(jobInstalled: false))
+        XCTAssertFalse(Pause.pausesOnSetup(jobInstalled: true))
+    }
+
+    /// A reopened window lands on the first sweep only when a config exists and that sweep failed.
+    func testResumeStepReopensOnFailedFirstSweepOnlyWithConfig() {
+        XCTAssertEqual(OnboardingState.resumeStep(configExists: true, failedSweep: "boom"), .firstSweep)
+        XCTAssertEqual(OnboardingState.resumeStep(configExists: false, failedSweep: "boom"), .welcome)
+        XCTAssertEqual(OnboardingState.resumeStep(configExists: true, failedSweep: nil), .welcome)
+        XCTAssertEqual(OnboardingState.resumeStep(configExists: false, failedSweep: nil), .welcome)
+    }
+
+    func testFailureTextOnlyForAFailedSweep() {
+        XCTAssertEqual(OnboardingState.failure(of: .failed("boom")), "boom")
+        XCTAssertNil(OnboardingState.failure(of: .notRun))
+        XCTAssertNil(OnboardingState.failure(of: .running))
+    }
 }

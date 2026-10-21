@@ -88,6 +88,12 @@ enum Pause {
         return ISO8601DateFormatter().date(from: stamp)
     }
 
+    /// Whether setup pauses the schedule. A job that is already installed keeps its state; with no job yet, the first
+    /// install starts paused, so the schedule stays off until the user turns it on.
+    static func pausesOnSetup(jobInstalled: Bool) -> Bool {
+        !jobInstalled
+    }
+
     static func set(_ paused: Bool, _ paths: Paths) throws {
         let fm = FileManager.default
         if paused {

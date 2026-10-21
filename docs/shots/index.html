@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:">
+<title>Glidepath dashboard</title>
+<style>
+:root { color-scheme: light dark; }
+body { margin: 0; background: #F5F5F5; color: #111111;
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 32px 24px 48px; text-align: left; }
+h1 { font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+h2 { font-size: 15px; font-weight: 600; margin: 36px 0 8px; padding-top: 16px; border-top: 1px solid rgba(17,17,17,0.08); }
+h3 { font-size: 14px; font-weight: 600; margin: 18px 0 4px; }
+h4 { font-size: 12px; font-weight: 600; color: #5C5C5C; margin: 16px 0 4px; }
+.l2 { margin: 0; }
+.l3 { margin: 0; color: #6B6B6B; font-size: 12px; }
+.meta { color: #5C5C5C; font-size: 12px; margin: 0; }
+.title { font-weight: 500; }
+.reason { color: #8A5300; font-size: 12px; margin-top: 2px; }
+.error { color: #C4242A; font-size: 12px; margin: 4px 0; }
+.flag { color: #5C5C5C; font-size: 11px; font-weight: 500; }
+.verdict.approve { color: #1B6B3F; }
+.verdict.changes { color: #8A5300; }
+.verdict.skip { color: #6B6B6B; }
+ul.rows { list-style: none; margin: 0; padding: 0; }
+ul.rows li { padding: 8px 0; border-top: 1px solid rgba(17,17,17,0.08); }
+article { margin-bottom: 8px; }
+pre { white-space: pre-wrap; word-wrap: break-word; margin: 8px 0; padding: 0 0 0 12px;
+  border-left: 2px solid rgba(17,17,17,0.12); font: 13px/1.5 ui-monospace, Menlo, monospace; }
+code { font: 12px ui-monospace, Menlo, monospace; }
+a { color: #0060CC; text-decoration: none; }
+a:hover { text-decoration: underline; }
+@media (prefers-color-scheme: dark) {
+  body { background: #222222; color: #F2F2F2; }
+  h2 { border-top-color: rgba(242,242,242,0.10); }
+  h4, .meta, .flag { color: #A8A8A8; }
+  .l3 { color: #8E8E8E; }
+  .reason { color: #FFC966; }
+  .error { color: #FF6B6B; }
+  .verdict.approve { color: #7EE0A6; }
+  .verdict.changes { color: #FFC966; }
+  .verdict.skip { color: #9A9A9A; }
+  ul.rows li { border-top-color: rgba(242,242,242,0.10); }
+  pre { border-left-color: rgba(242,242,242,0.2); }
+  a { color: #4DA3FF; }
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>2 need changes</h1>
+<p class="l2">1 draft to post</p>
+<p class="l3">Next sweep 1:00 PM, in 21 h 9 min</p>
+</header>
+<section>
+<h2>Drafts to post</h2>
+<article>
+<h3><a href="https://github.com/lumen/api/pull/1212">lumen/api #1212</a> <span class="verdict changes">▲ Request changes</span></h3>
+<p class="meta">21 Oct at 3:40 PM · post with <code>glidepath drafts post lumen/api 1212</code></p>
+<pre>Two things to fix before this lands.
+
+The rate limit is checked after the cache lookup, so a cached response skips it. Move the check above the lookup.
+
+The new query has no test for a caller from another org.</pre>
+<p class="meta">internal/audit/cache.go:42: The lookup runs before the limit check here.</p>
+</article>
+</section>
+<section>
+<h2>Runs</h2>
+<article class="run">
+<h3>21 Oct at 10:12 AM <span class="meta">14 min · 980k tokens</span></h3>
+<h4>lumen/api</h4>
+<ul class="rows">
+<li>
+<div class="title">Cache org permissions per request in the audit log</div>
+<div class="meta"><a href="https://github.com/lumen/api/pull/1212">lumen/api #1212</a> · omar · <span class="verdict changes">▲ Changes</span> <span class="flag">Flagged</span> <span class="flag">Draft to post</span></div>
+<div class="reason">missing RLS test</div>
+</li>
+<li>
+<div class="title">Bump Postgres driver to 3.4</div>
+<div class="meta"><a href="https://github.com/lumen/api/pull/1229">lumen/api #1229</a> · dana · <span class="verdict approve">● Approved</span> <span class="flag">Draft to post</span></div>
+</li>
+</ul>
+<h4>lumen/web</h4>
+<ul class="rows">
+<li>
+<div class="title">Fix the date picker timezone on CSV export</div>
+<div class="meta"><a href="https://github.com/lumen/web/pull/88">lumen/web #88</a> · lea · <span class="verdict changes">▲ Changes</span></div>
+<div class="reason">dates shift by a day</div>
+</li>
+<li>
+<div class="title">Bump next to 15.1</div>
+<div class="meta"><a href="https://github.com/lumen/web/pull/84">lumen/web #84</a> · sam · <span class="verdict skip">– Skipped</span></div>
+<div class="reason">draft</div>
+</li>
+</ul>
+</article>
+<article class="run">
+<h3>20 Oct at 10:12 AM <span class="meta">14 min · 980k tokens</span></h3>
+<h4>lumen/api</h4>
+<ul class="rows">
+<li>
+<div class="title">Bump Postgres driver to 3.4</div>
+<div class="meta"><a href="https://github.com/lumen/api/pull/1229">lumen/api #1229</a> · dana · <span class="verdict approve">● Approved</span></div>
+</li>
+<li>
+<div class="title">Cache org permissions per request in the audit log</div>
+<div class="meta"><a href="https://github.com/lumen/api/pull/1212">lumen/api #1212</a> · omar · <span class="verdict changes">▲ Changes</span></div>
+<div class="reason">missing RLS test</div>
+</li>
+</ul>
+<h4>lumen/web</h4>
+<ul class="rows">
+<li>
+<div class="title">Fix the date picker timezone on CSV export</div>
+<div class="meta"><a href="https://github.com/lumen/web/pull/88">lumen/web #88</a> · lea · <span class="verdict changes">▲ Changes</span></div>
+<div class="reason">dates shift by a day</div>
+</li>
+<li>
+<div class="title">Bump next to 15.1</div>
+<div class="meta"><a href="https://github.com/lumen/web/pull/84">lumen/web #84</a> · sam · <span class="verdict skip">– Skipped</span></div>
+<div class="reason">draft</div>
+</li>
+</ul>
+</article>
+<article class="run">
+<h3>19 Oct at 10:12 AM <span class="meta">14 min · 70k tokens</span></h3>
+<p class="error">claude exited 1: see the log for details</p>
+<h4>lumen/api</h4>
+<ul class="rows">
+<li>
+<div class="title">Bump Postgres driver to 3.4</div>
+<div class="meta"><a href="https://github.com/lumen/api/pull/1229">lumen/api #1229</a> · dana · <span class="verdict approve">● Approved</span></div>
+</li>
+<li>
+<div class="title">Cache org permissions per request in the audit log</div>
+<div class="meta"><a href="https://github.com/lumen/api/pull/1212">lumen/api #1212</a> · omar · <span class="verdict changes">▲ Changes</span></div>
+<div class="reason">missing RLS test</div>
+</li>
+</ul>
+<h4>lumen/web</h4>
+<ul class="rows">
+<li>
+<div class="title">Redesign the empty states for the projects list</div>
+<div class="meta"><a href="https://github.com/lumen/web/pull/91">lumen/web #91</a> · kai · <span class="verdict approve">● Approved</span></div>
+</li>
+</ul>
+</article>
+<article class="run">
+<h3>18 Oct at 10:12 AM <span class="meta">14 min · 610k tokens</span></h3>
+<h4>lumen/api</h4>
+<ul class="rows">
+<li>
+<div class="title">Bump Postgres driver to 3.4</div>
+<div class="meta"><a href="https://github.com/lumen/api/pull/1229">lumen/api #1229</a> · dana · <span class="verdict approve">● Approved</span></div>
+</li>
+<li>
+<div class="title">Drop the legacy webhook retry table</div>
+<div class="meta"><a href="https://github.com/lumen/api/pull/1225">lumen/api #1225</a> · tom · <span class="verdict approve">● Approved</span></div>
+</li>
+</ul>
+<h4>lumen/web</h4>
+<ul class="rows">
+<li>
+<div class="title">Redesign the empty states for the projects list</div>
+<div class="meta"><a href="https://github.com/lumen/web/pull/91">lumen/web #91</a> · kai · <span class="verdict approve">● Approved</span></div>
+</li>
+</ul>
+</article>
+</section>
+</main>
+</body>
+</html>
