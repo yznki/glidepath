@@ -749,7 +749,7 @@ final class OnboardingModel: ObservableObject {
             let text = try String(contentsOf: url, encoding: .utf8)
             let config = try Config.parse(text, home: paths.home)
             try FileManager.default.createDirectory(atPath: paths.configDir, withIntermediateDirectories: true)
-            backupNote = try backupNoteFor(ConfigEditor.backupExisting(paths: paths))
+            backupNote = try backupNoteFor(ConfigSession.shared.backupExisting(paths: paths))
             try text.write(toFile: paths.configFile, atomically: true, encoding: .utf8)
             base = config
             state = OnboardingState.initial(existing: config)
@@ -828,7 +828,7 @@ final class OnboardingModel: ObservableObject {
         // Only when the file was not already backed up by Use my config file this session.
         if backupNote == nil {
             do {
-                backupNote = try backupNoteFor(ConfigEditor.backupExisting(paths: paths))
+                backupNote = try backupNoteFor(ConfigSession.shared.backupExisting(paths: paths))
             } catch {
                 message = "Could not back up config.toml, so nothing was written: \(error.localizedDescription)"
                 return

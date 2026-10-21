@@ -312,10 +312,11 @@ struct RepoDetail: View {
             return
         }
         let next = logins + [login]
-        if model.commit("authors", store: store, { try ConfigEditor.setAuthors($0, slug: repo.slug, .logins(next)) }) {
+        model.commit("authors", store: store, then: { [model] ok in
+            guard ok else { return }
             model.loginText = ""
             model.editingLogins = false
-        }
+        }) { try ConfigEditor.setAuthors($0, slug: repo.slug, .logins(next)) }
     }
 
     private var rulesSection: some View {
@@ -361,9 +362,12 @@ struct RepoDetail: View {
             return
         }
         if repo.rules == nil {
-            guard model.commit("rules", store: store, { try ConfigEditor.setRules($0, slug: repo.slug, path: path) }) else { return }
+            model.commit("rules", store: store, then: { ok in
+                if ok { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+            }) { try ConfigEditor.setRules($0, slug: repo.slug, path: path) }
+        } else {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
         }
-        NSWorkspace.shared.open(URL(fileURLWithPath: path))
     }
 
     private var codeGraphSection: some View {
@@ -417,10 +421,11 @@ struct RepoDetail: View {
             model.addingFlag = false
             return
         }
-        if model.commit("flags", store: store, { try ConfigEditor.addFlaggedPath($0, slug: repo.slug, path: path) }) {
+        model.commit("flags", store: store, then: { [model] ok in
+            guard ok else { return }
             model.flagText = ""
             model.addingFlag = false
-        }
+        }) { try ConfigEditor.addFlaggedPath($0, slug: repo.slug, path: path) }
     }
 
     /// The note posted with a flagged review. Click to edit; Enter saves.
@@ -430,9 +435,10 @@ struct RepoDetail: View {
             TextField("Note", text: $model.noteText)
                 .winField()
                 .onSubmit {
-                    if model.commit("flags", store: store, { try ConfigEditor.setFlagNote($0, slug: repo.slug, note: model.noteText) }) {
-                        model.editingNote = false
-                    }
+                    let note = model.noteText
+                    model.commit("flags", store: store, then: { [model] ok in
+                        if ok { model.editingNote = false }
+                    }) { try ConfigEditor.setFlagNote($0, slug: repo.slug, note: note) }
                 }
         } else {
             Button {
@@ -528,9 +534,11 @@ struct AddRepoSheet: View {
     private func add() {
         let slug = model.addText.trimmingCharacters(in: .whitespaces)
         let repo = RepoConfig(slug: slug, clone: ConfigEditor.defaultClone(slug: slug, home: store.paths.home))
-        guard model.commit("add", store: store, { try ConfigEditor.addRepo($0, repo) }) else { return }
-        model.addingRepo = false
-        model.select(slug)
+        model.commit("add", store: store, then: { [model] ok in
+            guard ok else { return }
+            model.addingRepo = false
+            model.select(slug)
+        }) { try ConfigEditor.addRepo($0, repo) }
     }
 }
 
@@ -570,33 +578,34 @@ final class ReposModel: ObservableObject {
         addingRepo = true
     }
 
-    /// Applies one edit to the saved config and writes it. On success the store reloads and the Saved stamp shows.
-    /// On failure the message goes to `row` and nothing is written.
-    @discardableResult
-    func commit(_ row: String, store: Store, _ change: (Config) throws -> Config) -> Bool {
-        guard let config = store.snap.config else {
-            rowErrors[row] = "No config yet. Run glidepath init."
-            return false
-        }
-        do {
-            let next = try change(config)
-            try ConfigEditor.save(next, paths: store.paths)
-            rowErrors[row] = nil
-            flashSaved()
+    /// Applies one edit to config.toml as it is on disk now, and writes it off the main actor. On success the Saved
+    /// stamp shows; on failure the message goes to `row`. The store reloads either way. `done` gets the outcome.
+    func commit(_ row: String, store: Store, then done: @escaping (Bool) -> Void = { _ in },
+                _ change: @escaping @Sendable (Config) throws -> Config) {
+        let paths = store.paths
+        Task {
+            let ok: Bool
+            do {
+                try await ConfigWriter.shared.apply(paths: paths, change: change) { try ConfigEditor.save($0, paths: paths) }
+                rowErrors[row] = nil
+                flashSaved()
+                ok = true
+            } catch let error as ConfigError {
+                rowErrors[row] = error.message
+                ok = false
+            } catch {
+                rowErrors[row] = "Could not save: \(error.localizedDescription)"
+                ok = false
+            }
             store.reload()
-            return true
-        } catch let error as ConfigError {
-            rowErrors[row] = error.message
-        } catch {
-            rowErrors[row] = "Could not save: \(error.localizedDescription)"
+            done(ok)
         }
-        return false
     }
 
     /// Removes a repo, then selects the first one left.
     func remove(_ slug: String, store: Store) {
-        if commit("remove", store: store, { try ConfigEditor.removeRepo($0, slug: slug) }) {
-            selectedSlug = nil
+        commit("remove", store: store, then: { [weak self] ok in if ok { self?.selectedSlug = nil } }) {
+            try ConfigEditor.removeRepo($0, slug: slug)
         }
     }
 

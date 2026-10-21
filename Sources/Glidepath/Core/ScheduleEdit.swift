@@ -60,7 +60,8 @@ enum ScheduleEditor {
     static func save(_ config: Config, paths: Paths) throws {
         try ConfigEditor.save(config, paths: paths)
         let base = Runner.jobPath(paths) ?? ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-        try InitCommand.installJob(paths: paths, config: config, binary: InitCommand.binaryPath(),
+        try InitCommand.installJob(paths: paths, config: config,
+                                   binary: InitCommand.stableBinary(runningBinary: InitCommand.binaryPath()),
                                    path: GitNexus.jobPath(base: base, home: paths.home))
     }
 

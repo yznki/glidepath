@@ -301,8 +301,8 @@ final class ScheduleModel: ObservableObject {
         let cal = Calendar.current
         let hour = cal.component(.hour, from: newTime)
         let minute = cal.component(.minute, from: newTime)
-        if commit("time", store, { try ScheduleEditor.addTime($0, hour: hour, minute: minute) }) {
-            addingTime = false
+        commit("time", store, then: { [self] ok in if ok { addingTime = false } }) {
+            try ScheduleEditor.addTime($0, hour: hour, minute: minute)
         }
     }
 
@@ -337,28 +337,30 @@ final class ScheduleModel: ObservableObject {
         commit("limits", store) { try ScheduleEditor.setLimits($0, prs: prs, lines: lines) }
     }
 
-    /// Applies one edit to the saved config and saves it. On success the store reloads, the stamp shows and the
-    /// counts refresh. On failure the message goes to `row` and nothing is written.
-    @discardableResult
-    private func commit(_ row: String, _ store: Store, _ change: (Config) throws -> Config) -> Bool {
-        guard let config = store.snap.config else {
-            rowErrors[row] = "No config yet. Run glidepath init."
-            return false
-        }
-        do {
-            let next = try change(config)
-            try ScheduleEditor.save(next, paths: store.paths)
-            rowErrors[row] = nil
-            saved.flash()
+    /// Applies one edit to config.toml as it is on disk now, and saves it off the main actor. On success the store
+    /// reloads, the stamp shows and the counts refresh. On failure the message goes to `row` and nothing is written.
+    /// The store reloads either way. `done` gets the outcome.
+    private func commit(_ row: String, _ store: Store, then done: @escaping (Bool) -> Void = { _ in },
+                        _ change: @escaping @Sendable (Config) throws -> Config) {
+        let paths = store.paths
+        Task {
+            let ok: Bool
+            do {
+                try await ConfigWriter.shared.apply(paths: paths, change: change) { try ScheduleEditor.save($0, paths: paths) }
+                rowErrors[row] = nil
+                saved.flash()
+                ok = true
+            } catch let error as ConfigError {
+                rowErrors[row] = error.message
+                ok = false
+            } catch {
+                rowErrors[row] = "Could not save: \(error.localizedDescription)"
+                ok = false
+            }
             store.reload()
-            refreshWeek(store)
-            return true
-        } catch let error as ConfigError {
-            rowErrors[row] = error.message
-        } catch {
-            rowErrors[row] = "Could not save: \(error.localizedDescription)"
+            if ok { refreshWeek(store) }
+            done(ok)
         }
-        return false
     }
 }
 

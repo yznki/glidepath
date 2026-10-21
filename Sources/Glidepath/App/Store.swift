@@ -180,7 +180,7 @@ final class Store: ObservableObject {
         Notifier.setUp()
         let stateDir = paths.stateDir
         let runsDir = paths.runsDir
-        watcher = DirectoryWatcher(paths: [stateDir, runsDir]) {
+        watcher = DirectoryWatcher(paths: [stateDir, runsDir, paths.configDir]) {
             MainActor.assumeIsolated { Store.shared.reload() }
         }
         reload()

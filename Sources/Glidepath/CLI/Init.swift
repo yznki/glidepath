@@ -59,7 +59,7 @@ enum InitCommand {
             }
         }
 
-        let binary = binaryPath()
+        let binary = stableBinary(runningBinary: binaryPath())
         guard let skill = findInstalledDir(relative: "share/glidepath", fallback: "skill/glidepath",
                                            requiredFile: "SKILL.md", from: binary) else {
             eprint("skill files not found next to \(binary)")
@@ -108,13 +108,7 @@ enum InitCommand {
     /// `holdingLock` is set by `update`, which holds the run lock through the upgrade, so the job is still rewritten.
     static func refresh(holdingLock: Bool = false) -> Int32 {
         let paths = Paths()
-        let binary: String
-        if case .homebrew(let prefix) = InstallKind.of(binary: binaryPath()) {
-            // The opt path survives upgrades; the keg path the running binary may come from does not.
-            binary = prefix + "/bin/glidepath"
-        } else {
-            binary = binaryPath()
-        }
+        let binary = stableBinary(runningBinary: binaryPath())
         guard let skill = findInstalledDir(relative: "share/glidepath", fallback: "skill/glidepath",
                                            requiredFile: "SKILL.md", from: binary) else {
             eprint("skill files not found next to \(binary)")
@@ -162,6 +156,13 @@ enum InitCommand {
             }
         }
         return 0
+    }
+
+    /// The path the scheduled job, the app link and the skill are written against. A Homebrew keg path does not survive
+    /// an upgrade, so it becomes the `opt` path, which Homebrew repoints on each upgrade. Other installs keep their path.
+    static func stableBinary(runningBinary: String) -> String {
+        if case .homebrew(let prefix) = InstallKind.of(binary: runningBinary) { return prefix + "/bin/glidepath" }
+        return runningBinary
     }
 
     /// Directory of the binary that is running now, with symlinks resolved.

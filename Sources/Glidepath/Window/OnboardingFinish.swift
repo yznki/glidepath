@@ -363,7 +363,7 @@ enum OnboardingSummary {
 /// init` runs, so the app and the CLI leave the same files behind.
 enum OnboardingSetup {
     static func run(config: Config, paths: Paths, env: [String: String]) throws -> ShellResult {
-        let binary = InitCommand.binaryPath()
+        let binary = InitCommand.stableBinary(runningBinary: InitCommand.binaryPath())
         // Paused before the job is written, so a sweep that starts before the user turns the schedule on skips itself.
         if Pause.pausesOnSetup(jobInstalled: FileManager.default.fileExists(atPath: paths.plistFile)) {
             try Pause.set(true, paths)

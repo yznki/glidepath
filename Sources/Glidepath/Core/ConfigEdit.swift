@@ -154,16 +154,25 @@ enum ConfigEditor {
 
     // MARK: Saving
 
-    /// Writes the config atomically: a temp file in the same folder, then a rename over the old file. The mode of an
-    /// existing file is kept. The text is parsed back first, so the app never writes a file it cannot read.
-    static func save(_ config: Config, paths: Paths) throws {
+    /// Writes the config atomically: a temp file beside the file, then a rename over it. A symlinked config.toml is
+    /// written through: the temp file and the rename happen in the folder the link resolves to, so the link stays.
+    /// The mode of an existing file is kept. The text is parsed back first, so the app never writes a file it cannot
+    /// read. Before the first overwrite in `session`, a file that is not exactly what the app writes is copied aside.
+    static func save(_ config: Config, paths: Paths, session: ConfigSession = .shared) throws {
         let text = config.render()
         _ = try Config.parse(text, home: paths.home)
 
-        let target = paths.configFile
-        let dir = (target as NSString).deletingLastPathComponent
         let fm = FileManager.default
+        let target = URL(fileURLWithPath: paths.configFile).resolvingSymlinksInPath().path
+        let dir = (target as NSString).deletingLastPathComponent
         try fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        // Only a file that is not exactly what the app writes (hand edits, comments) or cannot be read is kept aside.
+        if session.backup == nil, fm.fileExists(atPath: target) {
+            let onDisk = try? String(contentsOfFile: target, encoding: .utf8)
+            if onDisk == nil || (try? Config.parse(onDisk!, home: paths.home).render()) != onDisk {
+                _ = try session.backupExisting(paths: paths)
+            }
+        }
         let mode = (try? fm.attributesOfItem(atPath: target)[.posixPermissions] as? NSNumber)?.intValue ?? 0o644
 
         let temp = dir + "/.config.toml.\(UUID().uuidString).tmp"
@@ -175,6 +184,13 @@ enum ConfigEditor {
             try? fm.removeItem(atPath: temp)
             throw ConfigError(message: "could not save config: \(reason)")
         }
+    }
+
+    /// The config as it is on disk now, with `change` applied. An edit made from the window starts here, so a change
+    /// made by hand since the window loaded the file is kept. With no readable config, nothing is written.
+    static func applyFresh(disk: Config?, _ change: (Config) throws -> Config) throws -> Config {
+        guard let disk else { throw ConfigError(message: "No config yet. Run glidepath init.") }
+        return try change(disk)
     }
 
     /// Copies an existing config.toml aside before onboarding replaces it, as config.toml.bak-YYYYMMDD-HHMMSS
@@ -217,5 +233,31 @@ enum ConfigEditor {
 
     private static func hasControl(_ text: String) -> Bool {
         text.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F }
+    }
+}
+
+/// The backup this session made before its first overwrite of config.toml, so later saves do not make more. The app
+/// uses `shared`; tests pass their own.
+final class ConfigSession {
+    static let shared = ConfigSession()
+    private(set) var backup: String?
+
+    /// Copies the file aside now (see `ConfigEditor.backupExisting`) and remembers the copy.
+    func backupExisting(paths: Paths, now: Date = Date()) throws -> String? {
+        let made = try ConfigEditor.backupExisting(paths: paths, now: now)
+        if let made { backup = made }
+        return made
+    }
+}
+
+/// Runs one edit of config.toml: reads the file fresh, applies the change, then saves. An actor, so the work runs off
+/// the main thread and two edits cannot interleave their reads and writes.
+actor ConfigWriter {
+    static let shared = ConfigWriter()
+
+    func apply<T>(paths: Paths, change: @Sendable (Config) throws -> Config,
+                  save: @Sendable (Config) throws -> T) throws -> T {
+        let disk = try? Config.load(paths)
+        return try save(try ConfigEditor.applyFresh(disk: disk, change))
     }
 }
