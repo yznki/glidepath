@@ -19,9 +19,18 @@ final class BashGuardTests: XCTestCase {
         XCTAssertNotNil(BashGuard.denial(for: "review-radar post --repo `id` --pr 1"))
         XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info > /tmp/x"))
         XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info < /etc/passwd"))
-        XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info (x)"))
+        XCTAssertNotNil(BashGuard.denial(for: "review-radar x && (cat y)"))
+        XCTAssertNotNil(BashGuard.denial(for: "review-radar x <(cat y)"))
+        XCTAssertNotNil(BashGuard.denial(for: "review-radar x >(cat y)"))
+        XCTAssertNotNil(BashGuard.denial(for: "review-radar x; (cat y)"))
         XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info\ncat /etc/hosts"))
         XCTAssertNotNil(BashGuard.denial(for: "review-radar pr info\rcat /etc/hosts"))
+    }
+
+    func testParenthesesAloneAreAllowed() {
+        XCTAssertNil(BashGuard.denial(for: "review-radar code grep --pattern foo("))
+        XCTAssertNil(BashGuard.denial(for: "review-radar code grep --pattern divide(a, b)"))
+        XCTAssertNil(BashGuard.denial(for: "review-radar pr info (x)"))
     }
 
     func testRequiresTheExactPrefix() {

@@ -9,8 +9,9 @@ import Foundation
 enum BashGuard {
     static let prefix = "review-radar "
 
-    /// Characters that can chain, substitute, redirect or group commands. Newlines are included.
-    static let forbidden: Set<Character> = [";", "&", "|", "$", "`", ">", "<", "(", ")", "\n", "\r"]
+    /// Characters that chain, substitute or redirect commands. Newlines are included. Parentheses are
+    /// allowed: without `$`, `<` or `>` in front of them they cannot form a subshell or process substitution.
+    static let forbidden: Set<Character> = [";", "&", "|", "$", "`", ">", "<", "\n", "\r"]
 
     /// nil when the command may run, otherwise the reason it is denied.
     static func denial(for command: String) -> String? {
