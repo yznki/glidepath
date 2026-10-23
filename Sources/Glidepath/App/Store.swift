@@ -730,7 +730,7 @@ final class Store: ObservableObject {
         guard let run else { return [] }
         return run.repos.flatMap { repo in
             repo.prs.map { pr in
-                Strip(repo: repo.slug, number: pr.n, author: pr.author, title: pr.title, reason: pr.reason,
+                Strip(repo: repo.slug, number: pr.n, author: pr.author, title: pr.title, reason: PRFilter.displayReason(pr.reason),
                       stage: pr.stage.rank + 1, active: pr.active, verdict: pr.verdict, tokens: pr.tokens,
                       carriedFrom: pr.carriedFrom, draft: pr.draft ?? false, flagged: pr.flagged ?? false,
                       skipReason: pr.skipReason, changedLines: pr.changedLines, isDraftPR: pr.isDraftPR ?? false)

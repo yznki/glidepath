@@ -93,4 +93,11 @@ final class FilterTests: XCTestCase {
         XCTAssertEqual(decide(["older"]), .keep, "a draft at an old head does not hold back the new head")
         XCTAssertEqual(decide([]), .keep)
     }
+
+    func testHeldReasonReadsPlainAndOldRunsMapToo() {
+        XCTAssertEqual(PRFilter.heldForNextSweep(cap: 20), "next sweep · 20 per sweep")
+        XCTAssertEqual(PRFilter.displayReason("over max_prs_per_run"), "next sweep")
+        XCTAssertEqual(PRFilter.displayReason("too large (12480 changed lines)"), "too large (12480 changed lines)")
+        XCTAssertNil(PRFilter.displayReason(nil))
+    }
 }

@@ -359,7 +359,7 @@ final class Runner {
             case .keep where kept.count < config.limits.maxPRsPerRun:
                 kept.append(pr)
             case .keep:
-                skipped.append((pr, "over max_prs_per_run"))
+                skipped.append((pr, PRFilter.heldForNextSweep(cap: config.limits.maxPRsPerRun)))
             case .skip(let reason):
                 skipped.append((pr, reason))
             }
