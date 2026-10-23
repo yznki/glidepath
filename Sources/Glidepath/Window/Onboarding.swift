@@ -32,15 +32,7 @@ struct OnboardingView: View {
             // The steps that read the machine run their work when they open, off the main thread.
             if step == .tools { model.checkTools() }
             if step == .repos { model.loadRepos() }
-            if step != .schedule { model.selectedPin = nil }
             ShortcutContext.shared.repoStepShowing = step == .repos
-        }
-        .onChange(of: model.selectedPin) { _, pin in
-            ShortcutContext.shared.pinSelected = pin != nil && model.state.step == .schedule
-        }
-        .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
-            guard model.state.step == .schedule, WindowRouter.shared.take([.deletePin]) != nil else { return }
-            model.removeSelectedPin()
         }
         .focusable()
         .focusEffectDisabled()
@@ -59,18 +51,6 @@ struct OnboardingView: View {
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         let mods = ShortcutModifiers(press.modifiers)
         let editing = TextFocus.isEditing
-        // The schedule step's pins take the Schedule section's keys.
-        if model.state.step == .schedule, !editing, let key = ShortcutKey.from(press),
-           let action = Shortcuts.action(key: key, modifiers: mods, scope: .schedule) {
-            switch action {
-            case .selectPrevPin: model.selectPin(-1)
-            case .selectNextPin: model.selectPin(1)
-            default:
-                guard let minutes = action.pinMinutes else { return .ignored }
-                model.nudgePin(minutes)
-            }
-            return .handled
-        }
         if press.key == .return, mods == [.command] || (mods.isEmpty && !editing) {
             guard model.state.canContinue(from: model.state.step) else { return .ignored }
             model.advance()
@@ -661,6 +641,8 @@ final class OnboardingModel: ObservableObject {
     /// PRs of the dry run, as the first sweep step shows them while it runs and after it lands.
     @Published private(set) var liveStrips: [Strip] = []
 
+    /// The schedule step's dial. Its edits land in `state` through `bindDial`.
+    let dial = DialEditor()
     let paths: Paths
     /// The config on disk when the window opened, or after "Use my config file". Nil when there is none.
     private(set) var base: Config?
@@ -675,6 +657,7 @@ final class OnboardingModel: ObservableObject {
         if state.step == .firstSweep, let failure = OnboardingResume.failedSweep {
             state.firstSweep = .failed(failure)
         }
+        bindDial()
     }
 
     /// The schedule line on the first sweep step: setup leaves an installed job as it is, and a new job starts paused.
@@ -697,6 +680,7 @@ final class OnboardingModel: ObservableObject {
         RepoCatalog.shared.preset(repos, repoList)
         self.liveStrips = liveStrips
         self.backupNote = backupNote
+        bindDial()
     }
 
     /// True once the first sweep has landed: the rail dot rests on the runway.
@@ -817,53 +801,13 @@ final class OnboardingModel: ObservableObject {
 
     // MARK: Schedule
 
-    /// Applies one schedule edit with the same rules as the Schedule section, to the times in this state.
-    /// The schedule step's selected pin, with the same keys as the Schedule section. Its edits go to the flow's state,
-    /// not config.toml, so they are not on the Edit menu's undo.
-    @Published var selectedPin: ScheduleTime?
-
-    /// ← and → select the previous or next pin; with none selected, → takes the first and ← the last.
-    func selectPin(_ step: Int) {
-        let sorted = Self.sorted(state.schedule)
-        guard !sorted.isEmpty else { return }
-        guard let current = selectedPin, let index = sorted.firstIndex(of: current) else {
-            selectedPin = step > 0 ? sorted.first : sorted.last
-            return
-        }
-        selectedPin = sorted[min(max(index + step, 0), sorted.count - 1)]
-    }
-
-    /// Moves the selected pin by `minutes`, as `PinNudge` allows.
-    func nudgePin(_ minutes: Int) {
-        guard let current = selectedPin,
-              let target = PinNudge.target(from: current, by: minutes, among: state.schedule) else { return }
-        editSchedule { try ScheduleEditor.moveTime($0, from: current, hour: target.hour, minute: target.minute) }
-        if message == nil { selectedPin = target }
-    }
-
-    /// Removes the selected pin; the selection moves to its neighbour.
-    func removeSelectedPin() {
-        guard let pin = selectedPin else { return }
-        let sorted = Self.sorted(state.schedule)
-        let index = sorted.firstIndex(of: pin) ?? 0
-        let neighbour = index + 1 < sorted.count ? sorted[index + 1] : (index > 0 ? sorted[index - 1] : nil)
-        editSchedule { try ScheduleEditor.removeTime($0, pin) }
-        if message == nil { selectedPin = neighbour }
-    }
-
-    private static func sorted(_ times: [ScheduleTime]) -> [ScheduleTime] {
-        times.sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
-    }
-
-    func editSchedule(_ change: (Config) throws -> Config) {
-        let temp = Config(schedule: state.schedule, limits: Limits(), repos: [])
-        do {
-            state.schedule = try change(temp).schedule
-            message = nil
-        } catch let error as ConfigError {
-            message = error.message
-        } catch {
-            message = "\(error)"
+    /// Rebuilds the dial from the state's times and days, and writes its edits back to the state.
+    private func bindDial() {
+        dial.load(times: state.schedule, days: state.days)
+        dial.onChange = { [weak self] in
+            guard let self else { return }
+            self.state.schedule = self.dial.times
+            self.state.days = self.dial.scheduleDays
         }
     }
 

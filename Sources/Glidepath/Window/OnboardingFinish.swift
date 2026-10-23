@@ -3,9 +3,6 @@ import SwiftUI
 /// The "Whose PRs" choice on the review step.
 private enum AuthorChoice: Hashable { case collaborators, anyone, people }
 
-/// The "Days" choice on the schedule step. A custom week from an existing config is shown as a note instead.
-private enum DaysChoice: Hashable { case weekdays, everyDay }
-
 /// Steps 4 to 6 of the onboarding window: how to review, the schedule, and the first sweep with its landing.
 extension OnboardingView {
     // MARK: 4. How to review
@@ -124,28 +121,16 @@ extension OnboardingView {
         stepLayout(body: {
             VStack(alignment: .leading, spacing: 0) {
                 heading("Schedule")
-                lead("Sweeps run at these times on these days. Click the day to add a time, drag a pin to move it.")
+                lead("Drag the ends to set the window, scroll the centre to set how often.")
                     .padding(.top, WinMetrics.s8)
-                DayStrip(
-                    times: model.state.schedule,
-                    onAdd: { minute in
-                        model.editSchedule { try ScheduleEditor.addTime($0, hour: minute / 60, minute: minute % 60) }
-                    },
-                    onMove: { time, minute in
-                        model.editSchedule { try ScheduleEditor.moveTime($0, from: time, hour: minute / 60, minute: minute % 60) }
-                    },
-                    selected: model.selectedPin
-                )
-                .padding(.top, WinMetrics.s32)
-                HStack(spacing: WinMetrics.s8) {
-                    ForEach(model.state.schedule, id: \.self) { time in
-                        chip(time.clock, mono: false) {
-                            model.editSchedule { try ScheduleEditor.removeTime($0, time) }
-                        }
-                    }
+                ScheduleDialView(dial: model.dial, reduced: Motion.reduced(reduceMotion), signal: Gotham.signal(signalKey))
+                    .padding(.top, WinMetrics.s16)
+                // The presets are left out here: beside the dial they need more width than the pane has.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Days").cap()
+                    DayPills(dial: model.dial, reduced: Motion.reduced(reduceMotion))
                 }
-                .padding(.top, WinMetrics.s16)
-                daysRow
+                .padding(.top, 12)
                 amberMessage(model.message)
             }
         }, footer: {
@@ -154,34 +139,6 @@ extension OnboardingView {
                     .disabled(!model.state.canContinue(from: .schedule))
             }
         })
-    }
-
-    @ViewBuilder
-    private var daysRow: some View {
-        VStack(alignment: .leading, spacing: WinMetrics.s8) {
-            Text("Days")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Gotham.fg)
-            Text("Sweeps skip the other days.")
-                .font(.system(size: 12))
-                .foregroundStyle(Gotham.mute)
-            if case .custom = model.state.days {
-                Text("Custom days from your config. Change them in Schedule.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Gotham.mute)
-            } else {
-                SettingSegmented(
-                    options: [
-                        (value: DaysChoice.weekdays, label: "Weekdays"),
-                        (value: DaysChoice.everyDay, label: "Every day"),
-                    ],
-                    selected: model.state.days == .all ? DaysChoice.everyDay : DaysChoice.weekdays
-                ) { choice in
-                    model.state.days = choice == .everyDay ? .all : .weekdays
-                }
-            }
-        }
-        .padding(.top, WinMetrics.s32)
     }
 
     /// A time chip (base.css `.chip`): 28 tall, raised fill, a × that removes it.
