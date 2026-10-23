@@ -43,7 +43,7 @@ struct WindowScreen: View {
             }
         }
         .frame(minWidth: WinMetrics.minWidth, minHeight: WinMetrics.minHeight)
-        .background((router.showOnboarding ? WinTheme.ground : Gotham.void).ignoresSafeArea())
+        .background(Gotham.void.ignoresSafeArea())
     }
 
     private var canvas: some View {

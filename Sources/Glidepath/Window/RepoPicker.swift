@@ -75,6 +75,7 @@ struct RepoPicker: View {
     var locked: Set<String> = []
     let toggle: (String) -> Void
     @FocusState private var searchFocused: Bool
+    @AppStorage("signalColour") private var signalKey = "amber"
     @FocusState private var listFocused: Bool
     /// The row the keyboard is on. Space toggles it.
     @StateObject private var cursor = PickerCursor()
@@ -111,19 +112,19 @@ struct RepoPicker: View {
         case .idle, .loading:
             Text("Loading your repos from GitHub…")
                 .font(.system(size: 13))
-                .foregroundStyle(WinTheme.faint)
+                .foregroundStyle(Gotham.mute)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .failed(let text):
             Text(text)
                 .font(.system(size: 12))
-                .foregroundStyle(WinTheme.amberInk)
+                .foregroundStyle(Gotham.signal(signalKey))
                 .fixedSize(horizontal: false, vertical: true)
         case .loaded:
             let rows = rows
             if rows.isEmpty {
                 Text("No repos match \"\(search)\".")
                     .font(.system(size: 13))
-                    .foregroundStyle(WinTheme.faint)
+                    .foregroundStyle(Gotham.mute)
             } else {
                 ScrollViewReader { proxy in
                     WinScroll {
@@ -160,30 +161,30 @@ struct RepoPicker: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(repo.slug)
                         .font(.system(size: 14))
-                        .foregroundStyle(WinTheme.text)
+                        .foregroundStyle(Gotham.fg)
                         .lineLimit(1)
                     Text(Self.meta(for: repo))
                         .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.faint)
+                        .foregroundStyle(Gotham.mute)
                         .lineLimit(1)
                 }
                 Spacer(minLength: WinMetrics.s8)
                 if let open = repo.openPRs {
                     Text("\(open) open PR\(open == 1 ? "" : "s")")
                         .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.muted)
+                        .foregroundStyle(Gotham.mute)
                         .monospacedDigit()
                 }
             }
             .frame(height: 56)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .top) {
-                if !first { Rectangle().fill(WinTheme.line).frame(height: 1) }
+                if !first { Rectangle().fill(Gotham.edge).frame(height: 1) }
             }
             .contentShape(Rectangle())
             .opacity(isLocked ? 0.6 : 1)
             // Mail and Finder: the cursor row is full `active` while the list has focus, half while it does not.
-            .background(cursor.slug == repo.slug ? WinTheme.active.opacity(listFocused ? 1 : 0.5) : Color.clear)
+            .background(cursor.slug == repo.slug ? Gotham.tint.opacity(listFocused ? 1 : 0.5) : Color.clear)
         }
         .buttonStyle(.plain)
         .focusable(false)

@@ -9,6 +9,7 @@ struct HeroField: View {
     var stripes = 11
     /// Opacity of the band outside the disc (kit.js `faint`).
     var faint: CGFloat = 0.07
+    @AppStorage("signalColour") private var signalKey = "amber"
 
     /// The `t` at which the dot is on the disc edge. The dot's path is 1.6 times the edge distance, as in kit.js.
     static let edge: CGFloat = 1 - 1 / 1.6
@@ -57,7 +58,7 @@ struct HeroField: View {
 
             // The band: stripes at the faint gradient, cut away around the disc and along the slot.
             ctx.drawLayer { layer in
-                layer.fill(bars, with: .color(WinTheme.text))
+                layer.fill(bars, with: .color(Gotham.fg))
                 layer.blendMode = .destinationOut
                 layer.fill(Path(CGRect(x: 0, y: 0, width: W, height: D)),
                            with: .linearGradient(fade, startPoint: .zero, endPoint: CGPoint(x: W, y: 0)))
@@ -69,13 +70,13 @@ struct HeroField: View {
             // The disc: stripes inside the circle, with the slot cut out.
             ctx.drawLayer { layer in
                 layer.clip(to: Path(ellipseIn: CGRect(x: cx - R, y: cy - R, width: 2 * R, height: 2 * R)))
-                layer.fill(bars, with: .color(WinTheme.text))
+                layer.fill(bars, with: .color(Gotham.fg))
                 layer.blendMode = .destinationOut
                 layer.fill(slot, with: .color(.black))
             }
 
             ctx.fill(Path(ellipseIn: CGRect(x: px - w * 0.3, y: py - w * 0.3, width: w * 0.6, height: w * 0.6)),
-                     with: .color(Color(hex: "FFB020")))
+                     with: .color(Gotham.signal(signalKey)))
         }
     }
 }

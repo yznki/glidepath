@@ -46,7 +46,7 @@ struct DayStrip: View {
         .padding(.top, 20)
         .padding(.horizontal, 24)
         .padding(.bottom, 16)
-        .background(RoundedRectangle(cornerRadius: 14).fill(WinTheme.surface))
+        .background(RoundedRectangle(cornerRadius: 14).fill(Gotham.row))
     }
 
     /// The hour ticks: the first starts at its position, the last ends at it, the rest are centred on it.
@@ -58,7 +58,7 @@ struct DayStrip: View {
                 ForEach(Array(labels.enumerated()), id: \.offset) { _, tick in
                     Text(tick.text)
                         .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.faint)
+                        .foregroundStyle(Gotham.mute)
                         .monospacedDigit()
                         .fixedSize()
                         .alignmentGuide(.leading) { d in
@@ -75,16 +75,16 @@ struct DayStrip: View {
     /// with a 12 pt dot centred on the rail.
     private func track(width: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
-            Rectangle().fill(WinTheme.control).frame(width: width, height: 2).offset(y: 51)
-            Rectangle().fill(WinTheme.night)
+            Rectangle().fill(Gotham.hi).frame(width: width, height: 2).offset(y: 51)
+            Rectangle().fill(Gotham.void)
                 .frame(width: width * 0.25, height: 26)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .offset(y: 40)
-            Rectangle().fill(WinTheme.night)
+            Rectangle().fill(Gotham.void)
                 .frame(width: width * (1 - 22.0 / 24), height: 26)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .offset(x: width * 22.0 / 24, y: 40)
-            Rectangle().fill(WinTheme.blue)
+            Rectangle().fill(Gotham.mute)
                 .frame(width: 2, height: 26)
                 .offset(x: fraction(of: now ?? Date()) * width - 1, y: 40)
             ForEach(times, id: \.self) { time in
@@ -111,14 +111,14 @@ struct DayStrip: View {
         return VStack(spacing: 0) {
             Text(time.clock)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(WinTheme.text)
+                .foregroundStyle(Gotham.fg)
                 .monospacedDigit()
                 .frame(width: 80, height: 18)
-            Rectangle().fill(WinTheme.amber).frame(width: 2, height: 24).padding(.top, 4)
-            Circle().fill(WinTheme.amber).frame(width: 12, height: 12)
+            Rectangle().fill(Gotham.fg).frame(width: 2, height: 24).padding(.top, 4)
+            Circle().fill(Gotham.fg).frame(width: 12, height: 12)
                 .overlay {
                     if selected == time && focused {
-                        Circle().strokeBorder(WinTheme.text, lineWidth: 2).frame(width: 20, height: 20)
+                        Circle().strokeBorder(Gotham.fg, lineWidth: 2).frame(width: 20, height: 20)
                     }
                 }
         }

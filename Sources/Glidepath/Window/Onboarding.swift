@@ -11,6 +11,8 @@ struct OnboardingView: View {
     @Environment(\.accessibilityReduceMotion) var reduceMotion
     /// Keeps keyboard focus on the flow, so its keys work without a click. Text fields take it when clicked.
     @FocusState private var rootFocused: Bool
+    /// The signal colour for the problem marks, from the Settings choice. The step extensions read it too.
+    @AppStorage("signalColour") var signalKey = "amber"
 
     /// `model` is nil in the app; snapshot rendering passes a fixture model.
     init(store: Store, model: OnboardingModel? = nil) {
@@ -25,7 +27,7 @@ struct OnboardingView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(WinTheme.ground)
+        .background(Gotham.void)
         .onChange(of: model.state.step) { _, step in
             // The steps that read the machine run their work when they open, off the main thread.
             if step == .tools { model.checkTools() }
@@ -119,32 +121,32 @@ struct OnboardingView: View {
 
     // MARK: Pieces shared by the steps
 
-    /// A display title: 32/40 bold, tracking -0.6.
+    /// A display title: 40 ultra-light in fg, with tight tracking (the Gotham numerals).
     func heading(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 32, weight: .bold))
-            .tracking(-0.6)
+            .font(Gotham.numeral(40))
+            .tracking(-1.2)
             .lineSpacing(2)
-            .foregroundStyle(WinTheme.text)
+            .foregroundStyle(Gotham.fg)
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// A lead: 15/24 muted.
+    /// A lead: 15/24 in mute.
     func lead(_ text: String) -> some View {
         Text(text)
             .font(.system(size: 15))
             .lineSpacing(6)
-            .foregroundStyle(WinTheme.muted)
+            .foregroundStyle(Gotham.mute)
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// The amber message under the lead: a config that failed validation, or a setup failure.
+    /// The signal-colour message under the lead: a config that failed validation, or a setup failure.
     @ViewBuilder
     func amberMessage(_ text: String?) -> some View {
         if let text {
             Text(text)
                 .font(.system(size: 12))
-                .foregroundStyle(WinTheme.amberInk)
+                .foregroundStyle(Gotham.signal(signalKey))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, WinMetrics.s12)
         }
@@ -193,9 +195,9 @@ struct OnboardingView: View {
             }
         }, footer: {
             HStack(spacing: WinMetrics.s12) {
-                WinButton(title: "Use my config file", style: .quiet) { model.useConfigFile() }
+                OnbButton(title: "Use my config file", style: .quiet) { model.useConfigFile() }
                 Spacer(minLength: 0)
-                WinButton(title: "Get started", style: .primary) { model.advance() }
+                OnbButton(title: "Get started", style: .primary) { model.advance() }
             }
             .modifier(FooterFrame())
         })
@@ -214,19 +216,21 @@ struct OnboardingView: View {
                         toolRow(row, first: index == 0)
                     }
                 }
+                .padding(.horizontal, WinMetrics.s20)
+                .glassCard(radius: 16)
                 .padding(.top, WinMetrics.s32)
                 if model.toolRows.isEmpty {
                     Text("Checking your tools…")
                         .font(.system(size: 13))
-                        .foregroundStyle(WinTheme.faint)
+                        .foregroundStyle(Gotham.mute)
                         .padding(.top, WinMetrics.s32)
                 }
             }
         }, footer: {
             bar {
-                WinButton(title: "Check again", style: .outline) { model.checkTools() }
+                OnbButton(title: "Check again", style: .outline) { model.checkTools() }
                     .disabled(model.checkingTools)
-                WinButton(title: "Continue", style: .primary) { model.advance() }
+                OnbButton(title: "Continue", style: .primary) { model.advance() }
                     .disabled(!model.state.canContinue(from: .tools))
             }
         })
@@ -241,21 +245,23 @@ struct OnboardingView: View {
         return model.state.tools.gitNexus ? base + " All set." : base + " One is optional and missing."
     }
 
-    /// One check: a 20 pt icon (green check or amber !), the title, its meta, and the fix command when it is missing.
+    /// One check: a 20 pt mark (a near-white tick when ok, a signal-colour ! when missing), the title, its meta, and the
+    /// fix command when it is missing. The rows sit in one glass panel, split by hairlines.
     private func toolRow(_ row: ToolRow, first: Bool) -> some View {
         HStack(alignment: .top, spacing: WinMetrics.s16) {
             Text(row.ok ? "✓" : "!")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(row.ok ? WinTheme.green : WinTheme.amber)
+                .foregroundStyle(row.ok ? Gotham.void : Gotham.signal(signalKey))
                 .frame(width: 20, height: 20)
-                .background(Circle().fill(row.ok ? WinTheme.greenBg : WinTheme.amberBg))
+                .background(Circle().fill(row.ok ? Gotham.approve : Gotham.tint))
+                .overlay(Circle().strokeBorder(row.ok ? Color.clear : Gotham.signal(signalKey), lineWidth: 1.5))
             VStack(alignment: .leading, spacing: 0) {
                 Text(row.title)
                     .font(.system(size: 14))
-                    .foregroundStyle(WinTheme.text)
+                    .foregroundStyle(Gotham.fg)
                 Text(row.meta)
                     .font(.system(size: 12))
-                    .foregroundStyle(WinTheme.faint)
+                    .foregroundStyle(Gotham.mute)
                     .padding(.top, 2)
                 if !row.ok, let fix = row.fix {
                     fixBox(fix).padding(.top, WinMetrics.s12)
@@ -263,28 +269,29 @@ struct OnboardingView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.top, first ? 0 : WinMetrics.s16)
+        .padding(.top, WinMetrics.s16)
         .padding(.bottom, WinMetrics.s16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .top) {
-            if !first { Rectangle().fill(WinTheme.line).frame(height: 1) }
+            if !first { Rectangle().fill(Gotham.edge).frame(height: 1) }
         }
     }
 
-    /// The fix command in a mono box with a Copy button (48 tall, surface fill).
+    /// The fix command in a mono box with a Copy button (48 tall, a row fill with an edge hairline).
     private func fixBox(_ command: String) -> some View {
         HStack(spacing: WinMetrics.s12) {
             Text(command)
                 .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(WinTheme.text)
+                .foregroundStyle(Gotham.fg)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            WinButton(title: model.copied == command ? "Copied" : "Copy", style: .outline) { model.copy(command) }
+            OnbButton(title: model.copied == command ? "Copied" : "Copy", style: .outline) { model.copy(command) }
         }
         .padding(.leading, WinMetrics.s12)
         .padding(.trailing, WinMetrics.s8)
         .frame(height: 48)
-        .background(RoundedRectangle(cornerRadius: 10).fill(WinTheme.surface))
+        .background(RoundedRectangle(cornerRadius: 10).fill(Gotham.row))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Gotham.edge, lineWidth: 1))
     }
 
     // MARK: 3. Repos
@@ -305,8 +312,8 @@ struct OnboardingView: View {
             bar {
                 Text("\(model.state.repos.count) selected")
                     .font(.system(size: 12))
-                    .foregroundStyle(WinTheme.faint)
-                WinButton(title: "Continue", style: .primary) { model.advance() }
+                    .foregroundStyle(Gotham.mute)
+                OnbButton(title: "Continue", style: .primary) { model.advance() }
                     .disabled(!model.state.canContinue(from: .repos))
             }
         })
@@ -314,17 +321,17 @@ struct OnboardingView: View {
 
 }
 
-/// The 18 pt checkbox (radius 5, 1.5 pt control stroke). Checked: text fill with a black check.
+/// The 18 pt checkbox (radius 5, 1.5 pt stroke). Checked: an fg fill with a void check. Unchecked: a mute ring.
 struct RepoCheckbox: View {
     let on: Bool
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 5).fill(on ? WinTheme.text : Color.clear)
-            RoundedRectangle(cornerRadius: 5).strokeBorder(on ? WinTheme.text : WinTheme.control, lineWidth: 1.5)
+            RoundedRectangle(cornerRadius: 5).fill(on ? Gotham.fg : Color.clear)
+            RoundedRectangle(cornerRadius: 5).strokeBorder(on ? Gotham.fg : Gotham.mute, lineWidth: 1.5)
             if on {
                 CheckShape()
-                    .stroke(Color.black, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    .stroke(Gotham.void, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
                     .frame(width: 18, height: 18)
             }
         }
@@ -343,17 +350,18 @@ struct CheckShape: Shape {
     }
 }
 
-/// The rail (onb.css `.path`, kit.js approach()): the glide slope from (48,148) to (248, height - 92), one point per step, done
-/// points ink, the current point an amber dot with a soft halo, and the runway under the last step. Labels sit at x+20.
-/// The done trail and the dot move with an ease-out when the step changes; both settle on the runway at landing.
+/// The rail (onb.css `.path`, kit.js approach()): the glide slope from (48,148) to (248, height - 92), one point per step. Done
+/// steps are silver dots, the current step is a signal-colour pulse, upcoming steps are hollow mute rings, and the runway
+/// sits under the last step. Labels sit at x+20. The done trail and the dot move with an ease-out when the step changes;
+/// both settle on the runway at landing.
 struct OnboardingRail: View {
     let step: OnboardingStep
     let landed: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @AppStorage("signalColour") private var signalKey = "amber"
 
     static let start = CGPoint(x: 48, y: 148)
     static let last = OnboardingStep.allCases.count - 1
-    static let amber = Color(hex: "FFB020")
 
     /// The slope's foot, 92 above the rail's bottom edge, so the runway (18 below it) stays in view at any height.
     static func slopeEnd(_ height: CGFloat) -> CGPoint { CGPoint(x: 248, y: height - 92) }
@@ -378,35 +386,37 @@ struct OnboardingRail: View {
                 p.move(to: OnboardingRail.start)
                 p.addLine(to: OnboardingRail.slopeEnd(h))
             }
-            .stroke(WinTheme.track, lineWidth: 2)
+            .stroke(Gotham.hi, lineWidth: 1.5)
             GlideTrail(fraction: trail, height: h)
-                .stroke(WinTheme.text, lineWidth: 2)
+                .stroke(Gotham.fg, lineWidth: 1.5)
             RoundedRectangle(cornerRadius: 1.5)
-                .fill(cur == OnboardingRail.last || landed ? WinTheme.text : WinTheme.track)
+                .fill(cur == OnboardingRail.last || landed ? Gotham.fg : Gotham.hi)
                 .frame(width: 120, height: 3)
                 .offset(x: 240, y: h - 74)
             ForEach(OnboardingStep.allCases, id: \.self) { item in
                 if item.rawValue != cur {
                     let p = OnboardingRail.point(item.rawValue, height: h)
-                    Circle()
-                        .fill(item.rawValue < cur ? WinTheme.text : WinTheme.track)
-                        .frame(width: 8, height: 8)
-                        .offset(x: p.x - 4, y: p.y - 4)
+                    if item.rawValue < cur {
+                        Circle()
+                            .fill(Gotham.fg)
+                            .frame(width: 8, height: 8)
+                            .offset(x: p.x - 4, y: p.y - 4)
+                    } else {
+                        Circle()
+                            .strokeBorder(Gotham.mute, lineWidth: 1.5)
+                            .frame(width: 8, height: 8)
+                            .offset(x: p.x - 4, y: p.y - 4)
+                    }
                 }
             }
-            Circle()
-                .fill(OnboardingRail.amber.opacity(0.16))
-                .frame(width: 28, height: 28)
-                .offset(x: dot.x - 14, y: dot.y - 14)
-            Circle()
-                .fill(OnboardingRail.amber)
-                .frame(width: 14, height: 14)
-                .offset(x: dot.x - 7, y: dot.y - 7)
+            // The current point breathes as Now's pipeline node does, in the signal colour.
+            Pulse(colour: Gotham.signal(signalKey), period: 1.4)
+                .offset(x: dot.x - 5, y: dot.y - 5)
             ForEach(OnboardingStep.allCases, id: \.self) { item in
                 let p = OnboardingRail.point(item.rawValue, height: h)
                 Text(item.label)
                     .font(.system(size: 13, weight: item.rawValue == cur ? .semibold : .regular))
-                    .foregroundStyle(item.rawValue == cur ? WinTheme.text : item.rawValue < cur ? WinTheme.muted : WinTheme.faint)
+                    .foregroundStyle(item.rawValue == cur ? Gotham.fg : Gotham.mute)
                     .lineLimit(1)
                     .frame(height: 18, alignment: .leading)
                     .offset(x: p.x + 20, y: p.y - 9)
@@ -415,7 +425,7 @@ struct OnboardingRail: View {
                 GlidepathMark(size: 22, n: 7)
                 Text("Glidepath")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(WinTheme.text)
+                    .foregroundStyle(Gotham.fg)
             }
             // The rail's 20 pt inset plus the brand row's 12 pt: the mark sits at 32, as onb.css's .obrand + .brand.
             .padding(.horizontal, WinMetrics.s12)
@@ -426,9 +436,10 @@ struct OnboardingRail: View {
             }
             .frame(width: 400)
             .clipped()
-            .background(WinTheme.rail)
+            // The same pane as the Sidebar.
+            .background(Color.black.opacity(0.12))
         .overlay(alignment: .trailing) {
-            Rectangle().fill(WinTheme.line).frame(width: 1)
+            Rectangle().fill(Gotham.edge).frame(width: 1)
         }
         .clipped()
         .animation(reduceMotion ? nil : .easeOut(duration: 0.4), value: cur * 2 + (landed ? 1 : 0))
@@ -458,16 +469,87 @@ struct GlideTrail: Shape, Animatable {
 }
 
 extension View {
-    /// A text field in the window's style (base.css `.field`): 32 tall, surface fill, control stroke, radius 8.
+    /// A text field in the window's style: 32 tall, a row fill with an edge hairline, radius 9, the caret in fg.
     func winField() -> some View {
         self
             .textFieldStyle(.plain)
             .font(.system(size: 13))
-            .foregroundStyle(WinTheme.text)
+            .foregroundStyle(Gotham.fg)
             .padding(.horizontal, WinMetrics.s12)
             .frame(height: 32)
-            .background(RoundedRectangle(cornerRadius: 8).fill(WinTheme.surface))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(WinTheme.control, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Gotham.row))
+            .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
+    }
+}
+
+/// The onboarding's buttons in the Gotham look, sized as WinButton: a white capsule for the step's one primary action,
+/// an outlined tint capsule for a second action, and a mute link that lights to fg on hover.
+struct OnbButton: View {
+    enum Style {
+        /// White capsule with a void label.
+        case primary
+        /// Tint capsule with an edge stroke and an fg label.
+        case outline
+        /// Mute text link, fg on hover.
+        case quiet
+    }
+
+    let title: String
+    let style: Style
+    let large: Bool
+    let action: () -> Void
+    @StateObject private var hover = SpotModel()
+    @Environment(\.isEnabled) private var isEnabled
+
+    init(title: String, style: Style = .outline, large: Bool = false, action: @escaping () -> Void) {
+        self.title = title
+        self.style = style
+        self.large = large
+        self.action = action
+    }
+
+    var body: some View {
+        let tall = style == .primary || large
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: style == .quiet ? 13 : (tall ? 15 : 13), weight: style == .primary ? .semibold : .medium))
+                .foregroundStyle(ink)
+                .padding(.horizontal, style == .quiet ? 0 : (style == .primary ? WinMetrics.s24 : WinMetrics.s16))
+                .frame(minWidth: style == .primary ? 140 : 0,
+                       minHeight: style == .quiet ? nil : (tall ? 44 : 32),
+                       maxHeight: style == .quiet ? nil : (tall ? 44 : 32))
+                .background {
+                    switch style {
+                    case .primary: Capsule().fill(Gotham.run)
+                    case .outline: Capsule().fill(Gotham.tint)
+                    case .quiet: Color.clear
+                    }
+                }
+                .overlay {
+                    if style == .outline { Capsule().strokeBorder(Gotham.edge, lineWidth: 1) }
+                }
+                .contentShape(Capsule())
+                .opacity(isEnabled ? 1 : 0.4)
+        }
+        .buttonStyle(OnbPressStyle())
+        .onHover { hover.hovering = $0 }
+    }
+
+    private var ink: Color {
+        switch style {
+        case .primary: return Gotham.void
+        case .outline: return Gotham.fg
+        case .quiet: return hover.hovering ? Gotham.fg : Gotham.mute
+        }
+    }
+}
+
+/// Dims a pressed onboarding button, as WinButton does.
+private struct OnbPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
     }
 }
 
@@ -925,12 +1007,14 @@ extension EnvironmentValues {
     }
 }
 
-/// The footer bar's frame: the pane's width less its 64 pt insets, 44 tall.
+/// The footer bar's frame: the pane's width less its 64 pt insets, 44 tall, with a hairline on its top edge.
 struct FooterFrame: ViewModifier {
     @Environment(\.paneWidth) private var paneWidth
 
     func body(content: Content) -> some View {
-        content.frame(width: max(0, paneWidth - 128), height: 44)
+        content
+            .frame(width: max(0, paneWidth - 128), height: 44)
+            .overlay(alignment: .top) { Rectangle().fill(Gotham.edge).frame(height: 1) }
     }
 }
 
@@ -942,7 +1026,7 @@ struct FooterBar<Trailing: View>: View {
     var body: some View {
         HStack(spacing: WinMetrics.s12) {
             if let back {
-                WinButton(title: "Back", style: .quiet, action: back)
+                OnbButton(title: "Back", style: .quiet, action: back)
             }
             Spacer(minLength: 0)
             trailing
