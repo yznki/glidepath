@@ -434,7 +434,7 @@ struct ClockFace: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            Text(text(at: context.date))
+            Text(text(at: snap.now ?? context.date))
                 .font(Gotham.numeral(92))
                 .tracking(-4.5)
                 .monospacedDigit()

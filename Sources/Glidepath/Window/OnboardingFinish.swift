@@ -124,14 +124,15 @@ extension OnboardingView {
                 lead("Drag the ends to set the window, scroll the centre to set how often.")
                     .padding(.top, WinMetrics.s8)
                 ScheduleDialView(dial: model.dial, reduced: Motion.reduced(reduceMotion), signal: Gotham.signal(signalKey))
-                    .padding(.top, WinMetrics.s16)
+                    .padding(.top, WinMetrics.s8)
                 // The presets are left out here: beside the dial they need more width than the pane has.
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Days").cap()
                     DayPills(dial: model.dial, reduced: Motion.reduced(reduceMotion))
                 }
-                .padding(.top, 12)
+                .padding(.top, 4)
                 amberMessage(model.message)
+                Color.clear.frame(height: 24)
             }
         }, footer: {
             bar {

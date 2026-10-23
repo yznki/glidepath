@@ -7,9 +7,9 @@ enum WindowFixtures {
     static let repos = ["lumen/api", "lumen/web"]
     static let head = "a3f09c1"
     /// The sweep times and days the Schedule and onboarding mockups show.
-    static let times = ["07:00", "13:00", "19:00"].compactMap(ScheduleTime.init)
+    static let times = ["08:00", "12:00", "16:00", "20:00"].compactMap(ScheduleTime.init)
 
-    /// The clock every window render reads: Wednesday 21 Oct at 4:19 PM, so the next sweep is 7:00 PM, 2 h 41 min out.
+    /// The clock every window render reads: Wednesday 21 Oct at 4:19 PM, so the next sweep is 8:00 PM, 3 h 41 min out.
     static let clock: Date = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: 16, minute: 19))
         ?? Date(timeIntervalSince1970: 0)
 
@@ -64,7 +64,7 @@ enum WindowFixtures {
 
     /// The sweep in progress at 1:00 PM: three PRs in flight, four landed.
     static func sweepRunning(_ now: Date) -> RunState {
-        run("fixture-now", at(13, 0, now), minutes: nil, prs: [
+        run("fixture-now", now.addingTimeInterval(-252), minutes: nil, prs: [
             row("lumen/api", 1231, "lea", "Add retry to the webhook sender", verdict: nil, stage: .check, active: true),
             row("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", verdict: nil,
                 stage: .review, active: true),

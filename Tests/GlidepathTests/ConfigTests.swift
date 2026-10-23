@@ -55,7 +55,7 @@ final class ConfigTests: XCTestCase {
 
     func testDefaults() throws {
         let c = try Config.parse("[[repo]]\nslug = \"acme/web\"\n", home: home)
-        XCTAssertEqual(c.schedule.map(\.text), ["07:00", "13:00", "19:00"])
+        XCTAssertEqual(c.schedule.map(\.text), ["08:00", "12:00", "16:00", "20:00"])
         XCTAssertEqual(c.limits, Limits())
         let r = c.repos[0]
         XCTAssertEqual(r.clone, "/fake/home/glidepath/clones/acme-web")

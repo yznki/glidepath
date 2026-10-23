@@ -135,9 +135,10 @@ struct ScheduleDialView: View {
             HStack(spacing: 8) {
                 roundButton("−") { dial.stepEvery(1) }
                 Spacer(minLength: 4)
-                Text(dial.custom == nil ? "Drag the ends · scroll the centre" : "Custom times · drag to replace")
+                Text(dial.custom == nil ? "Drag the ends · scroll the centre" : "Custom · drag to set")
                     .cap()
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
                 roundButton("+") { dial.stepEvery(-1) }
             }

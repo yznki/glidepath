@@ -152,7 +152,7 @@ struct RepoConfig: Equatable {
 
 /// `~/.config/glidepath/config.toml`. Parsing is pure; paths are expanded against `home`.
 struct Config: Equatable {
-    static let defaultSchedule = ["07:00", "13:00", "19:00"]
+    static let defaultSchedule = ["08:00", "12:00", "16:00", "20:00"]
 
     /// The config a new setup writes (onboarding and `init` when no config exists): Sonnet and five PRs a sweep.
     /// Parsing a config without these keys still means Opus and ten, so existing configs do not change.

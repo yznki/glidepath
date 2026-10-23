@@ -236,7 +236,7 @@ lets the notification break through a Focus mode.
 `~/.config/glidepath/config.toml`:
 
 ```toml
-schedule = ["07:00", "13:00", "19:00"]   # global; one launchd job
+schedule = ["08:00", "12:00", "16:00", "20:00"]   # global; one launchd job
 check_updates = true          # false turns off the automatic check for new releases
 notify = true                 # false turns off the notification when a sweep finishes
 notify_changes_only = false   # true notifies only when changes are waiting
@@ -273,7 +273,7 @@ flag_note = "Needs a devops code-owner approval."  # optional: the note text
 
 | Key | Default | Meaning |
 | --- | --- | --- |
-| `schedule` | `07:00`, `13:00`, `19:00` | Local times for scheduled runs. One launchd job for all repos. |
+| `schedule` | `08:00`, `12:00`, `16:00`, `20:00` | Local times for scheduled runs. One launchd job for all repos. |
 | `check_updates` | `true` | Check GitHub for a newer release at launch, daily and when the popover opens. `false` turns those checks off; "Check for updates…" still works. |
 | `notify` | `true` | Notify when a sweep finishes. See [Notifications](#notifications). |
 | `notify_changes_only` | `false` | Notify only when a sweep has changes waiting. |

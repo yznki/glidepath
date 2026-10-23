@@ -22,7 +22,7 @@ final class ScheduleTests: XCTestCase {
 
     func testDaysDefaultsToAllWhenAbsent() throws {
         XCTAssertEqual(try parse("").days, .all)
-        XCTAssertEqual(Config.defaultSchedule.count, 3)
+        XCTAssertEqual(Config.defaultSchedule.count, 4)
     }
 
     func testDaysParsesPresetsAndLists() throws {
