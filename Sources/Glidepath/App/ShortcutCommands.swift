@@ -269,55 +269,60 @@ struct GlidepathCommands: Commands {
                       sheetOpen: router.showShortcuts || context.repoSheetOpen || context.timeSheetOpen)
     }
 
+    // Grouped in two halves: CommandsBuilder on older SDKs accepts at most 10 children per block.
     var body: some Commands {
-        CommandGroup(replacing: .appInfo) { item(.about) }
-        CommandGroup(after: .appInfo) { item(.checkUpdates) }
-        CommandGroup(replacing: .appSettings) { item(.settings) }
-        CommandGroup(replacing: .appVisibility) { item(.hide) }
-        CommandGroup(replacing: .appTermination) { item(.quit) }
+        Group {
+            CommandGroup(replacing: .appInfo) { item(.about) }
+            CommandGroup(after: .appInfo) { item(.checkUpdates) }
+            CommandGroup(replacing: .appSettings) { item(.settings) }
+            CommandGroup(replacing: .appVisibility) { item(.hide) }
+            CommandGroup(replacing: .appTermination) { item(.quit) }
 
-        CommandGroup(replacing: .newItem) { contextNew }
-        CommandGroup(replacing: .saveItem) { item(.closeWindow) }
+            CommandGroup(replacing: .newItem) { contextNew }
+            CommandGroup(replacing: .saveItem) { item(.closeWindow) }
 
-        // Standard Cut, Copy and Paste go to the responder chain; Select All is the picker's when the picker has focus.
-        CommandGroup(replacing: .pasteboard) {
-            Button("Cut") { NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil) }
-                .keyboardShortcut("x", modifiers: .command)
-            Button("Copy") { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) }
-                .keyboardShortcut("c", modifiers: .command)
-            Button("Paste") { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) }
-                .keyboardShortcut("v", modifiers: .command)
-        }
-        CommandGroup(after: .pasteboard) { contextDelete }
-        CommandGroup(after: .pasteboard) {
-            Button("Select All") {
-                if let picker { picker.selectAll() } else { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
-            }
-            .keyboardShortcut("a", modifiers: .command)
-            if let picker {
-                Button("Select None") { picker.selectNone() }
-                    .keyboardShortcut("a", modifiers: [.command, .shift])
+            // Standard Cut, Copy and Paste go to the responder chain; Select All is the picker's when the picker has focus.
+            CommandGroup(replacing: .pasteboard) {
+                Button("Cut") { NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("x", modifiers: .command)
+                Button("Copy") { NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("c", modifiers: .command)
+                Button("Paste") { NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil) }
+                    .keyboardShortcut("v", modifiers: .command)
             }
         }
-        CommandGroup(after: .textEditing) { item(.find) }
+        Group {
+            CommandGroup(after: .pasteboard) { contextDelete }
+            CommandGroup(after: .pasteboard) {
+                Button("Select All") {
+                    if let picker { picker.selectAll() } else { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil) }
+                }
+                .keyboardShortcut("a", modifiers: .command)
+                if let picker {
+                    Button("Select None") { picker.selectNone() }
+                        .keyboardShortcut("a", modifiers: [.command, .shift])
+                }
+            }
+            CommandGroup(after: .textEditing) { item(.find) }
 
-        CommandGroup(before: .sidebar) {
-            ForEach(Shortcuts.items(in: .view).filter { $0.action.isSection }, id: \.action) { item($0.action) }
-            Divider()
-            ForEach(Shortcuts.items(in: .view).filter { !$0.action.isSection }, id: \.action) { item($0.action) }
-        }
+            CommandGroup(before: .sidebar) {
+                ForEach(Shortcuts.items(in: .view).filter { $0.action.isSection }, id: \.action) { item($0.action) }
+                Divider()
+                ForEach(Shortcuts.items(in: .view).filter { !$0.action.isSection }, id: \.action) { item($0.action) }
+            }
 
-        CommandMenu("Sweep") {
-            ForEach(Shortcuts.items(in: .sweep), id: \.action) { item($0.action) }
-        }
-        CommandMenu("Review") {
-            ForEach(Shortcuts.items(in: .review), id: \.action) { item($0.action) }
-        }
+            CommandMenu("Sweep") {
+                ForEach(Shortcuts.items(in: .sweep), id: \.action) { item($0.action) }
+            }
+            CommandMenu("Review") {
+                ForEach(Shortcuts.items(in: .review), id: \.action) { item($0.action) }
+            }
 
-        CommandGroup(replacing: .windowArrangement) {
-            ForEach(Shortcuts.items(in: .window), id: \.action) { item($0.action) }
+            CommandGroup(replacing: .windowArrangement) {
+                ForEach(Shortcuts.items(in: .window), id: \.action) { item($0.action) }
+            }
+            CommandGroup(replacing: .help) { item(.shortcuts) }
         }
-        CommandGroup(replacing: .help) { item(.shortcuts) }
     }
 
     /// File > New: one slot, "Add Repo…" or "Add Time…" by section.
