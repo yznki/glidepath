@@ -80,6 +80,8 @@ struct Limits: Equatable {
     var maxPRsPerRun = 10
     var maxChangedLines = 3000
     var splitOverLines = 1500
+    /// Keys this version does not know, kept as they were read so a save does not drop them.
+    var extras: [String: TOMLValue] = [:]
 }
 
 /// `draft` runs the whole pipeline and holds the review for the user to post from the app or `glidepath drafts`.
@@ -133,6 +135,8 @@ struct RepoConfig: Equatable {
     /// Path prefixes that need an extra approval. A PR touching one gets a note on its review.
     var flagPaths: [String] = []
     var flagNote = RepoConfig.defaultFlagNote
+    /// Keys this version does not know, kept as they were read so a save does not drop them.
+    var extras: [String: TOMLValue] = [:]
 
     static let defaultFlagNote = "Touches flagged paths; needs an extra approval."
 
@@ -178,6 +182,15 @@ struct Config: Equatable {
     var pauseAtBudget = true
     /// Runs review but post nothing, as `glidepath run --dry-run` does.
     var dryRun = false
+    /// Keys this version does not know, kept as they were read so a save does not drop them.
+    var extras: [String: TOMLValue] = [:]
+
+    /// The unknown keys, as notes for `doctor`: top level, then [limits], then each repo.
+    var unknownKeys: [String] {
+        extras.keys.sorted().map { "\($0) (top level)" }
+            + limits.extras.keys.sorted().map { "\($0) in [limits]" }
+            + repos.flatMap { repo in repo.extras.keys.sorted().map { "\($0) in repo \(repo.slug)" } }
+    }
 
     static func load(_ paths: Paths) throws -> Config {
         guard let text = try? String(contentsOfFile: paths.configFile, encoding: .utf8) else {
@@ -193,10 +206,9 @@ struct Config: Equatable {
         } catch let e as TOMLError {
             throw ConfigError(message: "config.toml: \(e)")
         }
-        try checkKeys(doc, allowed: ["schedule", "days", "limits", "repo", "check_updates", "notify", "hotkey",
-                                     "review_drafts", "include_bots", "model", "strictness", "notify_changes_only",
-                                     "notify_sound", "respect_focus", "monthly_tokens", "pause_at_budget", "dry_run"],
-                      where: "top level")
+        let topLevelKeys: Set<String> = ["schedule", "days", "limits", "repo", "check_updates", "notify", "hotkey",
+                                         "review_drafts", "include_bots", "model", "strictness", "notify_changes_only",
+                                         "notify_sound", "respect_focus", "monthly_tokens", "pause_at_budget", "dry_run"]
 
         let scheduleText = try strings(doc["schedule"], key: "schedule") ?? defaultSchedule
         guard !scheduleText.isEmpty else { throw ConfigError(message: "schedule must list at least one time") }
@@ -210,10 +222,10 @@ struct Config: Equatable {
         var limits = Limits()
         if let value = doc["limits"] {
             guard case .table(let t) = value else { throw ConfigError(message: "[limits] must be a table") }
-            try checkKeys(t, allowed: ["max_prs_per_run", "max_changed_lines", "split_over_lines"], where: "[limits]")
             limits.maxPRsPerRun = try positiveInt(t["max_prs_per_run"], key: "max_prs_per_run") ?? limits.maxPRsPerRun
             limits.maxChangedLines = try positiveInt(t["max_changed_lines"], key: "max_changed_lines") ?? limits.maxChangedLines
             limits.splitOverLines = try positiveInt(t["split_over_lines"], key: "split_over_lines") ?? limits.splitOverLines
+            limits.extras = extraKeys(t, allowed: ["max_prs_per_run", "max_changed_lines", "split_over_lines"])
         }
 
         var repos: [RepoConfig] = []
@@ -243,7 +255,8 @@ struct Config: Equatable {
                       respectFocus: try bool(doc["respect_focus"], key: "respect_focus") ?? true,
                       monthlyTokens: monthlyTokens,
                       pauseAtBudget: try bool(doc["pause_at_budget"], key: "pause_at_budget") ?? true,
-                      dryRun: try bool(doc["dry_run"], key: "dry_run") ?? false)
+                      dryRun: try bool(doc["dry_run"], key: "dry_run") ?? false,
+                      extras: extraKeys(doc, allowed: topLevelKeys))
     }
 
     /// `hotkey`: true (⌥⌘G), false (off), or a shortcut string that `HotkeySpec` can read.
@@ -284,8 +297,6 @@ struct Config: Equatable {
     }
 
     private static func parseRepo(_ t: [String: TOMLValue], home: String) throws -> RepoConfig {
-        try checkKeys(t, allowed: ["slug", "clone", "posting", "authors", "rules", "rules_mode", "gitnexus", "gitnexus_refresh",
-                                   "include_own", "review_drafts", "flag_paths", "flag_note"], where: "[[repo]]")
         guard let slug = try string(t["slug"], key: "slug") else { throw ConfigError(message: "[[repo]] needs slug") }
         guard RepoConfig.isValidSlug(slug) else {
             throw ConfigError(message: "slug \"\(slug)\" must look like owner/name")
@@ -297,6 +308,8 @@ struct Config: Equatable {
             throw ConfigError(message: "clone \"\(clone)\" must be an absolute path or start with ~/")
         }
         var repo = RepoConfig(slug: slug, clone: expandedClone)
+        repo.extras = extraKeys(t, allowed: ["slug", "clone", "posting", "authors", "rules", "rules_mode", "gitnexus",
+                                             "gitnexus_refresh", "include_own", "review_drafts", "flag_paths", "flag_note"])
 
         if let p = try string(t["posting"], key: "posting") {
             guard let v = Posting(rawValue: p) else { throw ConfigError(message: "posting must be comment, review or draft") }
@@ -358,10 +371,13 @@ struct Config: Equatable {
         if monthlyTokens != 0 { out += "monthly_tokens = \(monthlyTokens)\n" }
         if !pauseAtBudget { out += "pause_at_budget = false\n" }
         if dryRun { out += "dry_run = true\n" }
+        // Unknown keys go back in their section: plain values after the known ones, tables and arrays of tables last.
+        out += tomlLines(extras.filter { !isSection($0.value) })
         out += "\n[limits]\n"
         out += "max_prs_per_run = \(limits.maxPRsPerRun)\n"
         out += "max_changed_lines = \(limits.maxChangedLines)\n"
         out += "split_over_lines = \(limits.splitOverLines)\n"
+        out += tomlLines(limits.extras)
         for r in repos {
             out += "\n[[repo]]\n"
             out += "slug = \(tomlQuoted(r.slug))\n"
@@ -390,9 +406,59 @@ struct Config: Equatable {
             if !r.flagPaths.isEmpty || r.flagNote != RepoConfig.defaultFlagNote {
                 out += "flag_note = \(tomlQuoted(r.flagNote))\n"
             }
+            out += tomlLines(r.extras)
+        }
+        for (key, value) in extras.sorted(by: { $0.key < $1.key }) {
+            if case .table(let table) = value {
+                out += "\n[\(tomlKey(key))]\n" + tomlLines(table)
+            } else if case .array(let items) = value, isArrayOfTables(value) {
+                for case .table(let table) in items {
+                    out += "\n[[\(tomlKey(key))]]\n" + tomlLines(table)
+                }
+            }
         }
         return out
     }
+
+    private func isSection(_ value: TOMLValue) -> Bool {
+        if case .table = value { return true }
+        return isArrayOfTables(value)
+    }
+
+    private func isArrayOfTables(_ value: TOMLValue) -> Bool {
+        guard case .array(let items) = value, !items.isEmpty else { return false }
+        return items.allSatisfy { item in
+            if case .table = item { return true }
+            return false
+        }
+    }
+
+    /// One `key = value` line per entry, sorted by key.
+    private func tomlLines(_ table: [String: TOMLValue]) -> String {
+        table.sorted { $0.key < $1.key }.map { "\(tomlKey($0.key)) = \($0.value.tomlText)\n" }.joined()
+    }
+}
+
+extension TOMLValue {
+    /// The value on one line, as TOML writes it. Tables are inline, `{ k = v }`, which `TOML.parse` reads back.
+    var tomlText: String {
+        switch self {
+        case .string(let s): return tomlQuoted(s)
+        case .int(let n): return String(n)
+        case .bool(let b): return String(b)
+        case .array(let items): return "[" + items.map(\.tomlText).joined(separator: ", ") + "]"
+        case .table(let table):
+            if table.isEmpty { return "{}" }
+            return "{ " + table.sorted { $0.key < $1.key }.map { "\(tomlKey($0.key)) = \($0.value.tomlText)" }
+                .joined(separator: ", ") + " }"
+        }
+    }
+}
+
+/// A key as TOML writes it: bare when it only has characters a bare key may have, quoted otherwise.
+func tomlKey(_ key: String) -> String {
+    let bare = !key.isEmpty && key.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_" || $0 == "-") }
+    return bare ? key : tomlQuoted(key)
 }
 
 /// A TOML basic string that reads back as `text`: backslash, quote and the line breaks are escaped. Walks scalars,
@@ -418,10 +484,9 @@ private func expand(_ path: String, home: String) -> String {
     path.hasPrefix("~/") ? home + String(path.dropFirst(1)) : path
 }
 
-private func checkKeys(_ t: [String: TOMLValue], allowed: Set<String>, where place: String) throws {
-    for key in t.keys where !allowed.contains(key) {
-        throw ConfigError(message: "unknown key \(key) in \(place)")
-    }
+/// The keys this version does not know. They are kept, not refused, so a file from a newer version still loads.
+private func extraKeys(_ t: [String: TOMLValue], allowed: Set<String>) -> [String: TOMLValue] {
+    t.filter { !allowed.contains($0.key) }
 }
 
 private func string(_ v: TOMLValue?, key: String) throws -> String? {

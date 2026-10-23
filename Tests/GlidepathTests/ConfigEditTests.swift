@@ -229,6 +229,29 @@ final class ConfigEditTests: XCTestCase {
 
     // MARK: Save
 
+    func testSetterThenSaveKeepsUnknownKeys() throws {
+        let dir = NSTemporaryDirectory() + "glidepath-edit-\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let paths = Paths(home: dir, env: ["GLIDEPATH_CONFIG_FILE": dir + "/glidepath/config.toml"])
+        let written = try Config.parse("""
+        typo = 1
+        [limits]
+        mystery = "x"
+        [[repo]]
+        slug = "lumen/api"
+        future = "kept"
+        """, home: home)
+        try ConfigEditor.save(written, paths: paths)
+
+        let edited = try ConfigEditor.setPosting(try Config.load(paths), slug: "lumen/api", .draft)
+        try ConfigEditor.save(edited, paths: paths)
+        let back = try Config.load(paths)
+        XCTAssertEqual(back.repos[0].posting, .draft)
+        XCTAssertEqual(back.extras["typo"], .int(1))
+        XCTAssertEqual(back.limits.extras["mystery"], .string("x"))
+        XCTAssertEqual(back.repos[0].extras["future"], .string("kept"))
+    }
+
     func testSaveWritesReadableFileKeepingMode() throws {
         let dir = NSTemporaryDirectory() + "glidepath-edit-\(UUID().uuidString)"
         defer { try? FileManager.default.removeItem(atPath: dir) }
