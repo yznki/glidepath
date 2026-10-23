@@ -413,6 +413,7 @@ private struct DialView: View, Animatable {
         }
     }
 
+    @Environment(\.offscreenRender) private var offscreen
     private var k: CGFloat { Self.side / 348 }
     private var centre: CGPoint { CGPoint(x: Self.side / 2, y: Self.side / 2) }
     private var full: Bool { span >= 1440 }
@@ -433,9 +434,14 @@ private struct DialView: View, Animatable {
             .frame(width: Self.side, height: Self.side)
             .contentShape(Rectangle())
             .gesture(drag)
-            .background(ScrollProbe(centre: centre, radius: 64 * k) { step in
-                model.stepEvery(step, store: store)
-            })
+            .background {
+                // Snapshots draw no scroll wheel; ImageRenderer draws the representable as a prohibition sign.
+                if !offscreen {
+                    ScrollProbe(centre: centre, radius: 64 * k) { step in
+                        model.stepEvery(step, store: store)
+                    }
+                }
+            }
         }
         .frame(width: Self.side, height: Self.side)
     }

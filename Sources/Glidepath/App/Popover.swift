@@ -180,7 +180,10 @@ struct PopoverView: View {
         }
         .frame(width: StackGeometry.width)
         // No square fill at the window's edge: the system's dark frame and rounded corners show through.
-        .background(WindowConfigurator { $0.appearance = NSAppearance(named: .darkAqua) })
+        .background {
+            // Snapshots have no window to configure; ImageRenderer draws the representable as a prohibition sign.
+            if !offscreen { WindowConfigurator { $0.appearance = NSAppearance(named: .darkAqua) } }
+        }
         .background(Gotham.void.opacity(offscreen ? 1 : 0.55).ignoresSafeArea())
         .preferredColorScheme(.dark)
         .focusable()
