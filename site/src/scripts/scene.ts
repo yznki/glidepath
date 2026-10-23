@@ -23,6 +23,7 @@ const Z1 = 22;
 const Y0 = 26;
 const Y1 = 1.7;
 const FAR = 460; // runway length for depth shading
+const HALF = 22; // runway half-width: wide enough to spread to the bottom-right corner on desktop
 
 export const camPose = (p: number): Pose => ({ x: 0, y: Y0 + (Y1 - Y0) * p, z: Z0 + (Z1 - Z0) * p });
 // The PR card flies ahead of the camera on the right and touches down at p = 1.
@@ -55,7 +56,8 @@ void main() {
   if (aKind > 0.5 && aKind < 1.5) a = 0.28 + 0.72 * pulse;
   if (aKind > 2.5) a = 1.0;
   // Intro: lights switch on from the horizon toward you.
-  float thr = 1.0 - aDepth;
+  // Near lights (depth 0: threshold, PAPI, the near edge) switch on last but still reach full strength (0.9 < 1).
+  float thr = 0.9 * (1.0 - aDepth);
   a *= smoothstep(thr, thr + 0.06, uIntro);
   // Depth fade toward the far end of the runway.
   a *= clamp(1.0 - (d - 60.0) / uFar, 0.0, 1.0);
@@ -101,11 +103,11 @@ export function createScene(host: HTMLElement, mobile: boolean): Scene | null {
   host.appendChild(renderer.domElement);
 
   const camera = new PerspectiveCamera(50, 1, 0.5, 900);
-  // Shift the view so the vanishing point sits in the upper right (desktop) or above the copy (phone).
+  // Shift the view so the vanishing point sits at about 62% across and 30% down (desktop), or above the copy (phone).
   const shift = () => {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    camera.setViewOffset(w, h, mobile ? 0 : -w * 0.2, mobile ? h * 0.25 : h * 0.13, w, h);
+    camera.setViewOffset(w, h, mobile ? 0 : -w * 0.12, mobile ? h * 0.25 : h * 0.2, w, h);
   };
 
   // Edge lights, two rows converging on the vanishing point.
@@ -122,17 +124,17 @@ export function createScene(host: HTMLElement, mobile: boolean): Scene | null {
     depth.push(dpt);
     size.push(s);
   };
-  const edgeStart = 30;
+  const edgeStart = 90; // from near the camera, so the runway fills the bottom-right corner
   const edgeEnd = -FAR;
   const nearEnd = -48; // denser edge lights from here to the camera, around the threshold
   const dptOf = (z: number) => Math.min(1, Math.max(0, -z / -edgeEnd));
   for (let z = edgeStart; z >= nearEnd; z -= mobile ? 4 : 1.6) {
-    addPoint(-16, 0.25, z, 0, 1.4, dptOf(z));
-    addPoint(16, 0.25, z, 0, 1.4, dptOf(z));
+    addPoint(-HALF, 0.25, z, 0, 2.0, dptOf(z));
+    addPoint(HALF, 0.25, z, 0, 2.0, dptOf(z));
   }
   for (let z = nearEnd - step; z >= edgeEnd; z -= step) {
-    addPoint(-16, 0.25, z, 0, 1.6, dptOf(z));
-    addPoint(16, 0.25, z, 0, 1.6, dptOf(z));
+    addPoint(-HALF, 0.25, z, 0, 1.8, dptOf(z));
+    addPoint(HALF, 0.25, z, 0, 1.8, dptOf(z));
   }
   // Approach lights: bars across the centreline, from the threshold toward the camera.
   const bars = mobile ? 6 : 12;
@@ -144,9 +146,9 @@ export function createScene(host: HTMLElement, mobile: boolean): Scene | null {
   }
   // Threshold bar and the amber signal light beside it.
   for (let i = -4; i <= 4; i++) addPoint(i * 2, 0.05, 0, 3, 1.1, 0);
-  addPoint(-10.5, 0.7, -2, 2, 1.7, 0);
+  addPoint(-10.5, 0.7, -2, 2, 2.0, 0);
   // PAPI: four lights in a row beside the runway, near the threshold. Two white, two amber: on slope.
-  for (let i = 0; i < 4; i++) addPoint(-24 + i * 2.4, 0.6, -6, i < 2 ? 4 : 2, 1.5, 0);
+  for (let i = 0; i < 4; i++) addPoint(-(HALF + 4) + i * 2.4, 0.6, -6, i < 2 ? 4 : 2, 2.4, 0);
 
   const geo = new BufferGeometry();
   geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
@@ -160,7 +162,7 @@ export function createScene(host: HTMLElement, mobile: boolean): Scene | null {
     uniforms: {
       uTime: { value: 0 },
       uIntro: { value: 0 },
-      uScale: { value: mobile ? 760 : 900 },
+      uScale: { value: mobile ? 760 : 1000 },
       uPx: { value: px },
       uFar: { value: FAR },
     },
@@ -174,9 +176,9 @@ export function createScene(host: HTMLElement, mobile: boolean): Scene | null {
   const lineGeo = new BufferGeometry();
   lineGeo.setAttribute(
     'position',
-    new BufferAttribute(new Float32Array([-16, 0, edgeStart, -16, 0, edgeEnd, 16, 0, edgeStart, 16, 0, edgeEnd]), 3),
+    new BufferAttribute(new Float32Array([-HALF, 0, edgeStart, -HALF, 0, edgeEnd, HALF, 0, edgeStart, HALF, 0, edgeEnd]), 3),
   );
-  const lines = new LineSegments(lineGeo, new LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.06 }));
+  const lines = new LineSegments(lineGeo, new LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12 }));
 
   const sc = new ThreeScene();
   sc.add(lights, lines);

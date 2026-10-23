@@ -38,6 +38,28 @@ const activeFix = (p: number) => {
   return FIXES.length - 1;
 };
 
+// Section links and the app index glide down with expo out (the same curve as the site's motion). Under reduced
+// motion there is no smooth scroll at all: the jump is instant.
+const NAV_H = 72;
+const DESCENT_EASE = (t: number) => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
+function glideTo(y: number) {
+  if (reduced) return window.scrollTo({ top: y, behavior: 'auto' });
+  if (lenis) lenis.scrollTo(y, { duration: 1.2, easing: DESCENT_EASE });
+  else window.scrollTo({ top: y, behavior: 'smooth' });
+}
+function setupAnchors() {
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    const a = (e.target as Element | null)?.closest<HTMLAnchorElement>('a[href^="#"]');
+    if (!a || a.getAttribute('href') === '#') return;
+    const el = document.getElementById(decodeURIComponent(a.getAttribute('href')!.slice(1)));
+    if (!el) return;
+    e.preventDefault();
+    glideTo(el.getBoundingClientRect().top + scrollY - NAV_H);
+    history.replaceState(null, '', a.getAttribute('href'));
+  });
+}
+
 const $ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector<T>(sel);
 const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = document) =>
   Array.from(root.querySelectorAll<T>(sel));
@@ -51,7 +73,8 @@ let introStart = -1;
 // Reduced motion: no Lenis, no GL, no scrub. Everything is visible and static (CSS handles the rest).
 let lenis: Lenis | null = null;
 if (!reduced && !stillMode) {
-  lenis = new Lenis({ lerp: 0.1, wheelMultiplier: 1, touchMultiplier: 1.2, anchors: true });
+  // anchors: false, the links glide through glideTo() below, so the nav and the index share one descent feel.
+  lenis = new Lenis({ lerp: 0.1, wheelMultiplier: 1, touchMultiplier: 1.2, anchors: false });
   lenis.on('scroll', ScrollTrigger.update);
   gsap.ticker.add((time) => lenis?.raf(time * 1000));
   gsap.ticker.lagSmoothing(0);
@@ -193,8 +216,9 @@ function setupReveals() {
   });
 }
 
-// App screens. Desktop with motion: one big frame, pinned, crossfading with a depth move as you scroll; the index
-// on the left jumps to a screen. Phones and reduced motion keep the stacked list (CSS only, nothing to do here).
+// App screens. Desktop with motion: one big frame, pinned. The scroll picks the screen; hovering or focusing an index
+// item previews that screen (crossfade) and leaving it returns to the scroll position. Phones and reduced motion keep
+// the stacked list (CSS only, nothing to do here).
 function setupGallery(gallery: HTMLElement) {
   const pin = $<HTMLElement>('[data-app-pin]', gallery);
   const screens = $$<HTMLElement>('[data-screen]', gallery);
@@ -203,53 +227,106 @@ function setupGallery(gallery: HTMLElement) {
   if (!pin || !screens.length || reduced || mobile) return;
   gallery.classList.add('is-pinned');
   const n = screens.length;
-  let cur = -1;
-  const show = (k: number) => {
-    if (k === cur) return;
-    const prev = cur;
-    cur = k;
+  let scrollK = -1; // the screen the pin has scrolled to
+  let previewK = -1; // the screen an index item is hovered or focused on
+  let shown = -1; // the screen in the frame
+  // Only class toggles here: no layout reads in scroll or hover callbacks.
+  const showScreen = (k: number) => {
+    if (k === shown) return;
+    const prev = shown;
+    shown = k;
     screens.forEach((el, i) => {
       el.classList.toggle('is-on', i === k);
       el.classList.toggle('is-prev', i === prev && i !== k);
     });
+  };
+  const setScroll = (k: number) => {
+    if (k === scrollK) return;
+    scrollK = k;
     items.forEach((el, i) => {
       el.classList.toggle('is-active', i === k);
       if (i === k) el.setAttribute('aria-current', 'true');
       else el.removeAttribute('aria-current');
     });
+    if (previewK < 0) showScreen(k);
   };
-  show(0);
+  const setPreview = (k: number) => {
+    previewK = k;
+    showScreen(k >= 0 ? k : scrollK);
+  };
+  setScroll(0);
   ScrollTrigger.create({
     trigger: pin,
     start: 'top top',
     end: 'bottom bottom',
     invalidateOnRefresh: true,
-    onUpdate: (s) => show(Math.min(n - 1, Math.floor(s.progress * n))),
+    onUpdate: (s) => setScroll(Math.min(n - 1, Math.floor(s.progress * n))),
   });
-  // Index clicks scroll to the middle of that screen's share of the pin.
-  items.forEach((el, i) =>
+  // Index clicks glide to the middle of that screen's share of the pin.
+  items.forEach((el, i) => {
     el.addEventListener('click', (e) => {
       e.preventDefault();
       const top = pin.getBoundingClientRect().top + scrollY;
-      const y = top + ((i + 0.5) / n) * (pin.offsetHeight - innerHeight);
-      if (lenis) lenis.scrollTo(y);
-      else window.scrollTo({ top: y, behavior: 'smooth' });
-    }),
-  );
-  // Pointer tilt on the frame, +-4 degrees (fine pointers only).
+      glideTo(top + ((i + 0.5) / n) * (pin.offsetHeight - innerHeight));
+    });
+    el.addEventListener('pointerenter', () => setPreview(i));
+    el.addEventListener('pointerleave', () => setPreview(-1));
+    el.addEventListener('focus', () => setPreview(i));
+    el.addEventListener('blur', () => setPreview(-1));
+  });
+  // Pointer tilt on the frame, +-4 degrees (fine pointers only). The rect is read once on enter, not per move.
   if (frame && matchMedia('(hover: hover) and (pointer: fine)').matches) {
     const rx = gsap.quickTo(frame, 'rotateX', { duration: 0.8, ease: 'expo.out' });
     const ry = gsap.quickTo(frame, 'rotateY', { duration: 0.8, ease: 'expo.out' });
+    let box = frame.getBoundingClientRect();
+    frame.addEventListener('pointerenter', () => (box = frame.getBoundingClientRect()));
     frame.addEventListener('pointermove', (e) => {
-      const r = frame.getBoundingClientRect();
-      rx((0.5 - (e.clientY - r.top) / r.height) * 8);
-      ry(((e.clientX - r.left) / r.width - 0.5) * 8);
+      rx((0.5 - (e.clientY - box.top) / box.height) * 8);
+      ry(((e.clientX - box.left) / box.width - 0.5) * 8);
     });
     frame.addEventListener('pointerleave', () => {
       rx(0);
       ry(0);
     });
   }
+}
+
+// Phones: a slim altitude readout under the menu button. It counts down over the whole page (3,000 FT at the top,
+// 0 at the foot), so the descent stays in view even when the pinned scene is off screen.
+function setupPhoneAlt() {
+  const el = $<HTMLElement>('[data-alt-fixed]');
+  if (!el || !mobile) return;
+  const out = $<HTMLElement>('strong', el);
+  let shown = -1;
+  ScrollTrigger.create({
+    start: 0,
+    end: 'max',
+    onUpdate: (s) => {
+      const ft = Math.round((3000 * (1 - s.progress)) / 10) * 10;
+      if (ft === shown || !out) return;
+      shown = ft;
+      out.textContent = `${ft.toLocaleString('en-US')} FT`;
+    },
+  });
+}
+
+// The four app screens are below the fold, so they load late (lazy in the markup). Once the gallery is one screen
+// away, they are fetched and decoded, so the pinned frame never waits on a decode during the scroll.
+function preloadShots(gallery: HTMLElement) {
+  const imgs = $$<HTMLImageElement>('img', gallery);
+  if (!imgs.length || !('IntersectionObserver' in window)) return;
+  const io = new IntersectionObserver(
+    (entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      io.disconnect();
+      imgs.forEach((img) => {
+        img.loading = 'eager';
+        img.decode().catch(() => {});
+      });
+    },
+    { rootMargin: '150% 0px' },
+  );
+  io.observe(gallery);
 }
 
 function setupFillButtons() {
@@ -354,6 +431,7 @@ function boot() {
   setupMenu();
   setupLights();
   setupReveals();
+  setupAnchors();
 
   const hero = $<HTMLElement>('#hero');
   const descent = $<HTMLElement>('#descent');
@@ -378,7 +456,11 @@ function boot() {
   const frame = setupDescent(descent);
   setupCurrentGauges();
   setupChecklist();
-  if (gallery) setupGallery(gallery);
+  if (gallery) {
+    preloadShots(gallery);
+    setupGallery(gallery);
+  }
+  setupPhoneAlt();
   setupDemo();
 
   if (!reduced) {

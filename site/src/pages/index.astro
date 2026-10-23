@@ -8,6 +8,8 @@ const rich = (s: string) => s.replace(/`([^`]+)`/g, '<code>$1</code>');
 const ft = (n: number) => n.toLocaleString('en-US');
 ---
 <Base title={site.title} description={site.description} canonical={site.url}>
+  <!-- Phones only: one altitude readout that counts down over the whole page (night.ts). -->
+  <p class="alt-fixed instr" data-alt-fixed aria-hidden="true">Alt <strong>3,000 FT</strong></p>
   <!-- 1. HERO: the approach lights come on behind the copy (WebGL), or the still frame stands in. -->
   <section class="hero" id="hero" aria-labelledby="hero-title">
     <img
@@ -137,7 +139,7 @@ const ft = (n: number) => n.toLocaleString('en-US');
           <div class="frame glass app__frame" data-tilt>
             {shots.map((s, i) => (
               <figure class="app__screen" id={`shot-${i}`} data-screen={i}>
-                <img class="frame__img" src={`${base}${s.src}`} width={s.w} height={s.h} alt={s.alt} decoding="async" />
+                <img class="frame__img" src={`${base}${s.src}`} width={s.w} height={s.h} alt={s.alt} loading="lazy" decoding="async" />
                 <figcaption class="app__caption">
                   <span class="instr app__label">{s.caption}</span>
                   <span class="app__copy">{s.note}</span>

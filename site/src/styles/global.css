@@ -18,7 +18,7 @@
 :root {
   --ground: #030304;
   --ink: #ececef;
-  --muted: #a9a9b0; /* ~8.8:1 on ground; was rgba .62, which failed review */
+  --muted: #b4b4bb; /* ~9.9:1 on ground; no opacity on small labels */
   --line: rgba(255, 255, 255, 0.08);
   --accent: #d29b45;
   --glass: rgba(11, 11, 14, 0.84);
@@ -32,6 +32,7 @@
   --mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   --display: clamp(48px, 8.3vw, 128px);
   --h2: clamp(36px, 5.5vw, 88px);
+  --nav-h: 72px;
   color-scheme: dark;
 }
 
@@ -58,6 +59,9 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overflow-x: clip;
+}
+[id] {
+  scroll-margin-top: var(--nav-h);
 }
 img,
 svg,
@@ -434,6 +438,14 @@ p {
   width: 26px;
   height: 26px;
   border-radius: 7px;
+}
+.nav__brand img {
+  transition: transform 0.28s var(--ease);
+}
+@media (hover: hover) {
+  .nav__brand:hover img {
+    transform: scale(1.08);
+  }
 }
 .nav__links {
   display: flex;
@@ -868,6 +880,25 @@ p {
   display: none;
 }
 
+/* Phones: one altitude readout, fixed under the menu button (night.ts counts it down over the page). */
+.alt-fixed {
+  display: none;
+  position: fixed;
+  top: calc(var(--nav-h) + 8px);
+  right: var(--gutter);
+  z-index: 45;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(3, 3, 4, 0.94);
+  color: var(--muted);
+  pointer-events: none;
+}
+.alt-fixed strong {
+  font-weight: 400;
+  color: var(--ink);
+}
+
 /* Horizon glow: a soft silver haze at the vanishing point (scene positions it each frame). */
 .horizon {
   position: absolute;
@@ -877,8 +908,9 @@ p {
   height: 640px;
   margin: -320px 0 0 -600px;
   pointer-events: none;
-  background: radial-gradient(closest-side, rgba(190, 196, 210, 0.2), rgba(190, 196, 210, 0.06) 45%, rgba(190, 196, 210, 0) 100%);
+  background: radial-gradient(closest-side, rgba(190, 196, 210, 0.34), rgba(190, 196, 210, 0.12) 45%, rgba(190, 196, 210, 0) 100%);
   mix-blend-mode: screen;
+  z-index: 1; /* above the opaque canvas, which would otherwise hide it */
   will-change: transform;
 }
 
@@ -1124,6 +1156,8 @@ html:not(.gl-on) .hero {
   position: sticky;
   top: 0;
   height: 100svh;
+  /* The nav sits over the top 72 px; the stage is centred in what is left below it. */
+  padding-top: var(--nav-h);
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   column-gap: var(--col-gap);
@@ -1144,23 +1178,33 @@ html:not(.gl-on) .hero {
   gap: 12px;
   padding: 6px 0 6px 30px;
   color: var(--muted);
-  transition: color 0.5s var(--ease);
+  transition: color 0.28s var(--ease);
 }
+/* The leading dash extends from the left (scaleX, 280 ms expo out). Active, hovered and focused items show it. */
 .app.is-pinned .app__item::before {
   content: '';
   position: absolute;
   left: 0;
   top: 1.15em;
-  width: 0;
+  width: 18px;
   height: 1px;
   background: var(--accent);
-  transition: width 0.6s var(--ease);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.28s var(--ease);
 }
-.app.is-pinned .app__item.is-active {
+.app.is-pinned .app__item.is-active,
+.app.is-pinned .app__item:hover,
+.app.is-pinned .app__item:focus-visible {
   color: var(--ink);
 }
 .app.is-pinned .app__item.is-active::before {
-  width: 18px;
+  transform: scaleX(1);
+}
+/* Hover and focus extend the dash to 1.6x, from the left, so an already-active item still answers the pointer. */
+.app.is-pinned .app__item:hover::before,
+.app.is-pinned .app__item:focus-visible::before {
+  transform: scaleX(1.6);
 }
 .app.is-pinned .app__copy {
   display: none;
@@ -1176,11 +1220,12 @@ html:not(.gl-on) .hero {
   grid-column: 5 / span 8;
   perspective: 1400px;
 }
+/* Fitted: at most 76svh tall below the nav, width from the screenshot's own 1800 : 1177 ratio. */
 .app.is-pinned .app__frame {
   aspect-ratio: 1800 / 1177;
+  width: min(100%, calc((76svh - var(--nav-h)) * 1800 / 1177));
+  margin-left: auto;
   background: var(--glass);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.07),
     0 40px 90px -40px rgba(0, 0, 0, 0.8);
 }
@@ -1189,9 +1234,8 @@ html:not(.gl-on) .hero {
   inset: 10px;
   margin: 0;
   opacity: 0;
-  transform: scale(1.02);
-  filter: blur(4px);
-  transition: opacity 0.9s var(--ease), transform 0.9s var(--ease), filter 0.9s var(--ease);
+  transform: scale(1.01);
+  transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
 }
 .app.is-pinned .app__screen .frame__img {
   height: 100%;
@@ -1200,12 +1244,10 @@ html:not(.gl-on) .hero {
 .app.is-pinned .app__screen.is-on {
   opacity: 1;
   transform: none;
-  filter: none;
 }
 .app.is-pinned .app__screen.is-prev {
   opacity: 0;
-  transform: scale(0.97);
-  filter: blur(4px);
+  transform: scale(0.99);
 }
 .app.is-pinned .app__caption {
   display: none;
@@ -1394,6 +1436,9 @@ html:not(.gl-on) .hero {
   line-height: 0.92;
   margin-left: -0.04em;
 }
+.final .cta--final {
+  margin-top: 48px;
+}
 .final__row {
   margin-top: 56px;
   display: flex;
@@ -1482,6 +1527,9 @@ html.still #gl {
     animation-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 /* Phones */
@@ -1502,13 +1550,26 @@ html.still #gl {
   }
   .section,
   .touch {
-    --section-y: 96px;
+    --section-y: 60px;
   }
   .section {
-    padding-block: 96px;
+    padding-block: 60px;
   }
   .touch {
-    padding-top: 96px;
+    padding-top: 60px;
+  }
+  .costs__panel {
+    margin-top: 48px;
+  }
+  .lights {
+    margin-top: 48px;
+  }
+  .hero__instr,
+  .gl-on .instrument {
+    display: none;
+  }
+  .alt-fixed {
+    display: block;
   }
   .hero__copy {
     grid-column: 1 / -1;
