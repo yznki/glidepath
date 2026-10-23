@@ -16,7 +16,7 @@ struct TOMLError: Error, CustomStringConvertible, Equatable {
 
 /// Reader for the TOML subset glidepath uses: `[table]` and `[[array.of.tables]]` headers
 /// (dotted names allowed), bare or quoted keys, basic strings, integers, booleans, arrays
-/// (may span lines) and `#` comments. Anything else is an error, so typos fail loudly.
+/// (may span lines), inline tables (`{ k = v }`) and `#` comments. Anything else is an error, so typos fail loudly.
 enum TOML {
     static func parse(_ text: String) throws -> [String: TOMLValue] {
         // Swift treats "\r\n" as one Character, so normalize before the parser looks at characters.
@@ -177,6 +177,7 @@ private struct Parser {
         guard let c = peek() else { throw fail("expected a value") }
         if c == "\"" { return .string(try parseString()) }
         if c == "[" { return try parseArray() }
+        if c == "{" { return try parseInlineTable() }
         if c == "-" || (c.isASCII && c.isNumber) {
             var s = ""
             if c == "-" {
@@ -221,6 +222,37 @@ private struct Parser {
                 return .array(items)
             }
             throw fail("expected , or ] in array")
+        }
+    }
+
+    /// `{ k = v, k2 = v2 }` on one line. Unknown values can be tables, and they are written back the same way.
+    mutating func parseInlineTable() throws -> TOMLValue {
+        i += 1
+        var table: [String: TOMLValue] = [:]
+        skipSpaces()
+        if peek() == "}" {
+            i += 1
+            return .table(table)
+        }
+        while true {
+            skipSpaces()
+            let key = try parseKey()
+            skipSpaces()
+            guard peek() == "=" else { throw fail("expected = after key \(key)") }
+            i += 1
+            skipSpaces()
+            guard table[key] == nil else { throw fail("key \(key) is defined twice") }
+            table[key] = try parseValue()
+            skipSpaces()
+            if peek() == "," {
+                i += 1
+                continue
+            }
+            if peek() == "}" {
+                i += 1
+                return .table(table)
+            }
+            throw fail("expected , or } in inline table")
         }
     }
 

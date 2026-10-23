@@ -241,6 +241,9 @@ enum Doctor {
         for note in Checks.userSettingsNotes() {
             print("warn  ~/.claude/settings.json: \(note)")
         }
+        if let config = try? Config.load(paths), !config.unknownKeys.isEmpty {
+            print("warn  config.toml: unknown keys kept as they are: \(config.unknownKeys.joined(separator: ", "))")
+        }
         // The same check `run` makes: user hooks that would run inside review sessions block the run.
         let conflicts = Claude.hookConflicts(paths: paths)
         for conflict in conflicts {

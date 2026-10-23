@@ -59,9 +59,7 @@ final class ConfigTests: XCTestCase {
         let bad = [
             "schedule = [\"7am\"]\n",
             "schedule = []\n",
-            "typo = 1\n",
             "[limits]\nmax_prs_per_run = 0\n",
-            "[limits]\nmystery = 1\n",
             "[[repo]]\nslug = \"no-slash\"\n",
             "[[repo]]\nslug = \"a/b\"\nposting = \"merge\"\n",
             "[[repo]]\nslug = \"a/b\"\ngitnexus = \"maybe\"\n",
@@ -91,6 +89,38 @@ final class ConfigTests: XCTestCase {
         """, home: home)
         let again = try Config.parse(original.render(), home: home)
         XCTAssertEqual(again, original)
+    }
+
+    func testUnknownKeysAreKeptAndRoundTrip() throws {
+        let text = """
+        typo = 1
+        future = { on = true, tags = ["a", "b"] }
+        schedule = ["07:00"]
+        [limits]
+        mystery = "x"
+        [[repo]]
+        slug = "a/b"
+        extra_repo_key = [1, 2]
+        [section]
+        name = "s"
+        [[items]]
+        n = 1
+        """
+        let c = try Config.parse(text, home: home)
+        XCTAssertEqual(c.extras["typo"], .int(1))
+        XCTAssertEqual(c.extras["future"], .table(["on": .bool(true), "tags": .array([.string("a"), .string("b")])]))
+        XCTAssertEqual(c.extras["section"], .table(["name": .string("s")]))
+        XCTAssertEqual(c.extras["items"], .array([.table(["n": .int(1)])]))
+        XCTAssertEqual(c.limits.extras["mystery"], .string("x"))
+        XCTAssertEqual(c.repos[0].extras["extra_repo_key"], .array([.int(1), .int(2)]))
+        XCTAssertEqual(c.unknownKeys, ["future (top level)", "items (top level)", "section (top level)", "typo (top level)",
+                                       "mystery in [limits]", "extra_repo_key in repo a/b"])
+        XCTAssertEqual(try Config.parse(c.render(), home: home), c)
+    }
+
+    func testKnownKeysStayStrictWhenUnknownKeysArePresent() {
+        XCTAssertThrowsError(try Config.parse("typo = 1\nnotify = \"yes\"\n", home: home))
+        XCTAssertThrowsError(try Config.parse("[limits]\nmystery = 1\nmax_prs_per_run = 0\n", home: home))
     }
 
     func testScheduleTimeParsing() {
