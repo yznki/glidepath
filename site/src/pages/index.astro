@@ -1,0 +1,230 @@
+---
+import Base from '../layouts/Base.astro';
+import { site, hero, fixes, bullets, shots, safety, costs, questions } from '../data/site';
+
+const base = site.base;
+// Inline code in the answers: backticks become <code>. The source is our own data file.
+const rich = (s: string) => s.replace(/`([^`]+)`/g, '<code>$1</code>');
+const ft = (n: number) => n.toLocaleString('en-US');
+---
+<Base title={site.title} description={site.description} canonical={site.url}>
+  <!-- 1. HERO: the approach lights come on behind the copy (WebGL), or the still frame stands in. -->
+  <section class="hero" id="hero" aria-labelledby="hero-title">
+    <img
+      class="hero__still"
+      src={`${base}runway-still.webp`}
+      width="1440"
+      height="900"
+      alt=""
+      decoding="async"
+      fetchpriority="high"
+    />
+    <div class="wrap grid hero__grid">
+      <div class="hero__copy">
+        <h1 id="hero-title">
+          <span class="line"><span style="--i: 0">{hero.headline[0]}</span></span>
+          <span class="line"><span style="--i: 1">{hero.headline[1]}</span></span>
+        </h1>
+        <p class="hero__sub" data-intro>{hero.sub}</p>
+        <div class="hero__cta" data-intro>
+          <div class="install" id="install">
+            <code>{site.install}</code>
+            <button class="btn btn--ghost copy-btn" type="button" data-copy={site.install} data-fill aria-label="Copy the install command"><span class="btn__fill" aria-hidden="true"></span><span class="copy-label">Copy</span></button>
+          </div>
+          <a class="btn btn--ghost" href={site.repo} data-fill rel="noopener"><span class="btn__fill" aria-hidden="true"></span><span>GitHub</span></a>
+        </div>
+      </div>
+      <div class="hero__instr instr" aria-hidden="true" data-intro>
+        <span>ALT <strong>3,000 FT</strong></span>
+        <span>GS <strong>3.0&deg;</strong></span>
+      </div>
+    </div>
+    <p class="hero__hint instr" aria-hidden="true">Scroll to fly the approach</p>
+  </section>
+
+  <!-- 2. DESCENT: a 400svh scroll with a sticky stage. WebGL carries the runway, the card and the labels. -->
+  <section class="descent" id="descent" aria-labelledby="descent-title">
+    <div class="descent__stage">
+      <div class="wrap">
+        <h2 class="descent__title" id="descent-title">How a run works.</h2>
+      </div>
+      <div class="wrap grid" style="width:100%">
+        <ol class="fixes">
+          {fixes.map((f, i) => (
+            <li class={`fix${i === 0 ? ' is-active' : ''}`} data-fix={i}>
+              <p class="fix__name instr"><b>{f.name}</b><span>{ft(f.ft)} FT</span></p>
+              <p class="fix__copy">{f.copy}</p>
+              <p class="fix__state instr">Card: {f.stage.toLowerCase()}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div class="labels" aria-hidden="true">
+        {fixes.map((f, i) => (
+          <span class="label instr" data-label={i}>{f.name} · {ft(f.ft)} FT</span>
+        ))}
+      </div>
+
+      <div class="pr-card glass" data-card aria-hidden="true">
+        <div class="pr-card__row">
+          <span class="pr-card__av">MA</span>
+          <div class="pr-card__meta"><b>Mara</b><span>lumen/web #482</span></div>
+        </div>
+        <p class="pr-card__title">Cache invoice PDFs at the edge</p>
+        <div class="pr-card__stage instr">
+          <span data-card-stage>Gathering</span>
+          <span data-card-callers>0 callers</span>
+        </div>
+        <ul class="pr-card__findings">
+          <li data-finding><i>1</i>Missing test for the cache-miss path</li>
+          <li data-finding><i>2</i>Retry loop has no upper bound</li>
+          <li data-finding><i>3</i>Token is logged when refresh fails</li>
+        </ul>
+        <p class="pr-card__stage instr" style="margin-top:14px"><span>Verdict</span><span class="verdict" data-card-verdict>Pending</span></p>
+      </div>
+
+      <div class="instrument instr" aria-hidden="true">
+        <span>Altitude</span>
+        <strong data-alt>3,000 FT</strong>
+        <span>Glide slope 3.0&deg;</span>
+      </div>
+      <ol class="rail instr" aria-hidden="true">
+        {fixes.map((f, i) => <li data-rail={i}>{f.name}</li>)}
+      </ol>
+    </div>
+  </section>
+
+  <!-- 3. TOUCHDOWN TO THE STACK: copy beside the live popover. -->
+  <section class="section touch" id="stack" aria-labelledby="touch-title">
+    <div class="wrap grid">
+      <div class="touch__copy" data-reveal>
+        <h2 class="h2" id="touch-title">Lands in your menu bar.</h2>
+        <ul class="bullets">
+          {bullets.map(([b, t]) => (
+            <li><b>{b}</b> <span>{t}</span></li>
+          ))}
+        </ul>
+      </div>
+      <div class="touch__demo" data-reveal>
+        <div class="demo" data-demo>
+          <noscript><p class="muted">The live demo needs JavaScript.</p></noscript>
+        </div>
+        <p class="demo-caption instr">Click a card. Hold to post. Swipe a held card to discard it.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. THE APP: four screens in glass frames on a gentle arc. -->
+  <section class="section" id="app" aria-labelledby="app-title">
+    <div class="wrap">
+      <div class="gallery__head grid">
+        <h2 class="h2" id="app-title" style="grid-column: 1 / span 8">The window is for setup and history.</h2>
+        <p class="muted" style="grid-column: 9 / span 4; align-self: end">
+          Now shows the live sweep, with its stages, tokens and hold to stop. Reviews keeps the history. Schedule is a
+          24-hour dial. Settings has search and a live view of the config file.
+        </p>
+      </div>
+      <div class="gallery">
+        <div class="gallery__track" data-gallery>
+          {shots.map((s) => (
+            <figure class="frame" data-reveal>
+              <div class="frame__inner" data-tilt>
+                <img class="frame__img" src={`${base}${s.src}`} width={s.w} height={s.h} alt={s.alt} loading="lazy" decoding="async" />
+              </div>
+              <figcaption class="instr">{s.caption}</figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. CLEARED TO LAND: the safety bullets as a pre-landing checklist. -->
+  <section class="section" id="safe" aria-labelledby="safe-title">
+    <div class="wrap grid">
+      <div class="narrow" data-reveal>
+        <h2 class="h2" id="safe-title">Safe on public repos.</h2>
+        <ul class="checklist">
+          {safety.map((t) => (
+            <li data-check>
+              <span class="check" aria-hidden="true"><svg viewBox="0 0 14 14"><path d="M2 7.5 5.5 11 12 3.5" /></svg></span>
+              <span>{t}</span>
+            </li>
+          ))}
+        </ul>
+        <p class="muted" style="margin-top: 36px">
+          Tested against one adversarial PR. The full design is in{' '}
+          <a class="link" href={site.security} rel="noopener">docs/security.md</a>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. FUEL: three gauges, in tokens. -->
+  <section class="section" id="costs" aria-labelledby="costs-title">
+    <div class="wrap">
+      <div class="grid">
+        <h2 class="h2" id="costs-title" data-reveal style="grid-column: 1 / span 12">What it costs.</h2>
+      </div>
+      <div class="costs__panel">
+        <div class="costs__text" data-reveal>
+          <p>
+            Measured on a real team repo: 60 PRs across 16 sweeps (October 2026, with Opus running the main session).
+            Tokens are input, output and cache writes; cache reads are not counted.
+          </p>
+          <p>The median over all PRs was about 340k tokens, and a sweep took about 16 minutes.</p>
+          <p>New setups review at most five PRs a sweep, on Sonnet.</p>
+        </div>
+        <ul class="costs__gauges">
+          {costs.map((c) => (
+            <li data-reveal>
+              <div class="gauge__head">
+                <span class="instr">{c.label} {c.size}</span>
+                <strong>{c.tokens}</strong>
+              </div>
+              <div class="gauge__track" role="img" aria-label={`${c.label} changed lines: ${c.tokens} tokens`}>
+                <span class="gauge__fill" data-gauge style={`--v: ${c.value / 500}`}></span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. QUESTIONS -->
+  <section class="section" id="questions" aria-labelledby="q-title">
+    <div class="wrap grid">
+      <div style="grid-column: 1 / span 8" data-reveal>
+        <h2 class="h2" id="q-title">Questions</h2>
+        <div class="questions">
+          {questions.map(([q, a]) => (
+            <details>
+              <summary>{q}</summary>
+              <p set:html={rich(a)} />
+            </details>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. FINAL: the approach ends on the install line. -->
+  <section class="section final" id="final" aria-labelledby="final-title">
+    <div class="wrap">
+      <h2 class="final__type" id="final-title" data-reveal>Cleared for approach.</h2>
+      <div class="final__row">
+        <div class="install">
+          <code>{site.install}</code>
+          <button class="btn btn--ghost copy-btn" type="button" data-copy={site.install} data-fill aria-label="Copy the install command"><span class="btn__fill" aria-hidden="true"></span><span class="copy-label">Copy</span></button>
+        </div>
+        <a class="btn btn--ghost" href={site.repo} data-fill rel="noopener"><span class="btn__fill" aria-hidden="true"></span><span>GitHub</span></a>
+      </div>
+      <p class="final__meta instr">
+        MIT · Made for Claude Code · Codex: vote in <a class="link" href={site.issue1} rel="noopener" style="display:inline-block;line-height:24px;padding-inline:4px;margin-inline:-4px">#1</a>
+      </p>
+    </div>
+    <div class="runway-floor" aria-hidden="true"></div>
+  </section>
+</Base>

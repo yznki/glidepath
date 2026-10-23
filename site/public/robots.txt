@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://yznki.github.io/glidepath/sitemap-index.xml

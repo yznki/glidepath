@@ -1,0 +1,21 @@
+---
+import Base from '../layouts/Base.astro';
+import { site } from '../data/site';
+
+const base = site.base;
+---
+<Base title="Go around | Glidepath" description="This page is not on the approach. Back to the start." noindex>
+  <section class="gone" aria-labelledby="gone-title">
+    <div class="wrap">
+      <h1 class="h2--xl" id="gone-title">Go around.</h1>
+      <p class="muted" style="margin-top: 32px; max-width: 40ch; font-size: 18px">
+        This page is not on the approach. Nothing is on this runway, so climb back out and start again.
+      </p>
+      <p style="margin-top: 40px">
+        <a class="btn btn--ghost" href={base} data-fill><span class="btn__fill" aria-hidden="true"></span><span>Back to the start</span></a>
+      </p>
+      <p class="instr muted" style="margin-top: 48px">{site.name} · MIT</p>
+    </div>
+    <div class="runway-floor" aria-hidden="true"></div>
+  </section>
+</Base>

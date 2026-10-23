@@ -1,0 +1,94 @@
+---
+import '../styles/global.css';
+import { site } from '../data/site';
+
+interface Props {
+  title: string;
+  description: string;
+  canonical?: string;
+  noindex?: boolean;
+  bodyClass?: string;
+}
+const { title, description, canonical, noindex = false, bodyClass = '' } = Astro.props;
+const base = site.base; // '/glidepath/'
+const image = `${site.url}social.png`;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: site.name,
+  description: site.description,
+  operatingSystem: 'macOS 14 or later',
+  applicationCategory: 'DeveloperApplication',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  license: 'https://opensource.org/licenses/MIT',
+  url: site.url,
+  codeRepository: site.repo,
+  author: { '@type': 'Person', name: site.author, url: 'https://github.com/yznki' },
+};
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    {canonical && <link rel="canonical" href={canonical} />}
+    {noindex && <meta name="robots" content="noindex" />}
+    <meta name="theme-color" content="#030304" />
+    <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
+    <link rel="preload" href={`${base}fonts/geist-variable.woff2`} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={`${base}fonts/geist-mono-400.woff2`} as="font" type="font/woff2" crossorigin />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={site.name} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical ?? site.url} />
+    <meta property="og:image" content={image} />
+    <meta property="og:image:width" content="1280" />
+    <meta property="og:image:height" content="640" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={image} />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <!-- Before first paint: flag JS and motion so hidden-until-revealed states never flash. -->
+    <script is:inline>
+      document.documentElement.classList.add('js');
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) document.documentElement.classList.add('motion');
+    </script>
+  </head>
+  <body class={bodyClass}>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <div id="gl" aria-hidden="true"></div>
+    <header class="nav" id="top">
+      <div class="nav__inner">
+        <a class="nav__brand" href={base} aria-label="Glidepath, home">
+          <img src={`${base}icon-small.svg`} width="26" height="26" alt="" />
+          <span class="nav-link">Glidepath</span>
+        </a>
+        <nav class="nav__links" aria-label="Main">
+          <a class="nav-link hide-sm" href="#descent">Approach</a>
+          <a class="nav-link hide-sm" href="#app">The app</a>
+          <a class="nav-link hide-sm" href="#costs">Cost</a>
+          <a class="nav-link" href="#install">Install</a>
+          <a class="nav-link" href={site.repo} rel="noopener">GitHub</a>
+        </nav>
+      </div>
+    </header>
+    <main id="main" tabindex="-1">
+      <slot />
+    </main>
+    <footer class="foot">
+      <div class="wrap foot__inner">
+        <span>Glidepath, MIT. Made by {site.author}.</span>
+        <span class="instr">
+          <a class="nav-link" href={site.repo}>Source on GitHub</a>
+        </span>
+      </div>
+    </footer>
+    <script>
+      import '../scripts/night';
+    </script>
+  </body>
+</html>
