@@ -76,6 +76,7 @@ enum SettingsCopy {
 struct SettingsView: View {
     @ObservedObject var store: Store
     @StateObject private var model = SettingsModel()
+    @Environment(\.offscreenRender) private var offscreen
     @AppStorage("signalColour") private var signalKey = "amber"
     @AppStorage("glyphStyle") private var glyphStyle = "glider"
     @AppStorage("glyphBadge") private var glyphBadge = true
@@ -104,15 +105,22 @@ struct SettingsView: View {
                 model.loadToml(store.paths)
                 model.drawerOpen = true
             }
-            TextField("Search settings", text: $model.query)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(Gotham.fg)
-                .padding(.horizontal, 14)
-                .frame(height: 38)
-                .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Gotham.row))
-                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
-                .padding(.bottom, 12)
+            Group {
+                if offscreen {
+                    FieldStandIn(text: model.query, placeholder: "Search settings", font: .system(size: 14, weight: .medium),
+                                 height: 38, radius: 11, search: true)
+                } else {
+                    TextField("Search settings", text: $model.query)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Gotham.fg)
+                        .padding(.horizontal, 14)
+                        .frame(height: 38)
+                        .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Gotham.row))
+                        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
+                }
+            }
+            .padding(.bottom, 12)
             ScrollViewReader { proxy in
                 chips(proxy)
                 WinScroll {

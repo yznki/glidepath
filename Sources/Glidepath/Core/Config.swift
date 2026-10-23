@@ -154,6 +154,14 @@ struct RepoConfig: Equatable {
 struct Config: Equatable {
     static let defaultSchedule = ["07:00", "13:00", "19:00"]
 
+    /// The config a new setup writes (onboarding and `init` when no config exists): Sonnet and five PRs a sweep.
+    /// Parsing a config without these keys still means Opus and ten, so existing configs do not change.
+    static func newSetup(schedule: [ScheduleTime], repos: [RepoConfig]) -> Config {
+        var config = Config(schedule: schedule, limits: Limits(maxPRsPerRun: 5), repos: repos)
+        config.model = .sonnet
+        return config
+    }
+
     var schedule: [ScheduleTime]
     var limits: Limits
     var repos: [RepoConfig]

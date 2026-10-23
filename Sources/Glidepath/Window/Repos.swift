@@ -690,7 +690,7 @@ struct AddRepoSheet: View {
         add([model.addText.trimmingCharacters(in: .whitespaces)])
     }
 
-    /// Adds the repos with the onboarding defaults: comments, and reviews from collaborators.
+    /// Adds the repos with the new-repo defaults: drafts held for posting, and reviews from collaborators.
     private func add(_ slugs: [String]) {
         let home = store.paths.home
         model.commit("add", store: store, then: { [model] ok in
@@ -700,7 +700,7 @@ struct AddRepoSheet: View {
         }) { config in
             try slugs.reduce(config) { config, slug in
                 try ConfigEditor.addRepo(config, RepoConfig(slug: slug, clone: ConfigEditor.defaultClone(slug: slug, home: home),
-                                                            posting: .comment, authors: .collaborators))
+                                                            posting: .draft, authors: .collaborators))
             }
         }
     }

@@ -5,7 +5,8 @@ import SwiftUI
 /// `ScheduleEditor`, which reinstalls the launchd job.
 struct ScheduleView: View {
     @ObservedObject var store: Store
-    @StateObject private var model = ScheduleModel()
+    @StateObject private var model: ScheduleModel
+    @Environment(\.offscreenRender) private var offscreen
     @AppStorage("signalColour") private var signalKey = "amber"
     @AppStorage("motion") private var motion = "full"
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -14,8 +15,15 @@ struct ScheduleView: View {
     private var signal: Color { Gotham.signal(signalKey) }
     private static let letters = ["M", "T", "W", "T", "F", "S", "S"]
 
+    /// The model starts from the config, not from onAppear, since snapshot rendering never fires onAppear.
+    init(store: Store) {
+        self.store = store
+        _model = StateObject(wrappedValue: ScheduleModel(config: store.snap.config))
+    }
+
     var body: some View {
-        ScrollView {
+        // WinScroll, not ScrollView: snapshot rendering draws ScrollView blank.
+        WinScroll {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 HStack(alignment: .top, spacing: 34) {
@@ -42,8 +50,8 @@ struct ScheduleView: View {
     // MARK: Header
 
     private var header: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            let next = DialUpcoming.next(1, after: context.date, times: model.times, days: model.scheduleDays).first
+        SnapshotTimeline(schedule: .periodic(from: .now, by: 30)) { date in
+            let next = DialUpcoming.next(1, after: date, times: model.times, days: model.scheduleDays).first
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -53,12 +61,12 @@ struct ScheduleView: View {
                             .foregroundStyle(Gotham.fg)
                         SavedNote(saved: model.saved)
                     }
-                    Text(status(now: context.date, next: next))
+                    Text(status(now: date, next: next))
                         .monospacedDigit()
                         .cap()
                 }
                 Spacer(minLength: 16)
-                pauseControl(now: context.date)
+                pauseControl(now: date)
             }
         }
     }
@@ -234,22 +242,26 @@ struct ScheduleView: View {
     // MARK: Upcoming
 
     private var upcomingSection: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            let dates = DialUpcoming.next(8, after: context.date, times: model.times, days: model.scheduleDays)
+        SnapshotTimeline(schedule: .periodic(from: .now, by: 30)) { date in
+            let dates = DialUpcoming.next(8, after: date, times: model.times, days: model.scheduleDays)
             VStack(alignment: .leading, spacing: 14) {
                 Text("Upcoming").cap()
                 if dates.isEmpty {
                     Text("No sweeps scheduled. Pick at least one day.").cap()
                 } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(alignment: .top, spacing: 0) {
-                            ForEach(Array(dates.enumerated()), id: \.offset) { index, date in
-                                upcomingTick(date, first: index == 0, now: context.date)
-                            }
+                    let row = HStack(alignment: .top, spacing: 0) {
+                        ForEach(Array(dates.enumerated()), id: \.offset) { index, tick in
+                            upcomingTick(tick, first: index == 0, now: date)
                         }
-                        .background(alignment: .topLeading) {
-                            Rectangle().fill(Gotham.edge).frame(height: 1).padding(.top, 4)
-                        }
+                    }
+                    .background(alignment: .topLeading) {
+                        Rectangle().fill(Gotham.edge).frame(height: 1).padding(.top, 4)
+                    }
+                    // Offscreen a horizontal ScrollView draws blank, so the row is drawn as it is.
+                    if offscreen {
+                        row
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) { row }
                     }
                 }
             }
@@ -420,10 +432,10 @@ private struct DialView: View, Animatable {
     private var endMinute: Double { start + span }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: reduced ? 30 : 1.0 / 30)) { context in
+        SnapshotTimeline(schedule: .periodic(from: .now, by: reduced ? 30 : 1.0 / 30)) { date in
             ZStack {
                 Canvas { canvas, _ in
-                    draw(&canvas, now: context.date)
+                    draw(&canvas, now: date)
                 }
                 if custom == nil {
                     focusTarget(.start, at: point(start, 128), size: 28 * k)
@@ -711,6 +723,10 @@ final class ScheduleModel: ObservableObject {
     }
 
     // MARK: Loading
+
+    init(config: Config? = nil) {
+        sync(config)
+    }
 
     /// Takes the config's schedule when it differs from what this model last saved or loaded.
     func sync(_ config: Config?) {

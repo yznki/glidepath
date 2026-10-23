@@ -26,7 +26,7 @@ glidepath init
 - A strict filter rejects any other shell command.
 - Reads and writes stay inside the repo checkout and the run's scratch folder.
 - GitHub tokens never reach the model.
-- Only collaborators' PRs are reviewed, and reviews are posted as comments, by default.
+- Only collaborators' PRs are reviewed. New repos hold each review as a draft until you post it.
 
 Tested against one adversarial PR; see the transcript in [docs/security-test.md](docs/security-test.md). The full
 design is in [docs/security.md](docs/security.md).
@@ -59,9 +59,9 @@ On each scheduled time, for each configured repo:
 4. **Check.** The `checker` agent (Sonnet), one per PR, re-opens every quoted line and drops any finding that does
    not match the code. It keeps verified blockers. If the checker changes the verdict or a finding, one more check
    runs on the fixed draft.
-5. **Land.** One review per PR, posted as a comment by default. The comment's first line is the verdict. With
-   `posting = "review"`, the review is APPROVE or REQUEST_CHANGES instead. With `posting = "draft"`, the review is
-   held for you to post from the app or the CLI (see [Drafts](#drafts)).
+5. **Land.** One review per PR. A new repo starts with `posting = "draft"`: each review is held for you to post
+   from the app or the CLI (see [Drafts](#drafts)). With `posting = "comment"`, the review is posted directly as a
+   comment whose first line is the verdict. With `posting = "review"`, it is APPROVE or REQUEST_CHANGES instead.
 
 Each run starts `claude -p` in the checkout with the `glidepath` skill. The skill gathers and reviews through the
 steps above, and posts with `glidepath post`.
@@ -199,7 +199,7 @@ notify = true                 # false turns off the notification when a sweep fi
 notify_changes_only = false   # true notifies only when changes are waiting
 notify_sound = "glass"        # none | glass | pop | tink | hero
 respect_focus = true          # false lets notifications break through Focus
-model = "opus"                # haiku | sonnet | opus
+model = "sonnet"              # haiku | sonnet | opus
 strictness = "balanced"       # relaxed | easygoing | balanced | exacting | ruthless
 review_drafts = false         # true also reviews draft PRs
 include_bots = false          # true also reviews PRs opened by bots
@@ -209,14 +209,14 @@ dry_run = false               # true reviews and posts nothing
 hotkey = true                 # true is ⌥⌘G, false is off, or a shortcut such as "⌥⌘G"
 
 [limits]
-max_prs_per_run = 10
+max_prs_per_run = 5
 max_changed_lines = 3000      # bigger PRs are skipped with reason "too large"
 split_over_lines = 1500       # reviews are split by area above this
 
 [[repo]]
 slug = "acme/api"
 clone = "~/glidepath/clones/acme-api"   # init clones a dedicated detached checkout
-posting = "comment"           # comment | review | draft
+posting = "draft"             # draft | comment | review
 authors = "collaborators"     # collaborators | anyone | ["login", ...]
 rules = "~/.config/glidepath/rules/acme-api.md"   # optional
 rules_mode = "extend"         # extend | replace
@@ -238,18 +238,18 @@ flag_note = "Needs a devops code-owner approval."  # optional: the note text
 | `respect_focus` | `true` | Notifications are held while a Focus mode is on. `false` lets them through. |
 | `review_drafts` | `false` | Review draft PRs too. Draft PRs get normal verdicts. |
 | `include_bots` | `false` | Review PRs opened by bots too. |
-| `model` | `opus` | Model for the review: `haiku`, `sonnet` or `opus`. |
+| `model` | `opus` when omitted; new setups write `sonnet` | Model for the review: `haiku`, `sonnet` or `opus`. New setups from onboarding and `init` start on Sonnet. |
 | `strictness` | `balanced` | How much the review flags: `relaxed`, `easygoing`, `balanced`, `exacting` or `ruthless`. |
 | `monthly_tokens` | `0` | Token budget for the calendar month. `0` is no budget. The Schedule page and Settings show the month's use against it. |
 | `pause_at_budget` | `true` | Skip scheduled runs once the month's tokens reach `monthly_tokens`. Manual runs still work. |
 | `dry_run` | `false` | Review everything and post nothing, as `glidepath run --dry-run` does. |
 | `hotkey` | `true` | The global shortcut that opens the popover: `true` is ⌥⌘G, `false` turns it off, or a shortcut string such as `"⌥⌘G"`. |
-| `limits.max_prs_per_run` | `10` | PRs per repo per run. Extra PRs are skipped with reason "over max_prs_per_run". |
+| `limits.max_prs_per_run` | `10` when omitted; new setups write `5` | PRs per repo per run. Extra PRs are skipped with reason "over max_prs_per_run". New setups start with five per sweep. |
 | `limits.max_changed_lines` | `3000` | Additions plus deletions above this are skipped with reason "too large". |
 | `limits.split_over_lines` | `1500` | Above this, the review is split into one reviewer per area. |
 | `repo.slug` | required | `owner/name` on GitHub. |
 | `repo.clone` | `~/glidepath/clones/<owner>-<name>` | Detached checkout the skill reads. Never used for work. |
-| `repo.posting` | `comment` | `comment` posts a COMMENT review whose first line is `Verdict: approve` or `Verdict: changes`. `review` posts APPROVE or REQUEST_CHANGES. `draft` holds the review until you post it; see [Drafts](#drafts). |
+| `repo.posting` | `comment` when omitted; `draft` for new repos | `draft` holds the review until you post it; see [Drafts](#drafts). New repos, from `init`, onboarding and Repos, are written with `posting = "draft"`. `comment` posts directly as a COMMENT review whose first line is `Verdict: approve` or `Verdict: changes`. `review` posts APPROVE or REQUEST_CHANGES. |
 | `repo.authors` | `collaborators` | `collaborators` means write, maintain or admin access on the repo. `anyone` means any author. A list means only those logins. |
 | `repo.rules` | none | A Markdown file with extra review rules for this repo. |
 | `repo.rules_mode` | `extend` | `extend` adds the file to the built-in rubric. `replace` swaps out the rubric's review bar. Safety and output sections always apply. |

@@ -62,7 +62,8 @@ struct OnboardingState: Equatable {
     var tools = ToolStatus()
     /// Selected repo slugs, in the order they were picked.
     var repos: [String] = []
-    var posting: Posting = .comment
+    /// New repos start as drafts that wait for you to post them. A config without `posting` still means comment.
+    var posting: Posting = .draft
     var authors: AuthorPolicy = .collaborators
     var schedule: [ScheduleTime] = Config.defaultSchedule.compactMap(ScheduleTime.init)
     var days: ScheduleDays = .weekdays
@@ -113,7 +114,7 @@ struct OnboardingState: Equatable {
     /// The config this state describes. Repos already in `base` keep their settings; each newly selected repo gets the
     /// posting mode and authors policy chosen here. Repos not selected are dropped.
     func config(base: Config?, home: String) -> Config {
-        var config = base ?? Config(schedule: schedule, limits: Limits(), repos: [])
+        var config = base ?? Config.newSetup(schedule: schedule, repos: [])
         config.schedule = schedule
         config.days = days
         let kept = config.repos.filter { repos.contains($0.slug) }

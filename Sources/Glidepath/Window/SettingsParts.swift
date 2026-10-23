@@ -134,16 +134,42 @@ struct SettingSegmented<Value: Hashable>: View {
 
 /// Plain slider in the foreground colour, 170 pt wide, with the value text at its right.
 struct SettingSliderTrack: View {
+    @Environment(\.offscreenRender) private var offscreen
     @Binding var value: Double
     let range: ClosedRange<Double>
     var step: Double = 1
     var onEditing: (Bool) -> Void = { _ in }
 
     var body: some View {
-        Slider(value: $value, in: range, step: step, onEditingChanged: onEditing,
-               minimumValueLabel: EmptyView(), maximumValueLabel: EmptyView(), label: { EmptyView() })
-            .tint(Gotham.fg)
-            .frame(width: 170)
+        if offscreen {
+            SliderStandIn(value: value, range: range)
+        } else {
+            Slider(value: $value, in: range, step: step, onEditingChanged: onEditing,
+                   minimumValueLabel: EmptyView(), maximumValueLabel: EmptyView(), label: { EmptyView() })
+                .tint(Gotham.fg)
+                .frame(width: 170)
+        }
+    }
+}
+
+/// The slider drawn with Gotham tokens, for offscreen (snapshot) rendering: a thin track, the filled part and a knob at
+/// the value. ImageRenderer draws the AppKit slider as a prohibition sign.
+struct SliderStandIn: View {
+    let value: Double
+    let range: ClosedRange<Double>
+    private let width: CGFloat = 170
+
+    var body: some View {
+        let span = range.upperBound - range.lowerBound
+        let f = span > 0 ? min(max((value - range.lowerBound) / span, 0), 1) : 0
+        ZStack(alignment: .leading) {
+            Capsule().fill(Gotham.row).frame(width: width, height: 4)
+            Capsule().fill(Gotham.fg).frame(width: width * CGFloat(f), height: 4)
+            Circle().fill(Gotham.fg).frame(width: 14, height: 14)
+                .shadow(color: .black.opacity(0.35), radius: 2, y: 1)
+                .offset(x: width * CGFloat(f) - 7)
+        }
+        .frame(width: width, height: 14, alignment: .leading)
     }
 }
 
@@ -188,6 +214,7 @@ struct SettingTags: View {
     let onAdd: (String) -> Void
     let onRemove: (String) -> Void
     @StateObject private var entry = Entry()
+    @Environment(\.offscreenRender) private var offscreen
 
     var body: some View {
         HStack(spacing: 6) {
@@ -212,20 +239,25 @@ struct SettingTags: View {
                 .background(Capsule().fill(Gotham.tint))
                 .overlay(Capsule().strokeBorder(Gotham.edge, lineWidth: 1))
             }
-            TextField(placeholder, text: $entry.text)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundStyle(Gotham.fg)
-                .padding(.horizontal, 10)
-                .frame(width: 140, height: 26)
-                .overlay(Capsule().strokeBorder(Gotham.edge, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
-                .onSubmit {
-                    let text = entry.text.trimmingCharacters(in: .whitespaces)
-                    guard !text.isEmpty else { return }
-                    entry.text = ""
-                    onAdd(text)
-                }
-                .accessibilityLabel(placeholder)
+            if offscreen {
+                FieldStandIn(text: "", placeholder: placeholder, font: .system(size: 12, design: .monospaced), height: 26, radius: 13)
+                    .frame(width: 140)
+            } else {
+                TextField(placeholder, text: $entry.text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Gotham.fg)
+                    .padding(.horizontal, 10)
+                    .frame(width: 140, height: 26)
+                    .overlay(Capsule().strokeBorder(Gotham.edge, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+                    .onSubmit {
+                        let text = entry.text.trimmingCharacters(in: .whitespaces)
+                        guard !text.isEmpty else { return }
+                        entry.text = ""
+                        onAdd(text)
+                    }
+                    .accessibilityLabel(placeholder)
+            }
         }
     }
 }

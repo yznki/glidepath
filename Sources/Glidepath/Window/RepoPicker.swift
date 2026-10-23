@@ -79,12 +79,18 @@ struct RepoPicker: View {
     @FocusState private var listFocused: Bool
     /// The row the keyboard is on. Space toggles it.
     @StateObject private var cursor = PickerCursor()
+    @Environment(\.offscreenRender) private var offscreen
 
     var body: some View {
+        let placeholder = catalog.repoList == .loaded ? "Search \(catalog.repos.count) repos" : "Search repos"
         VStack(alignment: .leading, spacing: 0) {
-            TextField(catalog.repoList == .loaded ? "Search \(catalog.repos.count) repos" : "Search repos", text: $search)
-                .winField()
-                .focused($searchFocused)
+            if offscreen {
+                FieldStandIn(text: search, placeholder: placeholder, search: true)
+            } else {
+                TextField(placeholder, text: $search)
+                    .winField()
+                    .focused($searchFocused)
+            }
             list
                 .padding(.top, WinMetrics.s8)
                 .frame(maxHeight: .infinity, alignment: .top)
