@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions
+    url: https://github.com/yznki/glidepath/discussions
+    about: Ask how to use Glidepath, or talk about it, before opening an issue.
