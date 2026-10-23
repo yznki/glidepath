@@ -81,9 +81,14 @@ enum StackGeometry {
             .map(\.element)
     }
 
-    /// The first `maxCards` of an ordered list, and how many sit behind the "+N more" strip.
-    static func cap(_ list: [Strip]) -> (cards: [Strip], more: Int) {
-        (Array(list.prefix(maxCards)), max(0, list.count - maxCards))
+    /// The first `maxCards` of an ordered list, and how many sit behind the "+N more" strip. A re-rank can push the
+    /// open card past the cap: it then takes the last slot, and the card it displaces counts in `more`.
+    static func cap(_ list: [Strip], open: String? = nil) -> (cards: [Strip], more: Int) {
+        var cards = Array(list.prefix(maxCards))
+        if let open, let i = list.firstIndex(where: { $0.id == open }), i >= maxCards {
+            cards[maxCards - 1] = list[i]
+        }
+        return (cards, max(0, list.count - maxCards))
     }
 }
 
@@ -209,6 +214,7 @@ struct PopoverView: View {
         let all = store.strips
         let shown = capped(all)
         let copy = headerCopy
+        let ids = ordered(all).map(\.id)
         VStack(alignment: .leading, spacing: 0) {
             stack(all: all, list: shown.cards, more: shown.more, copy: copy)
             updateLine
@@ -238,11 +244,20 @@ struct PopoverView: View {
             local.openID = nil
             store.popoverClosed()
         }
+        // The open card's strip left the list (filtered out or removed): close it rather than leave a blank hole.
+        .onChange(of: ids) { _, now in
+            if let id = local.openID, !now.contains(id) { local.openID = nil }
+        }
     }
 
-    /// The cards on the stack: the ordered strips, narrowed to the header filter and capped. `more` counts the rest.
+    /// The strips in stack order, narrowed to the header filter.
+    private func ordered(_ all: [Strip]) -> [Strip] {
+        StackGeometry.ordered(all, running: store.snap.running, filter: local.filter)
+    }
+
+    /// The cards on the stack: the ordered strips, capped, with the open card kept on. `more` counts the rest.
     private func capped(_ all: [Strip]) -> (cards: [Strip], more: Int) {
-        StackGeometry.cap(StackGeometry.ordered(all, running: store.snap.running, filter: local.filter))
+        StackGeometry.cap(ordered(all), open: local.openID)
     }
 
     // MARK: Keys

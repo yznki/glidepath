@@ -806,7 +806,7 @@ struct ReviewSweep: Identifiable {
                 }
                 return ReviewRow(
                     runId: run.id, repo: repo.slug, number: pr.n, author: pr.author, title: pr.title,
-                    reason: pr.reason, verdict: pr.verdict, draft: pr.draft == true, skipReason: pr.skipReason,
+                    reason: PRFilter.displayReason(pr.reason), verdict: pr.verdict, draft: pr.draft == true, skipReason: pr.skipReason,
                     changedLines: pr.changedLines, head: pr.head, flagged: pr.flagged == true, tokens: pr.tokens,
                     duration: length,
                     postedAt: posted(repo.slug, pr.n))
