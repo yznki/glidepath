@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.2
+
+- Popover: at most six cards, the rest behind a "+N more" strip that opens Reviews; the open card grows to fit; full header labels; solid dark frame.
+- Setup screens in the Gotham look.
+- Config keys this version doesn't know are kept instead of reopening setup; `glidepath doctor` lists them.
+- Smoother Now page during a sweep.
+- PRs over the per-run cap read "next sweep" instead of the config key.
+
 ## 1.3.1
 
 Fixes the build on macOS 15 and older SDKs (menu commands over the builder limit).
