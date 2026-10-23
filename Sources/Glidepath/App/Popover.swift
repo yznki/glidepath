@@ -293,6 +293,7 @@ struct PopoverView: View {
                     pip(verdict, count: all.filter { $0.verdict == verdict }.count)
                 }
                 runButton
+                windowButton
             }
             .padding(.leading, 10)
             .padding(.trailing, 14)
@@ -350,6 +351,20 @@ struct PopoverView: View {
         return RunButton(running: snap.running, enabled: enabled,
                          tap: { runTap(firstRun: firstRun) },
                          stop: { store.stopRun() })
+    }
+
+    /// Opens the main window, the same as ⌘O.
+    private var windowButton: some View {
+        Image(systemName: "macwindow")
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(Gotham.fg)
+            .frame(width: 34, height: 34)
+            .background(Circle().fill(Gotham.row))
+            .contentShape(Circle())
+            .onTapGesture { WindowRouter.shared.open(nil) }
+            .help("Open Glidepath (⌘O)")
+            .accessibilityLabel("Open Glidepath window")
+            .accessibilityAddTraits(.isButton)
     }
 
     /// Run now; the button does the one thing its state offers when a sweep is not running.

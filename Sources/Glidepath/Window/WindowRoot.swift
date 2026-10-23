@@ -64,6 +64,8 @@ final class WindowRouter: ObservableObject {
     func open(_ section: WindowSection?) {
         if let section { self.section = section }
         if WindowRouter.needsSetup(forSection: section != nil) { showOnboarding = true }
+        // Regular first, so the window can come to front over other apps while the Dock icon is shown.
+        NSApp.setActivationPolicy(.regular)
         openAction?("main")
         NSApp.activate(ignoringOtherApps: true)
     }
