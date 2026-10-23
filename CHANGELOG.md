@@ -6,6 +6,7 @@
 - Schedule's monthly token estimate comes from your real sweeps; it shows "—" until three have finished.
 - Issue templates, a security policy and a contributing guide.
 - Launch site.
+- Glidepath only runs git in clones it created; a `clone` set to your own checkout is refused, and `glidepath doctor` says so.
 
 ## 1.3.2
 

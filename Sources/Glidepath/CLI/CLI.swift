@@ -241,6 +241,16 @@ enum Doctor {
         for note in Checks.userSettingsNotes() {
             print("warn  ~/.claude/settings.json: \(note)")
         }
+        if let config = try? Config.load(paths) {
+            for repo in config.repos {
+                // Only an existing git checkout can be someone else's; a missing or empty folder is cloned on run.
+                if FileManager.default.fileExists(atPath: repo.clone + "/.git"), !RepoClone.owns(repo.clone, home: paths.home) {
+                    print("FAIL  \(repo.slug): \(RepoClone.notOwned(repo.clone).message)")
+                } else {
+                    print("ok    \(repo.slug): clone is Glidepath's")
+                }
+            }
+        }
         if let config = try? Config.load(paths), !config.unknownKeys.isEmpty {
             print("warn  config.toml: unknown keys kept as they are: \(config.unknownKeys.joined(separator: ", "))")
         }

@@ -310,7 +310,7 @@ struct Config: Equatable {
             throw ConfigError(message: "slug \"\(slug)\" must look like owner/name")
         }
         let clone = try string(t["clone"], key: "clone")
-            ?? home + "/glidepath/clones/" + slug.replacingOccurrences(of: "/", with: "-")
+            ?? ConfigEditor.defaultClone(slug: slug, home: home)
         let expandedClone = expand(clone, home: home)
         guard expandedClone.hasPrefix("/") else {
             throw ConfigError(message: "clone \"\(clone)\" must be an absolute path or start with ~/")

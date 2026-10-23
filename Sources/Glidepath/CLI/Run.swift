@@ -6,7 +6,7 @@ enum RepoClone {
     /// Upper bound for clone and fetch. A stuck network should not hold the run lock for hours.
     static let slowTimeout: TimeInterval = 30 * 60
 
-    static func sync(_ repo: RepoConfig, env: [String: String]) throws {
+    static func sync(_ repo: RepoConfig, env: [String: String], home: String = Paths().home) throws {
         let fm = FileManager.default
         if !fm.fileExists(atPath: repo.clone + "/.git") {
             var createdHere = false
@@ -27,7 +27,9 @@ enum RepoClone {
                 if createdHere { try? fm.removeItem(atPath: repo.clone) }
                 throw RunError("clone failed: \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
             }
+            try writeMarker(repo.clone)
         }
+        try claim(repo.clone, home: home)
         try excludeGitNexusIndex(repo.clone)
         _ = git(["-C", repo.clone, "config", "credential.helper", "!gh auth git-credential"], env, 30)
 
@@ -47,6 +49,34 @@ enum RepoClone {
         guard git(["-C", repo.clone, "checkout", "--quiet", "--detach", "origin/\(branch)"], env, 120).ok else {
             throw RunError("could not check out origin/\(branch)")
         }
+    }
+
+    static let markerName = "glidepath-clone"
+    static let markerText = "created by glidepath; safe to delete with the clone\n"
+
+    /// Whether Glidepath may run git in an existing clone: it made it (marker), or it sits in the default clones folder.
+    /// Ownership is checked before any git command touches the folder, so a user's own checkout is never switched.
+    static func owns(_ clone: String, home: String) -> Bool {
+        FileManager.default.fileExists(atPath: markerPath(clone))
+            || clone.hasPrefix(ConfigEditor.clonesDir(home: home) + "/")
+    }
+
+    /// Throws for an existing clone Glidepath does not own. A default-folder clone without a marker gets one.
+    static func claim(_ clone: String, home: String) throws {
+        guard owns(clone, home: home) else { throw notOwned(clone) }
+        if !FileManager.default.fileExists(atPath: markerPath(clone)) { try writeMarker(clone) }
+    }
+
+    static func notOwned(_ clone: String) -> RunError {
+        RunError("\(clone) is not a Glidepath clone. Glidepath only reviews in a folder it created, so it never switches branches under your own work. Remove `clone` from this repo's config to use the default, or point it at an empty folder.")
+    }
+
+    static func markerPath(_ clone: String) -> String {
+        clone + "/.git/" + markerName
+    }
+
+    private static func writeMarker(_ clone: String) throws {
+        try markerText.write(toFile: markerPath(clone), atomically: true, encoding: .utf8)
     }
 
     /// GitNexus writes its index into the checkout. Excluding it keeps `git status` clean, so the

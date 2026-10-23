@@ -229,7 +229,12 @@ enum ConfigEditor {
 
     /// The clone folder a new repo gets, as `Config.parse` names it when `clone` is missing.
     static func defaultClone(slug: String, home: String) -> String {
-        home + "/glidepath/clones/" + slug.replacingOccurrences(of: "/", with: "-")
+        clonesDir(home: home) + "/" + slug.replacingOccurrences(of: "/", with: "-")
+    }
+
+    /// The folder Glidepath clones into when `clone` is not set.
+    static func clonesDir(home: String) -> String {
+        home + "/glidepath/clones"
     }
 
     /// The rules file a repo gets from the Edit button: `<config dir>/rules/owner-name.md`.
