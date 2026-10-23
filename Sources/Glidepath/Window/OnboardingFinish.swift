@@ -19,26 +19,25 @@ extension OnboardingView {
                     .padding(.top, WinMetrics.s8)
                 VStack(alignment: .leading, spacing: 0) {
                     reviewRow("How reviews post", "What lands on the pull request.") {
-                        WinSegmented(
-                            segments: [Posting.comment, .review, .draft].map {
-                                WinSegmented<Posting>.Segment(value: $0, title: $0.modeLabel)
-                            },
+                        SettingSegmented(
+                            options: [Posting.comment, .review, .draft].map { (value: $0, label: $0.modeLabel) },
                             selected: model.state.posting
                         ) { model.state.posting = $0 }
                         Text(model.state.posting.preview)
                             .font(.system(size: 12))
-                            .foregroundStyle(WinTheme.muted)
+                            .foregroundStyle(Gotham.mute)
                             .padding(.horizontal, WinMetrics.s12)
                             .padding(.vertical, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(RoundedRectangle(cornerRadius: 10).fill(WinTheme.surface))
+                            .background(RoundedRectangle(cornerRadius: 10).fill(Gotham.row))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Gotham.edge, lineWidth: 1))
                     }
                     reviewRow("Whose PRs", "Your own PRs are never reviewed.") {
-                        WinSegmented(
-                            segments: [
-                                WinSegmented<AuthorChoice>.Segment(value: .collaborators, title: "Collaborators"),
-                                WinSegmented<AuthorChoice>.Segment(value: .anyone, title: "Anyone"),
-                                WinSegmented<AuthorChoice>.Segment(value: .people, title: "These people…"),
+                        SettingSegmented(
+                            options: [
+                                (value: AuthorChoice.collaborators, label: "Collaborators"),
+                                (value: AuthorChoice.anyone, label: "Anyone"),
+                                (value: AuthorChoice.people, label: "These people…"),
                             ],
                             selected: authorChoice
                         ) { choice in
@@ -57,7 +56,7 @@ extension OnboardingView {
                     reviewRow("Review rules", "Optional.") {
                         Text("Add review rules later in Repos.")
                             .font(.system(size: 13))
-                            .foregroundStyle(WinTheme.muted)
+                            .foregroundStyle(Gotham.mute)
                     }
                 }
                 .padding(.top, WinMetrics.s32)
@@ -65,7 +64,7 @@ extension OnboardingView {
             }
         }, footer: {
             bar {
-                WinButton(title: "Continue", style: .primary) { model.advance() }
+                OnbButton(title: "Continue", style: .primary) { model.advance() }
                     .disabled(!model.state.canContinue(from: .review))
             }
         })
@@ -106,16 +105,16 @@ extension OnboardingView {
         VStack(alignment: .leading, spacing: WinMetrics.s8) {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(WinTheme.text)
+                .foregroundStyle(Gotham.fg)
             Text(detail)
                 .font(.system(size: 12))
-                .foregroundStyle(WinTheme.faint)
+                .foregroundStyle(Gotham.mute)
             control()
         }
         .padding(.vertical, WinMetrics.s16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .top) {
-            Rectangle().fill(WinTheme.line).frame(height: 1)
+            Rectangle().fill(Gotham.edge).frame(height: 1)
         }
     }
 
@@ -151,7 +150,7 @@ extension OnboardingView {
             }
         }, footer: {
             bar {
-                WinButton(title: "Continue", style: .primary) { model.advance() }
+                OnbButton(title: "Continue", style: .primary) { model.advance() }
                     .disabled(!model.state.canContinue(from: .schedule))
             }
         })
@@ -162,21 +161,21 @@ extension OnboardingView {
         VStack(alignment: .leading, spacing: WinMetrics.s8) {
             Text("Days")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(WinTheme.text)
+                .foregroundStyle(Gotham.fg)
             Text("Sweeps skip the other days.")
                 .font(.system(size: 12))
-                .foregroundStyle(WinTheme.faint)
+                .foregroundStyle(Gotham.mute)
             if case .custom = model.state.days {
                 Text("Custom days from your config. Change them in Schedule.")
                     .font(.system(size: 13))
-                    .foregroundStyle(WinTheme.muted)
+                    .foregroundStyle(Gotham.mute)
             } else {
-                WinSegmented(
-                    segments: [
-                        .init(value: DaysChoice.weekdays, title: "Weekdays"),
-                        .init(value: DaysChoice.everyDay, title: "Every day"),
+                SettingSegmented(
+                    options: [
+                        (value: DaysChoice.weekdays, label: "Weekdays"),
+                        (value: DaysChoice.everyDay, label: "Every day"),
                     ],
-                    selected: model.state.days == .all ? .everyDay : .weekdays
+                    selected: model.state.days == .all ? DaysChoice.everyDay : DaysChoice.weekdays
                 ) { choice in
                     model.state.days = choice == .everyDay ? .all : .weekdays
                 }
@@ -190,18 +189,19 @@ extension OnboardingView {
         HStack(spacing: 6) {
             Text(text)
                 .font(.system(size: 12, design: mono ? .monospaced : .default))
-                .foregroundStyle(WinTheme.text)
+                .foregroundStyle(Gotham.fg)
                 .monospacedDigit()
             Button(action: remove) {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(WinTheme.faint)
+                    .foregroundStyle(Gotham.mute)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, WinMetrics.s12)
         .frame(height: 28)
-        .background(Capsule().fill(WinTheme.raised))
+        .background(Capsule().fill(Gotham.tint))
+        .overlay(Capsule().strokeBorder(Gotham.edge, lineWidth: 1))
     }
 
     // MARK: 6. First sweep
@@ -219,13 +219,13 @@ extension OnboardingView {
                 if model.state.firstSweep == .running {
                     Text(OnboardingSummary.progress(reviewing))
                         .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.faint)
+                        .foregroundStyle(Gotham.mute)
                         .padding(.top, WinMetrics.s4)
                 }
                 if let note = model.backupNote {
                     Text(note)
                         .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.faint)
+                        .foregroundStyle(Gotham.mute)
                         .padding(.top, WinMetrics.s8)
                 }
                 amberMessage(failureText)
@@ -245,7 +245,7 @@ extension OnboardingView {
                     if let skipped = OnboardingSummary.skippedLine(model.liveStrips) {
                         Text(skipped)
                             .font(.system(size: 12))
-                            .foregroundStyle(WinTheme.faint)
+                            .foregroundStyle(Gotham.mute)
                             .lineLimit(1)
                             .padding(.top, WinMetrics.s8)
                     }
@@ -286,7 +286,7 @@ extension OnboardingView {
     }
 
     /// One PR being reviewed. In flight: the stage meter and its word. Landed: the verdict mark, with the reason in
-    /// amber when there is one, as Overview's Last sweep rows show it.
+    /// the signal colour when there is one, as Overview's Last sweep rows show it.
     private func sweepRow(_ row: RowModel, first: Bool) -> some View {
         let strip = row.strip
         let place = "\(strip.repo) #\(strip.number)" + (strip.author.map { " · \($0)" } ?? "")
@@ -294,14 +294,14 @@ extension OnboardingView {
             VStack(alignment: .leading, spacing: 0) {
                 Text(strip.title ?? "#\(strip.number)")
                     .font(.system(size: 14))
-                    .foregroundStyle(WinTheme.text)
+                    .foregroundStyle(Gotham.fg)
                     .lineLimit(1)
                 HStack(spacing: 0) {
                     if let reason = strip.reason, strip.verdict != nil {
-                        Text(reason).foregroundStyle(WinTheme.amberInk)
-                        Text(" · \(place)").foregroundStyle(WinTheme.faint)
+                        Text(reason).foregroundStyle(Gotham.signal(signalKey))
+                        Text(" · \(place)").foregroundStyle(Gotham.mute)
                     } else {
-                        Text(place).foregroundStyle(WinTheme.faint)
+                        Text(place).foregroundStyle(Gotham.mute)
                     }
                 }
                 .font(.system(size: 12))
@@ -309,13 +309,13 @@ extension OnboardingView {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if strip.verdict != nil {
-                RunRowViews.verdict(row)
+                sweepVerdict(row)
             } else {
                 HStack(spacing: WinMetrics.s16) {
-                    RunRowViews.meter(row.meter ?? [])
+                    sweepMeter(row.meter ?? [])
                     Text(RunRowViews.phaseWord(row))
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(WinTheme.blue)
+                        .foregroundStyle(Gotham.fg)
                         .frame(width: 88, alignment: .trailing)
                 }
             }
@@ -323,7 +323,41 @@ extension OnboardingView {
         .frame(height: 56)
         .frame(maxWidth: .infinity, alignment: .leading)
         .overlay(alignment: .top) {
-            if !first { Rectangle().fill(WinTheme.line).frame(height: 1) }
+            if !first { Rectangle().fill(Gotham.edge).frame(height: 1) }
+        }
+    }
+
+    /// The landed verdict in the 88 pt status column, in the Gotham colours: near-white for approve, the signal colour
+    /// for changes, and a mute dash for skipped. The same mark as `RunRowViews.verdict`, which still has the old colours.
+    @ViewBuilder
+    private func sweepVerdict(_ row: RowModel) -> some View {
+        HStack(spacing: WinMetrics.s8) {
+            switch row.status {
+            case .changes:
+                Text("Changes").foregroundStyle(Gotham.signal(signalKey))
+                StatusTriangle().fill(Gotham.signal(signalKey)).frame(width: 8, height: 7)
+            case .approved:
+                Text("Approved").foregroundStyle(Gotham.approve)
+                Circle().fill(Gotham.approve).frame(width: 7, height: 7)
+            case .skipped:
+                Text("Skipped").foregroundStyle(Gotham.mute)
+                Rectangle().fill(Gotham.mute).frame(width: 8, height: 2)
+            default:
+                EmptyView()
+            }
+        }
+        .font(.system(size: 12, weight: .medium))
+        .frame(width: 88, alignment: .trailing)
+    }
+
+    /// Four 12 x 4 dashes: done in mute, the current stage in fg, the rest in edge.
+    private func sweepMeter(_ segments: [MeterSegment]) -> some View {
+        HStack(spacing: WinMetrics.s4) {
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, segment in
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(segment == .done ? Gotham.mute : segment == .current ? Gotham.fg : Gotham.edge)
+                    .frame(width: 12, height: 4)
+            }
         }
     }
 
@@ -334,7 +368,7 @@ extension OnboardingView {
         switch model.state.firstSweep {
         case .notRun, .failed:
             bar {
-                WinButton(title: failureText == nil ? "Run the first sweep" : "Try again", style: .primary) {
+                OnbButton(title: failureText == nil ? "Run the first sweep" : "Try again", style: .primary) {
                     model.runFirstSweep()
                 }
                 .disabled(model.state.repos.isEmpty)
@@ -342,8 +376,8 @@ extension OnboardingView {
         case .running, .finished:
             HStack(spacing: WinMetrics.s12) {
                 Spacer(minLength: 0)
-                WinButton(title: "Post nothing yet", style: .outline, large: true) { model.postNothingYet() }
-                WinButton(title: "Turn on the schedule", style: .primary) { model.turnOnSchedule() }
+                OnbButton(title: "Post nothing yet", style: .outline, large: true) { model.postNothingYet() }
+                OnbButton(title: "Turn on the schedule", style: .primary) { model.turnOnSchedule() }
             }
             .modifier(FooterFrame())
         }
