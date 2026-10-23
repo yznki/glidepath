@@ -282,3 +282,49 @@ struct WinScroll<Content: View>: View {
         }
     }
 }
+
+/// A search or text field drawn as a plain well with its placeholder, for offscreen (snapshot) rendering. ImageRenderer
+/// draws AppKit-backed text fields as a prohibition sign. Same chrome as the live field it stands in for.
+struct FieldStandIn: View {
+    let text: String
+    let placeholder: String
+    var font: Font = .system(size: 13)
+    var height: CGFloat = 32
+    var radius: CGFloat = 9
+    var search = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if search {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Gotham.mute)
+            }
+            Text(text.isEmpty ? placeholder : text)
+                .font(font)
+                .foregroundStyle(text.isEmpty ? Gotham.mute : Gotham.fg)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(height: height)
+        .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Gotham.row))
+        .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
+    }
+}
+
+/// A TimelineView that holds the fixture clock offscreen. ImageRenderer draws a TimelineView once, at the real time, so a
+/// snapshot would change with the day and could draw nothing for a view that waits for its first tick.
+struct SnapshotTimeline<Schedule: TimelineSchedule, Content: View>: View {
+    @Environment(\.offscreenRender) private var offscreen
+    let schedule: Schedule
+    @ViewBuilder let content: (Date) -> Content
+
+    var body: some View {
+        if offscreen {
+            content(WindowFixtures.clock)
+        } else {
+            TimelineView(schedule) { context in content(context.date) }
+        }
+    }
+}
