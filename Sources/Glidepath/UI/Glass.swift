@@ -14,10 +14,11 @@ enum VerdictLight {
 extension View {
     /// Glass card surface. `glassBlur` scales the blur: at 0 the tint is opaque. Adds a verdict light,
     /// a hairline edge and a specular highlight that follows the pointer.
-    /// `piled` raises the tint, so a card under an open card does not show the text behind it.
+    /// `piled` raises the tint, so a card under an open card does not show the text behind it. `shadow` false drops
+    /// the drop shadow.
     func glassCard(radius: CGFloat = 20, verdict: VerdictLight = .none, held: Bool = false,
-                   piled: Bool = false) -> some View {
-        modifier(GlassCard(radius: radius, verdict: verdict, held: held, piled: piled))
+                   piled: Bool = false, shadow: Bool = true) -> some View {
+        modifier(GlassCard(radius: radius, verdict: verdict, held: held, piled: piled, shadow: shadow))
     }
 }
 
@@ -26,6 +27,7 @@ private struct GlassCard: ViewModifier {
     let verdict: VerdictLight
     let held: Bool
     var piled = false
+    var shadow = true
 
     @AppStorage("glassBlur") private var blur = 22.0
     @AppStorage("signalColour") private var signalKey = "amber"
@@ -70,7 +72,7 @@ private struct GlassCard: ViewModifier {
             LinearGradient(colors: [Gotham.hi, .clear, .clear, .white.opacity(0.18)],
                            startPoint: .topLeading, endPoint: .bottomTrailing),
             lineWidth: 1))
-        .shadow(color: .black.opacity(0.5), radius: 16, y: 10)
+        .shadow(color: .black.opacity(shadow ? 0.5 : 0), radius: 16, y: 10)
     }
 
     /// The blur as 0...1: 0 has no material, 1 (blur 40) has the full material.

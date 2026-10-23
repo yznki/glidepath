@@ -9,6 +9,8 @@ final class PopoverModel: ObservableObject {
     @Published var loginOn = false
     /// The card that is open (its strip id). An open card springs to the top; the others pile below it.
     @Published var openID: String?
+    /// The open card's height, measured from its content and never under `StackGeometry.open`.
+    @Published var openHeight = StackGeometry.open
     /// The card the pointer or the keyboard is on. It lifts, and the cards below it step down.
     @Published var highlight: String?
     /// The header filter: only cards with this verdict show. nil shows all.
@@ -24,15 +26,20 @@ final class FillModel: ObservableObject {
     @Published var level: CGFloat = 0
 }
 
-/// The stack's geometry, from the prototype's `layout()`. Points.
+/// The stack's geometry, from the prototype's `layout()`, and which cards it takes. Points.
 enum StackGeometry {
     static let width: CGFloat = 360
     static let closed: CGFloat = 64
+    /// The least an open card is. It grows to fit its content (`PopoverModel.openHeight`).
     static let open: CGFloat = 232
     static let pad: CGFloat = 12
     /// Cards sit 12 pt in from each side of the popover.
     static let inset: CGFloat = 12
     static let cardWidth: CGFloat = width - 2 * inset
+    /// Most cards on the stack. Past it, one "+N more" strip stands at the bottom.
+    static let maxCards = 6
+    /// Most cards that peek below an open card.
+    static let maxPiled = 3
 
     /// The header is 66 pt, plus 22 pt for the caption when there is one.
     static func head(caption: Bool) -> CGFloat { caption ? 88 : 66 }
@@ -43,11 +50,40 @@ enum StackGeometry {
     /// The "All clear" block when no card shows: glider and label, compact.
     static let emptyHeight: CGFloat = 96
 
-    static func height(_ n: Int, head: CGFloat, opened: Bool) -> CGFloat {
-        let closedHeight = head + (n > 0 ? CGFloat(n - 1) * step(n) + closed : emptyHeight) + pad
-        guard opened, n > 0 else { return closedHeight }
-        let openHeight = head + open + 14 + CGFloat(min(n - 1, 5)) * 7 + 30 + pad
-        return max(closedHeight, openHeight)
+    /// The stack's height from what it draws: `n` closed rows, or with a card open its height and the `piled` cards
+    /// under it.
+    static func height(_ n: Int, head: CGFloat, openHeight: CGFloat?, piled: Int) -> CGFloat {
+        if let openHeight {
+            return head + openHeight + (piled > 0 ? 14 + CGFloat(piled - 1) * 7 + closed : 0) + pad
+        }
+        return head + (n > 0 ? CGFloat(n - 1) * step(n) + closed : emptyHeight) + pad
+    }
+
+    /// Running first, then held drafts, changes, approved, queued while a sweep runs, and skipped last. Ties keep the
+    /// order the strips came in. Narrowed to the header filter.
+    static func ordered(_ all: [Strip], running: Bool, filter: Verdict?) -> [Strip] {
+        func rank(_ s: Strip) -> Int {
+            if s.active && s.verdict == nil { return 0 }
+            if s.awaitsHold { return 1 }
+            switch s.verdict {
+            case .changes?: return 2
+            case .approve?: return 3
+            case nil where running: return 4
+            case .skipped?, nil: return 5
+            }
+        }
+        return all.enumerated()
+            .filter { filter == nil || $0.element.verdict == filter }
+            .sorted { a, b in
+                let ra = rank(a.element), rb = rank(b.element)
+                return ra != rb ? ra < rb : a.offset < b.offset
+            }
+            .map(\.element)
+    }
+
+    /// The first `maxCards` of an ordered list, and how many sit behind the "+N more" strip.
+    static func cap(_ list: [Strip]) -> (cards: [Strip], more: Int) {
+        (Array(list.prefix(maxCards)), max(0, list.count - maxCards))
     }
 }
 
@@ -171,10 +207,10 @@ struct PopoverView: View {
 
     var body: some View {
         let all = store.strips
-        let list = visible(all)
+        let shown = capped(all)
         let copy = headerCopy
         VStack(alignment: .leading, spacing: 0) {
-            stack(all: all, list: list, copy: copy)
+            stack(all: all, list: shown.cards, more: shown.more, copy: copy)
             updateLine
             footer
         }
@@ -184,7 +220,7 @@ struct PopoverView: View {
             // Snapshots have no window to configure; ImageRenderer draws the representable as a prohibition sign.
             if !offscreen { WindowConfigurator { $0.appearance = NSAppearance(named: .darkAqua) } }
         }
-        .background(Gotham.void.opacity(offscreen ? 1 : 0.55).ignoresSafeArea())
+        .background(Gotham.void.opacity(offscreen ? 1 : 0.92).ignoresSafeArea())
         .preferredColorScheme(.dark)
         .focusable()
         .focusEffectDisabled()
@@ -204,29 +240,9 @@ struct PopoverView: View {
         }
     }
 
-    // MARK: Order and filter
-
-    /// Running first, then held drafts, then queued, then the rest. Ties keep the order the strips came in.
-    private func ordered(_ all: [Strip]) -> [Strip] {
-        let running = store.snap.running
-        func rank(_ s: Strip) -> Int {
-            if s.active && s.verdict == nil { return 0 }
-            if s.awaitsHold { return 1 }
-            if s.verdict == nil && running { return 2 }
-            return 3
-        }
-        return all.enumerated()
-            .sorted { a, b in
-                let ra = rank(a.element), rb = rank(b.element)
-                return ra != rb ? ra < rb : a.offset < b.offset
-            }
-            .map(\.element)
-    }
-
-    /// The cards on the stack: the ordered strips, narrowed to the header filter.
-    private func visible(_ all: [Strip]) -> [Strip] {
-        let filter = local.filter
-        return ordered(all).filter { filter == nil || $0.verdict == filter }
+    /// The cards on the stack: the ordered strips, narrowed to the header filter and capped. `more` counts the rest.
+    private func capped(_ all: [Strip]) -> (cards: [Strip], more: Int) {
+        StackGeometry.cap(StackGeometry.ordered(all, running: store.snap.running, filter: local.filter))
     }
 
     // MARK: Keys
@@ -236,7 +252,7 @@ struct PopoverView: View {
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         guard !TextFocus.isEditing || press.modifiers.contains(.command) else { return .ignored }
         let mods = ShortcutModifiers(press.modifiers)
-        let list = visible(store.strips)
+        let list = capped(store.strips).cards
         if press.key == .escape, mods.isEmpty {
             if local.openID != nil {
                 local.openID = nil
@@ -325,9 +341,9 @@ struct PopoverView: View {
                     .font(Gotham.numeral(26))
                     .monospacedDigit()
                     .foregroundStyle(pipColour(verdict))
-                Text(label).cap()
+                Text(label).cap().lineLimit(1).fixedSize()
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(shape.fill(on ? Gotham.row : Color.clear))
@@ -414,50 +430,58 @@ struct PopoverView: View {
     // MARK: Stack
 
     @ViewBuilder
-    private func stack(all: [Strip], list: [Strip], copy: HeaderCopy?) -> some View {
-        let n = list.count
+    private func stack(all: [Strip], list: [Strip], more: Int, copy: HeaderCopy?) -> some View {
+        // Closed rows: the cards, then the "+N more" strip when cards are left over.
+        let rows = list.count + (more > 0 ? 1 : 0)
         let head = StackGeometry.head(caption: copy != nil)
-        let step = StackGeometry.step(n)
+        let step = StackGeometry.step(rows)
         let hi = list.firstIndex { $0.id == local.highlight } ?? -1
+        // Open: the cards that peek below the open card, in list order. The rest are not drawn.
+        let pile = local.openID == nil ? [] : Array(list.filter { $0.id != local.openID }.prefix(StackGeometry.maxPiled))
+        let drawn = Array(list.enumerated()).filter { item in
+            local.openID == nil || item.element.id == local.openID || pile.contains { $0.id == item.element.id }
+        }
         // One animation for every layout change: open, highlight, filter, and the number of cards.
-        let layout = "\(local.openID ?? "")|\(hi)|\(n)|\(local.filter?.rawValue ?? "")"
+        let layout = "\(local.openID ?? "")|\(hi)|\(rows)|\(local.filter?.rawValue ?? "")|\(local.openHeight)"
         ZStack(alignment: .topLeading) {
-            if n == 0 {
+            if rows == 0 {
                 emptyState.offset(y: head)
             }
-            ForEach(Array(list.enumerated()), id: \.element.id) { i, strip in
-                let place = placement(i, strip, in: list, hi: hi, head: head, step: step)
+            ForEach(drawn, id: \.element.id) { i, strip in
+                let place = placement(i, strip, hi: hi, head: head, step: step, pile: pile)
                 StackCard(strip: strip, running: store.snap.running, open: local.openID == strip.id,
                           piled: local.openID != nil && local.openID != strip.id,
-                          front: strip.id == pileFront(list), store: store, model: local)
+                          front: strip.id == pile.last?.id, store: store, model: local)
                     .scaleEffect(place.scale, anchor: .top)
                     .offset(x: StackGeometry.inset, y: place.y)
                     .zIndex(place.z)
                     .transition(.opacity)
             }
+            if more > 0, local.openID == nil {
+                StackMoreStrip(count: more)
+                    .offset(x: StackGeometry.inset, y: head + CGFloat(list.count) * step + (hi >= 0 ? 8 : 0))
+                    .zIndex(Double(list.count))
+                    .transition(.opacity)
+            }
             header(all: all, copy: copy, head: head)
         }
         .frame(width: StackGeometry.width,
-               height: StackGeometry.height(n, head: head, opened: local.openID != nil), alignment: .topLeading)
+               height: StackGeometry.height(rows, head: head, openHeight: local.openID == nil ? nil : local.openHeight,
+                                            piled: pile.count),
+               alignment: .topLeading)
+        .onPreferenceChange(OpenCardHeightKey.self) { if $0 > 0 { local.openHeight = max(StackGeometry.open, $0) } }
         .animation(Motion.stack, value: layout)
     }
 
-    /// The id of the card on top of the pile under the open card, or nil when no card is open. Pile cards stack upward
-    /// in list order, so the last one covers the rest and is the only one whose row shows whole.
-    private func pileFront(_ list: [Strip]) -> String? {
-        list.last { $0.id != local.openID }?.id
-    }
-
     /// Where a card sits, how large, and in which order. Closed: in list order, the highlighted card lifts 3 pt and
-    /// the cards below it step down 8 pt. Open: the open card sits at the top, the rest pile below it in 7 pt steps.
-    private func placement(_ i: Int, _ strip: Strip, in list: [Strip], hi: Int, head: CGFloat,
-                           step: CGFloat) -> (y: CGFloat, scale: CGFloat, z: Double) {
+    /// the cards below it step down 8 pt. Open: the open card sits at the top, the pile below it in 7 pt steps.
+    private func placement(_ i: Int, _ strip: Strip, hi: Int, head: CGFloat, step: CGFloat,
+                           pile: [Strip]) -> (y: CGFloat, scale: CGFloat, z: Double) {
         if local.openID != nil {
             if strip.id == local.openID { return (head, 1, 100) }
-            let others = list.filter { $0.id != local.openID }
-            let j = others.firstIndex { $0.id == strip.id } ?? 0
-            let k = CGFloat(min(j, 5))
-            return (head + StackGeometry.open + 14 + k * 7, 0.94 - k * 0.01, Double(10 + j))
+            let j = pile.firstIndex { $0.id == strip.id } ?? 0
+            let k = CGFloat(j)
+            return (head + local.openHeight + 14 + k * 7, 0.94 - k * 0.01, Double(10 + j))
         }
         let lift: CGFloat = i == hi ? -3 : (hi >= 0 && i > hi ? 8 : 0)
         return (head + CGFloat(i) * step + lift, 1, Double(i))

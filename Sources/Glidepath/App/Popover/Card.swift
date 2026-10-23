@@ -29,6 +29,37 @@ final class CardTiltModel: ObservableObject {
     @Published var angle = CGSize.zero
 }
 
+/// The open card's full height, measured from its content. The stack takes the largest one it finds.
+struct OpenCardHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// The closed strip under a capped stack: "+N more" and "Open window". Tap opens Reviews, with any header filter kept.
+struct StackMoreStrip: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Text("+\(count) more")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Gotham.fg)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Text("Open window").cap()
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 20)
+        .frame(width: StackGeometry.cardWidth, height: StackGeometry.closed)
+        .glassCard(radius: 20)
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .onTapGesture { WindowRouter.shared.open(.reviews) }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("\(count) more PRs. Open window")
+    }
+}
+
 /// One card of the popover stack (prototype `cardEl`, `paint`, `bindCard`): the strip row, and the body under it that
 /// opens. The parent places it and orders it; the card draws itself, tilts, and takes its tap and swipe.
 struct StackCard: View {
@@ -50,7 +81,7 @@ struct StackCard: View {
 
     private let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
 
-    private var height: CGFloat { open ? StackGeometry.open : StackGeometry.closed }
+    private var height: CGFloat { open ? model.openHeight : StackGeometry.closed }
     private var held: Bool { strip.awaitsHold }
     private var queued: Bool { strip.verdict == nil && !strip.active && running }
     private var tilted: Bool { tilt.active && !Motion.reduced(reduceMotion) }
@@ -96,11 +127,12 @@ struct StackCard: View {
         VStack(spacing: 0) {
             row
             details
-                .frame(height: StackGeometry.open - StackGeometry.closed, alignment: .top)
+                .frame(height: model.openHeight - StackGeometry.closed, alignment: .top)
         }
         .frame(width: StackGeometry.cardWidth, height: height, alignment: .top)
         .clipped()
-        .glassCard(radius: 20, verdict: light, held: held, piled: piled)
+        // A piled card under the front one is hidden behind it, so only the open card and the front of the pile cast.
+        .glassCard(radius: 20, verdict: light, held: held, piled: piled, shadow: !rowHidden)
         .overlay { if strip.active && running { Tracer(shape: shape, lineWidth: 1) } }
         .contentShape(shape)
         .offset(x: model.drag[strip.id] ?? 0)
@@ -167,7 +199,8 @@ struct StackCard: View {
                 if strip.isDraftPR { tag("Draft PR") }
                 if held { tag("Waiting") }
             }
-            if let reason = strip.reason, strip.verdict != nil {
+            // A size skip's reason is restated by the review line under it, so only the detail shows.
+            if let reason = strip.reason, strip.verdict != nil, !strip.offersReview {
                 Text(reason)
                     .font(.system(size: 13))
                     .foregroundStyle(Gotham.fg.opacity(0.7))
@@ -183,9 +216,18 @@ struct StackCard: View {
             // Only the open card renders its actions, so a closed card's buttons cannot take keyboard focus.
             if open { actions }
         }
+        // Takes its natural height, so the open card can be measured and grown to fit it.
+        .fixedSize(horizontal: false, vertical: true)
         .padding(.horizontal, 20)
         .padding(.top, 2)
         .padding(.bottom, 18)
+        .background {
+            if open {
+                GeometryReader { geo in
+                    Color.clear.preference(key: OpenCardHeightKey.self, value: geo.size.height + StackGeometry.closed)
+                }
+            }
+        }
         .opacity(open ? 1 : 0)
         .allowsHitTesting(open)
     }
