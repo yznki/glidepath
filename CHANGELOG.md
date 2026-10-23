@@ -4,6 +4,7 @@
 
 - New setups hold each review for you to post, and start on Sonnet with five PRs a sweep. Existing configs are unchanged.
 - Schedule's monthly token estimate comes from your real sweeps; it shows "—" until three have finished.
+- Setup uses the 24-hour schedule dial; new setups default to weekdays 08:00–20:00, every 4 hours.
 - Issue templates, a security policy and a contributing guide.
 - Launch site.
 - Glidepath only runs git in clones it created; a `clone` set to your own checkout is refused, and `glidepath doctor` says so.
