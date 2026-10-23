@@ -43,31 +43,23 @@ struct WindowScreen: View {
             }
         }
         .frame(minWidth: WinMetrics.minWidth, minHeight: WinMetrics.minHeight)
-        .background(WinTheme.ground)
+        .background { if router.showOnboarding { WinTheme.ground } else { GlassBackdrop() } }
     }
 
     private var canvas: some View {
         Group {
-            if router.section == .reviews {
-                // Reviews is master-detail and runs edge to edge, so it lays out its own insets.
+            switch router.section {
+            case .now:
+                NowView(store: store, router: router)
+            case .reviews:
                 ReviewsView(store: store)
-            } else if router.section == .repos {
-                // Repos is master-detail too, with the same edge-to-edge layout.
+            case .repos:
                 ReposView(store: store)
-            } else if router.section == .schedule {
+            case .schedule:
                 ScheduleView(store: store)
-            } else if router.section == .settings {
+            case .settings:
                 // Settings lays out its own title row and scrolls as one column.
                 SettingsView(store: store)
-            } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    // The hero starts on the title line, so Overview has no title row of its own.
-                    OverviewView(store: store)
-                }
-                .padding(.leading, WinMetrics.canvasLeft)
-                .padding(.trailing, WinMetrics.canvasRight)
-                .padding(.top, WinMetrics.canvasTop)
-                .padding(.bottom, WinMetrics.canvasBottom)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -75,11 +67,44 @@ struct WindowScreen: View {
     }
 }
 
+/// The dark glass behind the sections: the window's own blur from behind it, under the black glass tint from the
+/// prototype's `--mat`. Onboarding keeps its solid ground.
+struct GlassBackdrop: View {
+    @Environment(\.offscreenRender) private var offscreen
+
+    var body: some View {
+        ZStack {
+            // Snapshot renders draw an NSVisualEffectView as a prohibition sign, so they keep only the tint.
+            if !offscreen { VisualBlur() }
+            Gotham.mat
+        }
+    }
+}
+
+/// An `NSVisualEffectView` that blurs what is behind the window.
+struct VisualBlur: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .hudWindow
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
 /// Gives the main window a frame autosave name, so it remembers its size and place.
 private struct WindowAccessor: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        DispatchQueue.main.async { view.window?.setFrameAutosaveName("GlidepathMain") }
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            window.setFrameAutosaveName("GlidepathMain")
+            // Clear, so the glass behind the window shows through.
+            window.isOpaque = false
+            window.backgroundColor = .clear
+        }
         return view
     }
 

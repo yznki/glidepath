@@ -381,11 +381,13 @@ final class Runner {
                               verdict: .skipped, reason: reason)
                 run.setSize(repo: repo.slug, n: pr.n, changedLines: pr.changedLines,
                             skippedForSize: reason.hasPrefix(PRFilter.tooLargeReason))
+                run.setDraftPR(repo: repo.slug, n: pr.n, isDraft: pr.isDraft)
             }
             for pr in kept {
                 try run.setPR(repo: repo.slug, n: pr.n, stage: nil, author: pr.author, title: pr.title,
                               verdict: nil, reason: nil)
                 run.setSize(repo: repo.slug, n: pr.n, changedLines: pr.changedLines, skippedForSize: false)
+                run.setDraftPR(repo: repo.slug, n: pr.n, isDraft: pr.isDraft)
                 if flagged.contains(pr.n) { try run.setFlagged(repo: repo.slug, n: pr.n) }
             }
         }
@@ -458,8 +460,11 @@ final class Runner {
         childEnv["GLIDEPATH_STATE_DIR"] = paths.stateDir
         childEnv["GLIDEPATH_CONFIG_FILE"] = paths.configFile
 
-        // The session id goes in the run file, so the app can read this session's transcript while it runs.
-        try? update { $0.sessionId = session }
+        // The session id and its directory go in the run file, so the app can read this session's transcript while it runs.
+        try? update {
+            $0.sessionId = session
+            $0.sessionCwd = repo.clone
+        }
         print("\(repo.slug): reviewing \(numbers.map { "#\($0)" }.joined(separator: " "))")
         print("allowlist: " + allowlist.joined(separator: ","))
         print("disallowed: " + Claude.disallowed.joined(separator: ","))

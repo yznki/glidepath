@@ -1,16 +1,91 @@
 import SwiftUI
 import AppKit
 
-/// The Settings section (no mockup; built from the Repos pattern): notifications, updates, open at login, the tools
-/// checks, advanced files, and uninstall last. Switches save at once through `ConfigEditor`; the login item applies at
-/// once. The tools checks run off the main thread each time the section appears, and on "Check again".
+/// The labels and captions of every row. The search reads these, so a row and its search text stay in one place.
+enum SettingsCopy {
+    struct Row {
+        let label: String
+        let caption: String
+        var text: String { label + " " + caption }
+    }
+
+    struct Block: Identifiable {
+        let id: String
+        let title: String
+        let rows: [Row]
+    }
+
+    static let strictLabels = ["Relaxed", "Easygoing", "Balanced", "Exacting", "Ruthless"]
+    static let strictSentences = [
+        "Lets style and small things go.",
+        "Flags only what could break.",
+        "Bugs, risk and clear design problems.",
+        "Also naming, tests and edge cases.",
+        "Every nit. Nothing gets through.",
+    ]
+
+    static let drafts = Row(label: "Review draft PRs", caption: "Each repo can override this in Repos.")
+    static let whenReady = Row(label: "When a review is ready", caption: "Hold for me keeps it until you hold to post.")
+    static let strictness = Row(label: "Strictness", caption: "")
+    static let reviewModel = Row(label: "Model", caption: "Bigger models read deeper and use more tokens.")
+    static let size = Row(label: "Skip PRs larger than", caption: "")
+    static let ownPRs = Row(label: "Review my own PRs", caption: "")
+    static let bots = Row(label: "Review bot PRs", caption: "Dependabot, Renovate and friends.")
+    static let authors = Row(label: "Authors", caption: "Whose PRs get reviewed.")
+    static let flags = Row(label: "Look closer at", caption: "Changes under these paths get flagged in the review.")
+
+    static let notify = Row(label: "Notify when reviews land", caption: "")
+    static let changesOnly = Row(label: "Only for changes requested", caption: "Approvals land quietly.")
+    static let sound = Row(label: "Sound", caption: "Plays when a review lands.")
+    static let focus = Row(label: "Respect Focus", caption: "Hold notifications while a Focus is on.")
+
+    static let icon = Row(label: "Icon", caption: "How the menu bar icon looks.")
+    static let badge = Row(label: "Badge when reviews wait", caption: "")
+    static let shortcut = Row(label: "Open Glidepath", caption: "Click, then press the keys.")
+    static let login = Row(label: "Open at login", caption: "Starts Glidepath when you log in.")
+
+    static let signal = Row(label: "Signal colour", caption: "The one colour Glidepath uses: changes requested.")
+    static let glass = Row(label: "Glass", caption: "How much the cards blur what is behind them.")
+    static let motion = Row(label: "Motion", caption: "Reduced stops the glider and the breathing.")
+
+    static let monthly = Row(label: "Monthly tokens", caption: "")
+    static let pause = Row(label: "Pause at budget", caption: "Sweeps stop until the month turns over.")
+
+    static let dryRun = Row(label: "Dry run", caption: "Review everything, post nothing. Good for trying rules.")
+    static let codeGraph = Row(label: "Code graph", caption: "GitNexus maps the blast radius of each change.")
+    static let checks = Row(label: "Check for updates", caption: "Checks GitHub in the background.")
+    static let updates = Row(label: "Updates", caption: "Check now, or install the release on offer.")
+    static let files = Row(label: "Files", caption: "The config, the log and the state folder.")
+    static let tools = Row(label: "Tools", caption: "Checked live. A missing one shows the command that fixes it.")
+    static let reset = Row(label: "Reset all settings", caption: "Repos and history stay.")
+    static let uninstall = Row(label: "Uninstall Glidepath", caption: "Removes the job, the skill and the app link.")
+
+    static let reviewing = Block(id: "review", title: "Reviewing",
+                                 rows: [drafts, whenReady, strictness, reviewModel, size, ownPRs, bots, authors, flags])
+    static let notifications = Block(id: "notify", title: "Notifications", rows: [notify, changesOnly, sound, focus])
+    static let menuBar = Block(id: "menubar", title: "Menu bar", rows: [icon, badge, shortcut, login])
+    static let look = Block(id: "look", title: "Look", rows: [signal, glass, motion])
+    static let budget = Block(id: "budget", title: "Budget", rows: [monthly, pause])
+    static let advanced = Block(id: "advanced", title: "Advanced",
+                                rows: [dryRun, codeGraph, checks, updates, files, tools, reset, uninstall])
+    static let blocks = [reviewing, notifications, menuBar, look, budget, advanced]
+}
+
+/// Settings: the search, the section chips, and six groups of rows. Each switch, segment and slider saves at once
+/// through `SettingsModel.commit`; look rows save to UserDefaults.
 struct SettingsView: View {
     @ObservedObject var store: Store
     @StateObject private var model = SettingsModel()
+    @AppStorage("signalColour") private var signalKey = "amber"
+    @AppStorage("glyphStyle") private var glyphStyle = "glider"
+    @AppStorage("glyphBadge") private var glyphBadge = true
+    @AppStorage("glassBlur") private var glassBlur = 22.0
+    @AppStorage("motion") private var motion = "full"
 
     private var config: Config? { store.snap.config }
+    private var repos: [RepoConfig] { config?.repos ?? [] }
 
-    /// The reason the switch is not working: the last save's error, or the shortcut being on but not registered.
+    /// The reason the shortcut is not working: the last save's error, or the shortcut being on but not registered.
     private var hotkeyError: String? {
         if let error = model.rowErrors["hotkey"] { return error }
         guard !store.isFixture, config?.hotkey.isOn ?? true, !GlobalHotkey.shared.registered else { return nil }
@@ -25,71 +100,582 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            TitleRow(saved: model.saved)
-            WinScroll {
-                VStack(alignment: .leading, spacing: 0) {
-                    SettingRow(title: "Notifications", detail: "Posts a notification when a sweep finishes.",
-                               error: model.rowErrors["notify"]) {
-                        WinToggle(isOn: config?.notify ?? true) {
-                            model.commit("notify", store: store) { ConfigEditor.setNotify($0, !($0.notify)) }
-                        }
+            TitleRow(saved: model.saved) {
+                model.loadToml(store.paths)
+                model.drawerOpen = true
+            }
+            TextField("Search settings", text: $model.query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Gotham.fg)
+                .padding(.horizontal, 14)
+                .frame(height: 38)
+                .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(Gotham.row))
+                .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
+                .padding(.bottom, 12)
+            ScrollViewReader { proxy in
+                chips(proxy)
+                WinScroll {
+                    VStack(alignment: .leading, spacing: 0) {
+                        reviewing
+                        notifications
+                        menuBar
+                        look
+                        budget
+                        advanced
                     }
-                    updatesRow
-                    SettingRow(title: "Automatic checks", detail: "Check for updates automatically in the background.",
-                               error: model.rowErrors["autoUpdates"]) {
-                        WinToggle(isOn: config?.checkUpdates ?? true) {
-                            model.commit("autoUpdates", store: store) { ConfigEditor.setCheckUpdates($0, !($0.checkUpdates)) }
-                        }
-                    }
-                    SettingRow(title: "Open Glidepath with \(shortcutText)", detail: "Opens the menu bar popover from any app.",
-                               error: hotkeyError) {
-                        WinToggle(isOn: config?.hotkey.isOn ?? true) { model.toggleHotkey(store) }
-                    }
-                    SettingRow(title: "Open at login", detail: "Starts Glidepath when you log in.",
-                               error: model.rowErrors["login"]) {
-                        WinToggle(isOn: model.loginOn) { model.toggleLogin(store) }
-                    }
-                    toolsRow
-                    advancedRow
-                    uninstallSection
+                    .padding(.bottom, WinMetrics.canvasBottom)
                 }
-                .padding(.bottom, WinMetrics.canvasBottom)
             }
         }
         .padding(.top, WinMetrics.titlebarZone)
         .padding(.leading, WinMetrics.canvasLeft)
         .padding(.trailing, WinMetrics.canvasRight)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .overlay(alignment: .trailing) {
+            if model.drawerOpen {
+                ConfigDrawer(lines: model.tomlLines, changed: model.tomlChanged) { model.drawerOpen = false }
+                    .transition(.move(edge: .trailing))
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let text = model.toastText {
+                SettingsToast(text: text)
+                    .padding(.bottom, 22)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .animation(Motion.standard, value: model.drawerOpen)
+        .animation(.easeOut(duration: 0.3), value: model.toastText)
         .onAppear { model.refresh(store) }
+        .onReceive(store.$snap) { _ in model.refreshUsed(store) }
+        .onChange(of: store.snap.config) { _, _ in model.loadToml(store.paths) }
+        .onDisappear { model.stopRecording() }
     }
 
-    // MARK: Updates
+    // MARK: Chips
 
-    /// The version, the check, and the update on offer (primary, as the one filled control on the screen).
-    private var updatesRow: some View {
-        SettingRow(title: "Updates", detail: "Checks GitHub for new releases.", error: model.rowErrors["updates"]) {
-            VStack(alignment: .leading, spacing: WinMetrics.s8) {
-                HStack(spacing: WinMetrics.s12) {
-                    Text("Glidepath \(Version.current)")
-                        .font(.system(size: 13))
-                        .foregroundStyle(WinTheme.text)
-                        .monospacedDigit()
-                    WinButton(title: "Check for updates", style: .outline) { store.checkForUpdates(manual: true) }
-                        .disabled(store.snap.updateChecking)
+    /// The sticky section chips. A chip scrolls its group to the top and stays lit.
+    private func chips(_ proxy: ScrollViewProxy) -> some View {
+        HStack(spacing: 6) {
+            ForEach(SettingsCopy.blocks.filter { model.matches($0) }) { block in
+                Button {
+                    model.chip = block.id
+                    withAnimation(Motion.standard) { proxy.scrollTo("g-" + block.id, anchor: .top) }
+                } label: {
+                    Text(block.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(model.chip == block.id ? Gotham.fg : Gotham.mute)
+                        .padding(.horizontal, 12)
+                        .frame(height: 28)
+                        .background(Capsule().fill(model.chip == block.id ? Gotham.tint : Gotham.row))
                 }
-                if let update = store.availableUpdate {
-                    WinButton(title: "Update to \(update.latest)…", style: .primary) { confirmUpdate(update) }
-                        .disabled(store.snap.updatePhase == .updating)
-                        .padding(.top, WinMetrics.s4)
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Row helpers
+
+    /// A plain row: shown when it matches the search, with the given control on its right.
+    @ViewBuilder
+    private func row<C: View>(_ copy: SettingsCopy.Row, error: String? = nil, caption: String? = nil,
+                              stacked: Bool = false, @ViewBuilder _ control: @escaping () -> C) -> some View {
+        if model.matches(copy) {
+            SettingItem(label: copy.label, caption: caption ?? copy.caption, error: error, stacked: stacked, control: control)
+        }
+    }
+
+    /// A caption that says the repos differ, in place of the usual one.
+    private func caption(_ base: String, mixed: Bool) -> String {
+        mixed ? "Mixed across repos. Changing it sets them all." : base
+    }
+
+    /// True when the repos hold different values.
+    private func mixed<T: Equatable>(_ values: [T]) -> Bool {
+        guard let first = values.first else { return false }
+        return values.contains { $0 != first }
+    }
+
+    /// The value every repo shares, or nil when they differ or there are none.
+    private func common<T: Equatable>(_ values: [T]) -> T? {
+        guard let first = values.first, !mixed(values) else { return nil }
+        return first
+    }
+
+    /// Repo-wide tags from one list per repo, in order, without repeats.
+    private func union(_ lists: [[String]]) -> [String] {
+        var out: [String] = []
+        for list in lists { for item in list where !out.contains(item) { out.append(item) } }
+        return out
+    }
+
+    private var loginUnion: [String] { Self.loginUnion(repos) }
+
+    /// Every login listed by any repo, in config order.
+    private static func loginUnion(_ repos: [RepoConfig]) -> [String] {
+        var out: [String] = []
+        for repo in repos {
+            if case .logins(let logins) = repo.authors {
+                for login in logins where !out.contains(login) { out.append(login) }
+            }
+        }
+        return out
+    }
+
+    private func policyTag(_ policy: AuthorPolicy) -> String {
+        switch policy {
+        case .anyone: return "anyone"
+        case .collaborators: return "collaborators"
+        case .logins: return "logins"
+        }
+    }
+
+    private func chooseAuthors(_ tag: String) {
+        if tag == "logins" {
+            // Repos already on their own list keep it; the others start from the union of every list.
+            model.commit("authors", store: store) { config in
+                let union = Self.loginUnion(config.repos)
+                var out = config
+                for repo in config.repos {
+                    if case .logins = repo.authors { continue }
+                    out = try ConfigEditor.setAuthors(out, slug: repo.slug, .logins(union))
                 }
-                if store.snap.updatePhase == .failed {
-                    Text("Update failed. See the log.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.amberInk)
-                } else if let note = store.snap.updateNote {
-                    Text(note)
-                        .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.faint)
+                return out
+            }
+            return
+        }
+        let policy: AuthorPolicy = tag == "collaborators" ? .collaborators : .anyone
+        model.eachRepo("authors", store: store) { try ConfigEditor.setAuthors($0, slug: $1, policy) }
+    }
+
+    /// Adds or removes one login on each repo's own list. Repos not on "Only these" are left alone, and the other logins stay.
+    private func editLogin(_ login: String, adding: Bool) {
+        model.commit("authors", store: store) { config in
+            var out = config
+            for repo in config.repos {
+                guard case .logins(let logins) = repo.authors else { continue }
+                let updated: [String]?
+                if adding { updated = logins.contains(login) ? nil : logins + [login] } else { updated = logins.contains(login) ? logins.filter { $0 != login } : nil }
+                guard let updated else { continue }
+                out = try ConfigEditor.setAuthors(out, slug: repo.slug, .logins(updated))
+            }
+            return out
+        }
+    }
+
+    /// The size-skip caption from the open PRs the store has sized: "N of M open PRs would be skipped". Nil when none is sized.
+    private func skipCaption(_ maxLines: Double) -> String? {
+        let sized = store.strips.compactMap(\.changedLines)
+        guard !sized.isEmpty else { return nil }
+        let skipped = sized.filter { Double($0) > maxLines }.count
+        return "\(skipped) of \(sized.count) open PRs would be skipped."
+    }
+
+    private func millions(_ tokens: Int) -> String {
+        String(format: "%g", Double(tokens) / 1_000_000) + "M"
+    }
+
+    // MARK: Reviewing
+
+    @ViewBuilder private var reviewing: some View {
+        if model.matches(SettingsCopy.reviewing) {
+            SettingGroup(id: "g-review", title: "Reviewing") {
+                row(SettingsCopy.drafts, error: model.rowErrors["drafts"]) {
+                    SettingSwitch(isOn: config?.reviewDrafts ?? false, label: "Review draft PRs") {
+                        model.commit("drafts", store: store) { ConfigEditor.setReviewDrafts($0, !$0.reviewDrafts) }
+                    }
+                }
+                row(SettingsCopy.whenReady, error: model.rowErrors["posting"],
+                    caption: caption(SettingsCopy.whenReady.caption, mixed: mixed(repos.map(\.posting)))) {
+                    SettingSegmented(
+                        options: [(value: Posting.review, label: "Post review"), (value: .comment, label: "Comment only"),
+                                  (value: .draft, label: "Hold for me")],
+                        selected: common(repos.map(\.posting))) { posting in
+                            model.eachRepo("posting", store: store) { try ConfigEditor.setPosting($0, slug: $1, posting) }
+                        }
+                }
+                if model.matches(SettingsCopy.strictness) {
+                    SliderRow(row: SettingsCopy.strictness, error: model.rowErrors["strictness"],
+                              committed: Double(Strictness.allCases.firstIndex(of: config?.strictness ?? .balanced) ?? 2),
+                              range: 0...4, valueText: { SettingsCopy.strictLabels[Int($0.rounded())] },
+                              caption: { SettingsCopy.strictSentences[Int($0.rounded())] }) { value in
+                        let level = Strictness.allCases[Int(value.rounded())]
+                        model.commit("strictness", store: store) { ConfigEditor.setStrictness($0, level) }
+                    }
+                }
+                row(SettingsCopy.reviewModel, error: model.rowErrors["model"]) {
+                    SettingSegmented(
+                        options: [(value: ReviewModel.haiku, label: "Haiku"), (value: .sonnet, label: "Sonnet"),
+                                  (value: .opus, label: "Opus")],
+                        selected: config?.model ?? .opus) { choice in
+                            model.commit("model", store: store) { ConfigEditor.setModel($0, choice) }
+                        }
+                }
+                if model.matches(SettingsCopy.size) {
+                    SliderRow(row: SettingsCopy.size, error: model.rowErrors["size"],
+                              committed: Double(config?.limits.maxChangedLines ?? 3000),
+                              range: 100...3000, step: 50, valueText: { "\(Int($0)) lines" },
+                              caption: { skipCaption($0) }) { value in
+                        model.commit("size", store: store) { try ScheduleEditor.setLimits($0, prs: $0.limits.maxPRsPerRun, lines: Int(value)) }
+                    }
+                }
+                let ownOn = !repos.isEmpty && repos.allSatisfy(\.includeOwn)
+                row(SettingsCopy.ownPRs, error: model.rowErrors["ownPRs"],
+                    caption: caption("", mixed: mixed(repos.map(\.includeOwn)))) {
+                    SettingSwitch(isOn: ownOn, label: "Review my own PRs") {
+                        model.eachRepo("ownPRs", store: store) { try ConfigEditor.setRepoIncludeOwn($0, slug: $1, !ownOn) }
+                    }
+                }
+                row(SettingsCopy.bots, error: model.rowErrors["bots"]) {
+                    SettingSwitch(isOn: config?.includeBots ?? false, label: "Review bot PRs") {
+                        model.commit("bots", store: store) { ConfigEditor.setIncludeBots($0, !$0.includeBots) }
+                    }
+                }
+                row(SettingsCopy.authors, error: model.rowErrors["authors"],
+                    caption: caption(SettingsCopy.authors.caption, mixed: mixed(repos.map { policyTag($0.authors) }))) {
+                    VStack(alignment: .trailing, spacing: 8) {
+                        SettingSegmented(
+                            options: [(value: "anyone", label: "Everyone"), (value: "collaborators", label: "Collaborators"),
+                                      (value: "logins", label: "Only these")],
+                            selected: common(repos.map { policyTag($0.authors) }), onSelect: chooseAuthors)
+                        if repos.contains(where: { if case .logins = $0.authors { return true } else { return false } }) {
+                            SettingTags(tags: loginUnion, placeholder: "Add login",
+                                        onAdd: { login in
+                                            guard !loginUnion.contains(login) else { return }
+                                            editLogin(login, adding: true)
+                                        },
+                                        onRemove: { login in editLogin(login, adding: false) })
+                        }
+                    }
+                }
+                row(SettingsCopy.flags, error: model.rowErrors["flags"]) {
+                    let paths = union(repos.map(\.flagPaths))
+                    SettingTags(tags: paths, placeholder: "Add path, Enter",
+                                onAdd: { model.addFlag($0, store: store) },
+                                onRemove: { model.removeFlag($0, store: store) })
+                }
+            }
+        }
+    }
+
+    // MARK: Notifications
+
+    @ViewBuilder private var notifications: some View {
+        if model.matches(SettingsCopy.notifications) {
+            SettingGroup(id: "g-notify", title: "Notifications") {
+                row(SettingsCopy.notify, error: model.rowErrors["notify"]) {
+                    SettingSwitch(isOn: config?.notify ?? true, label: "Notify when reviews land") {
+                        model.commit("notify", store: store) { ConfigEditor.setNotify($0, !$0.notify) }
+                    }
+                }
+                row(SettingsCopy.changesOnly, error: model.rowErrors["changesOnly"]) {
+                    SettingSwitch(isOn: config?.notifyChangesOnly ?? false, label: "Only for changes requested") {
+                        model.commit("changesOnly", store: store) { ConfigEditor.setNotifyChangesOnly($0, !$0.notifyChangesOnly) }
+                    }
+                }
+                row(SettingsCopy.sound, error: model.rowErrors["sound"]) {
+                    SettingSegmented(
+                        options: NotifySound.allCases.map { (value: $0, label: $0.rawValue.capitalized) },
+                        selected: config?.notifySound ?? .glass) { sound in
+                            model.preview(sound)
+                            model.commit("sound", store: store) { ConfigEditor.setNotifySound($0, sound) }
+                        }
+                }
+                row(SettingsCopy.focus, error: model.rowErrors["focus"]) {
+                    SettingSwitch(isOn: config?.respectFocus ?? true, label: "Respect Focus") {
+                        model.commit("focus", store: store) { ConfigEditor.setRespectFocus($0, !$0.respectFocus) }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Menu bar
+
+    @ViewBuilder private var menuBar: some View {
+        if model.matches(SettingsCopy.menuBar) {
+            SettingGroup(id: "g-menubar", title: "Menu bar") {
+                row(SettingsCopy.icon) {
+                    HStack(spacing: 8) {
+                        glyphTile("glider", "Glider")
+                        glyphTile("dot", "Dot")
+                        glyphTile("count", "Count")
+                    }
+                }
+                row(SettingsCopy.badge) {
+                    SettingSwitch(isOn: glyphBadge, label: "Badge when reviews wait") { glyphBadge = !glyphBadge }
+                }
+                row(SettingsCopy.shortcut, error: hotkeyError,
+                    caption: model.recording ? "Press the keys. Esc cancels." : nil) {
+                    HStack(spacing: 12) {
+                        SettingKeycap(text: (config?.hotkey.isOn ?? true) ? shortcutText : "Off",
+                                      recording: model.recording) {
+                            model.startRecording(store)
+                        }
+                        SettingSwitch(isOn: config?.hotkey.isOn ?? true, label: "Open Glidepath shortcut") {
+                            model.toggleHotkey(store)
+                        }
+                    }
+                }
+                row(SettingsCopy.login, error: model.rowErrors["login"]) {
+                    SettingSwitch(isOn: model.loginOn, label: "Open at login") { model.toggleLogin(store) }
+                }
+            }
+        }
+    }
+
+    /// One menu bar icon choice: a tile with its face, raised when chosen.
+    private func glyphTile(_ key: String, _ label: String) -> some View {
+        let on = glyphStyle == key
+        return Button { glyphStyle = key } label: {
+            VStack(spacing: 7) {
+                glyphFace(key)
+                    .frame(height: 18)
+                Text(label.uppercased())
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(1.4)
+                    .foregroundStyle(Gotham.mute)
+            }
+            .frame(width: 78, height: 64)
+            .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(Gotham.row))
+            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(on ? Gotham.fg : Gotham.edge, lineWidth: on ? 1.5 : 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    @ViewBuilder private func glyphFace(_ key: String) -> some View {
+        switch key {
+        case "dot": Circle().fill(Gotham.fg).frame(width: 9, height: 9)
+        case "count": Text("2").font(.system(size: 12.5, weight: .semibold)).monospacedDigit().foregroundStyle(Gotham.fg)
+        default: Image(systemName: "paperplane.fill").font(.system(size: 15)).foregroundStyle(Gotham.fg)
+        }
+    }
+
+    // MARK: Look
+
+    @ViewBuilder private var look: some View {
+        if model.matches(SettingsCopy.look) {
+            SettingGroup(id: "g-look", title: "Look") {
+                row(SettingsCopy.signal) {
+                    HStack(spacing: 10) {
+                        ForEach(["amber", "crimson", "ice", "mono"], id: \.self) { key in
+                            Button { signalKey = key } label: {
+                                Circle()
+                                    .fill(Gotham.signal(key))
+                                    .frame(width: 28, height: 28)
+                                    .shadow(color: Gotham.signal(key).opacity(0.6), radius: 7)
+                                    .overlay {
+                                        if signalKey == key {
+                                            Circle().strokeBorder(Gotham.fg, lineWidth: 2).padding(-4)
+                                        }
+                                    }
+                                    .padding(4)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(key)
+                        }
+                    }
+                }
+                row(SettingsCopy.glass) {
+                    HStack(spacing: 12) {
+                        SettingSliderTrack(value: $glassBlur, range: 0...40, step: 1)
+                        Text(glassBlur == 0 ? "Clear" : "\(Int(glassBlur))px")
+                            .font(.system(size: 13))
+                            .monospacedDigit()
+                            .foregroundStyle(Gotham.fg)
+                            .frame(minWidth: 96, alignment: .trailing)
+                    }
+                }
+                row(SettingsCopy.motion) {
+                    SettingSegmented(options: [(value: "full", label: "Full"), (value: "reduced", label: "Reduced")],
+                                     selected: motion) { motion = $0 }
+                }
+            }
+        }
+    }
+
+    // MARK: Budget
+
+    @ViewBuilder private var budget: some View {
+        if model.matches(SettingsCopy.budget) {
+            SettingGroup(id: "g-budget", title: "Budget") {
+                if model.matches(SettingsCopy.monthly) {
+                    BudgetRow(row: SettingsCopy.monthly, error: model.rowErrors["budget"],
+                              committed: config?.monthlyTokens ?? 0, used: model.usedTokens) { tokens in
+                        model.commit("budget", store: store) { try ConfigEditor.setMonthlyTokens($0, tokens) }
+                    }
+                }
+                row(SettingsCopy.pause, error: model.rowErrors["pauseAtBudget"]) {
+                    SettingSwitch(isOn: config?.pauseAtBudget ?? true, label: "Pause at budget") {
+                        model.commit("pauseAtBudget", store: store) { ConfigEditor.setPauseAtBudget($0, !$0.pauseAtBudget) }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Advanced
+
+    @ViewBuilder private var advanced: some View {
+        if model.matches(SettingsCopy.advanced) {
+            SettingGroup(id: "g-advanced", title: "Advanced") {
+                row(SettingsCopy.dryRun, error: model.rowErrors["dryRun"]) {
+                    SettingSwitch(isOn: config?.dryRun ?? false, label: "Dry run") {
+                        model.commit("dryRun", store: store) { ConfigEditor.setDryRun($0, !$0.dryRun) }
+                    }
+                }
+                let graphOn = repos.contains { $0.gitnexus != .off }
+                row(SettingsCopy.codeGraph, error: model.rowErrors["codeGraph"],
+                    caption: caption(SettingsCopy.codeGraph.caption, mixed: mixed(repos.map(\.gitnexus)))) {
+                    SettingSwitch(isOn: graphOn, label: "Code graph") {
+                        let turnOn = !graphOn
+                        // Turning on sets off repos to auto; turning off sets every repo off. Repos already in the target state keep their mode.
+                        model.commit("codeGraph", store: store) { config in
+                            var out = config
+                            for repo in config.repos {
+                                if turnOn, repo.gitnexus == .off {
+                                    out = try ConfigEditor.setGitNexus(out, slug: repo.slug, .auto)
+                                } else if !turnOn, repo.gitnexus != .off {
+                                    out = try ConfigEditor.setGitNexus(out, slug: repo.slug, .off)
+                                }
+                            }
+                            return out
+                        }
+                    }
+                }
+                row(SettingsCopy.checks, error: model.rowErrors["autoUpdates"]) {
+                    SettingSwitch(isOn: config?.checkUpdates ?? true, label: "Check for updates") {
+                        model.commit("autoUpdates", store: store) { ConfigEditor.setCheckUpdates($0, !$0.checkUpdates) }
+                    }
+                }
+                row(SettingsCopy.updates, error: model.rowErrors["updates"], stacked: true) {
+                    updatesControl
+                }
+                row(SettingsCopy.files, error: model.rowErrors["advanced"]) {
+                    VStack(alignment: .trailing, spacing: 8) {
+                        HStack(spacing: 8) {
+                            SettingButton(title: "Open config file") { model.openConfig(store.paths) }
+                            SettingButton(title: "Open log") { store.openLog() }
+                        }
+                        HStack(spacing: 8) {
+                            SettingButton(title: "Reveal state folder") { model.revealStateFolder(store.paths) }
+                            SettingButton(title: "Show config.toml") {
+                                model.loadToml(store.paths)
+                                model.drawerOpen = true
+                            }
+                        }
+                    }
+                }
+                row(SettingsCopy.tools, error: model.rowErrors["tools"], stacked: true) {
+                    toolsControl
+                }
+                if model.matches(SettingsCopy.reset) {
+                    SettingItem(label: SettingsCopy.reset.label, caption: SettingsCopy.reset.caption,
+                                error: model.rowErrors["reset"]) {
+                        HoldButton(title: "Hold to reset", doneTitle: "Settings reset", tint: Gotham.signal(signalKey)) {
+                            model.resetSettings(store)
+                        }
+                        .frame(width: 190)
+                        .id(model.resetCount)
+                    }
+                }
+                row(SettingsCopy.uninstall, error: model.rowErrors["uninstall"], stacked: true) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button("Uninstall Glidepath…") { confirmUninstall() }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Gotham.mute)
+                            .disabled(model.uninstalling)
+                        if let note = model.uninstallNote {
+                            Text(note)
+                                .font(.system(size: 12))
+                                .foregroundStyle(Gotham.mute)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// The version, the check, and the update on offer (the one filled control on the row).
+    private var updatesControl: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Text("Glidepath \(Version.current)")
+                    .font(.system(size: 13))
+                    .monospacedDigit()
+                    .foregroundStyle(Gotham.fg)
+                SettingButton(title: "Check now", enabled: !store.snap.updateChecking) {
+                    store.checkForUpdates(manual: true)
+                }
+            }
+            if let update = store.availableUpdate {
+                SettingButton(title: "Update to \(update.latest)…", prominent: true,
+                              enabled: store.snap.updatePhase != .updating) {
+                    confirmUpdate(update)
+                }
+            }
+            if store.snap.updatePhase == .failed {
+                Text("Update failed. See the log.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Gotham.fg)
+            } else if let note = store.snap.updateNote {
+                Text(note)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Gotham.mute)
+            }
+        }
+    }
+
+    /// The onboarding tools list, live: each check with its status, and the fix with Copy for anything missing.
+    private var toolsControl: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if model.tools.isEmpty {
+                Text("Checking…")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Gotham.mute)
+            } else {
+                ForEach(Array(model.tools.enumerated()), id: \.offset) { _, item in
+                    toolLine(item)
+                }
+            }
+            SettingButton(title: "Check again", enabled: !model.checking) { model.runChecks(store.paths) }
+        }
+    }
+
+    /// One check: a mark (filled when it passes, hollow when not), the name, and for a missing one the fix with Copy.
+    private func toolLine(_ item: Checks.Item) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(item.ok ? Gotham.fg : Color.clear)
+                    .overlay(Circle().strokeBorder(item.ok ? Color.clear : Gotham.skipped, lineWidth: 1.5))
+                Image(systemName: item.ok ? "checkmark" : "exclamationmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(item.ok ? Gotham.void : Gotham.fg)
+            }
+            .frame(width: 20, height: 20)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.name)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Gotham.fg)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !item.ok {
+                    HStack(alignment: .center, spacing: 12) {
+                        Text(item.fix)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(Gotham.mute)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        SettingButton(title: "Copy") { model.copy(item.fix) }
+                    }
                 }
             }
         }
@@ -111,102 +697,6 @@ struct SettingsView: View {
         store.startUpdate()
     }
 
-    // MARK: Tools
-
-    /// The onboarding tools list, live: each check with its status, and the fix with Copy for anything missing.
-    private var toolsRow: some View {
-        SettingRow(title: "Tools", detail: "Checked live. A missing one shows the command that fixes it.",
-                   error: model.rowErrors["tools"]) {
-            VStack(alignment: .leading, spacing: WinMetrics.s12) {
-                if model.tools.isEmpty {
-                    Text("Checking…")
-                        .font(.system(size: 13))
-                        .foregroundStyle(WinTheme.muted)
-                } else {
-                    ForEach(Array(model.tools.enumerated()), id: \.offset) { _, item in
-                        toolLine(item)
-                    }
-                }
-                WinButton(title: "Check again", style: .outline) { model.runChecks(store.paths) }
-                    .disabled(model.checking)
-            }
-        }
-    }
-
-    /// One check: a 20 pt mark, the name, and for a missing one the fix in mono with Copy.
-    private func toolLine(_ item: Checks.Item) -> some View {
-        HStack(alignment: .top, spacing: WinMetrics.s12) {
-            ZStack {
-                Circle().fill(item.ok ? WinTheme.green : WinTheme.amber)
-                Image(systemName: item.ok ? "checkmark" : "exclamationmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(item.ok ? Color.white : WinTheme.text)
-            }
-            .frame(width: 20, height: 20)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.name)
-                    .font(.system(size: 13))
-                    .foregroundStyle(WinTheme.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !item.ok {
-                    // Copy sits right after the command, 12 pt on, so it reads as the command's button.
-                    HStack(alignment: .center, spacing: WinMetrics.s12) {
-                        Text(item.fix)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(WinTheme.muted)
-                            .textSelection(.enabled)
-                            .fixedSize(horizontal: false, vertical: true)
-                        WinButton(title: "Copy", style: .outline, small: true) { model.copy(item.fix) }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: Advanced
-
-    /// The files and folders Glidepath keeps, each opened in Finder or the default app.
-    private var advancedRow: some View {
-        SettingRow(title: "Advanced", detail: "The config, the log and the state folder.", error: model.rowErrors["advanced"]) {
-            HStack(spacing: WinMetrics.s8) {
-                WinButton(title: "Open config file", style: .outline) { model.openConfig(store.paths) }
-                WinButton(title: "Open log", style: .outline) { store.openLog() }
-                WinButton(title: "Reveal state folder", style: .outline) { model.revealStateFolder(store.paths) }
-            }
-        }
-    }
-
-    // MARK: Uninstall
-
-    /// Last, under a rule: the one destructive action, in the error colour. It asks first.
-    private var uninstallSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button("Uninstall Glidepath…") { confirmUninstall() }
-                .buttonStyle(.plain)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(WinTheme.red)
-                .disabled(model.uninstalling)
-                .frame(height: 32, alignment: .leading)
-            if let note = model.uninstallNote {
-                Text(note)
-                    .font(.system(size: 12))
-                    .foregroundStyle(WinTheme.faint)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let error = model.rowErrors["uninstall"] {
-                Text(error)
-                    .font(.system(size: 12))
-                    .foregroundStyle(WinTheme.amberInk)
-            }
-        }
-        .padding(.vertical, WinMetrics.s16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .top) {
-            Rectangle().fill(WinTheme.line).frame(height: 1)
-        }
-        .padding(.top, WinMetrics.s16)
-    }
-
     /// Names what goes, then runs `glidepath uninstall` only on confirm.
     private func confirmUninstall() {
         let alert = NSAlert()
@@ -223,174 +713,83 @@ struct SettingsView: View {
     }
 }
 
-/// The title row at the titlebar zone: "Settings" 24 bold, and the Saved stamp for the switches. Observes the stamp
-/// itself, because a flash on a child object does not redraw the parent.
+/// The title row: "Settings" at 24 pt, the Saved stamp for the controls, and the config.toml drawer button. Observes the
+/// stamp itself, because a flash on a child object does not redraw the parent.
 private struct TitleRow: View {
     @ObservedObject var saved: SavedFlash
+    let onToml: () -> Void
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: WinMetrics.s12) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text("Settings")
                 .font(.system(size: 24, weight: .bold))
                 .tracking(-0.4)
-                .foregroundStyle(WinTheme.text)
+                .foregroundStyle(Gotham.fg)
                 .frame(height: 32, alignment: .leading)
             SavedStamp(shown: saved.shown)
+            Spacer(minLength: 12)
+            SettingButton(title: "config.toml", action: onToml)
         }
-        .padding(.bottom, WinMetrics.s24)
+        .padding(.bottom, 24)
     }
 }
 
-/// The Settings section's state: the live login item and tool checks, per-row messages, and the uninstall run.
-@MainActor
-final class SettingsModel: ObservableObject {
-    @Published var rowErrors: [String: String] = [:]
-    @Published private(set) var loginOn = false
-    @Published private(set) var tools: [Checks.Item] = []
-    @Published private(set) var checking = false
-    @Published private(set) var uninstalling = false
-    @Published private(set) var uninstallNote: String?
-    let saved = SavedFlash()
+/// A slider row whose caption can follow the value being dragged. The draft is owned here, so the config is written
+/// once, on release.
+private struct SliderRow: View {
+    let row: SettingsCopy.Row
+    let error: String?
+    let committed: Double
+    let range: ClosedRange<Double>
+    var step: Double = 1
+    let valueText: (Double) -> String
+    var caption: ((Double) -> String?)? = nil
+    let commit: (Double) -> Void
+    @StateObject private var draft = SliderDraft()
 
-    /// Reads the live login item and runs the tool checks.
-    func refresh(_ store: Store) {
-        loginOn = store.loginItemOn
-        if store.isFixture {
-            tools = store.snap.tools ?? []
-            return
+    var body: some View {
+        let shown = draft.value ?? committed
+        SettingItem(label: row.label, caption: caption?(shown) ?? row.caption, error: error) {
+            SettingSlider(draft: draft, committed: committed, range: range, step: step, valueText: valueText, commit: commit)
         }
-        runChecks(store.paths)
+        .onChange(of: committed) { _, _ in draft.value = nil }
     }
+}
 
-    /// The custom shortcut text last switched off, so turning the shortcut back on restores it.
-    private var rememberedShortcut: String?
+/// The budget row: the ring and the slider in millions. Index 0 is no budget; each step is 0.5M tokens.
+private struct BudgetRow: View {
+    let row: SettingsCopy.Row
+    let error: String?
+    let committed: Int
+    let used: Int
+    let commit: (Int) -> Void
+    @StateObject private var draft = SliderDraft()
 
-    /// Turns the shortcut on or off. Turning it on registers the shortcut first: when the system refuses it, the
-    /// setting stays off and the row says why. A custom shortcut comes back as it was.
-    func toggleHotkey(_ store: Store) {
-        let current = store.snap.config?.hotkey ?? .on
-        if current.isOn {
-            if case .custom(let text) = current { rememberedShortcut = text }
-            GlobalHotkey.shared.unregister()
-            commit("hotkey", store: store) { ConfigEditor.setHotkey($0, .off) }
-            return
-        }
-        let setting = rememberedShortcut.map(HotkeySetting.custom) ?? .on
-        guard let spec = HotkeySpec.from(setting), GlobalHotkey.shared.register(spec) else {
-            let text = rememberedShortcut ?? "⌥⌘G"
-            rowErrors["hotkey"] = "Another app already uses \(text), so Glidepath cannot register it."
-            return
-        }
-        commit("hotkey", store: store) { ConfigEditor.setHotkey($0, setting) }
-    }
+    private static let step = 500_000
 
-    /// Runs `Checks.tools()` and `Checks.installed(paths)` off the main thread. Shows "Checking…" until they return.
-    func runChecks(_ paths: Paths) {
-        guard !checking else { return }
-        checking = true
-        tools = []
-        Task {
-            let items = await Task.detached { Checks.tools() + Checks.installed(paths) }.value
-            tools = items
-            checking = false
-        }
-    }
-
-    /// Puts a fix command on the pasteboard.
-    func copy(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-    }
-
-    /// Flips the login item, then reads the live value back, since the system may refuse the change.
-    func toggleLogin(_ store: Store) {
-        store.setLoginItem(!loginOn)
-        loginOn = store.loginItemOn
-        rowErrors["login"] = store.actionError
-    }
-
-    /// Applies one switch to the saved config and writes it. On success the store reloads and the Saved stamp shows.
-    /// On failure the message goes to `row` and nothing is written.
-    /// The change is applied to config.toml as it is on disk now (ConfigWriter), so a hand edit since the window
-    /// loaded the file is kept, and the write runs off the main actor.
-    func commit(_ row: String, store: Store, _ change: @escaping @Sendable (Config) throws -> Config) {
-        let paths = store.paths
-        Task {
-            do {
-                try await ConfigWriter.shared.apply(paths: paths, change: change) { try ConfigEditor.save($0, paths: paths) }
-                rowErrors[row] = nil
-                saved.flash()
-            } catch let error as ConfigError {
-                rowErrors[row] = error.message
-            } catch {
-                rowErrors[row] = "Could not save: \(error.localizedDescription)"
+    var body: some View {
+        let index = draft.value ?? Double(committed / BudgetRow.step)
+        let tokens = Int(index.rounded()) * BudgetRow.step
+        let fraction: Double? = tokens > 0 ? Double(used) / Double(tokens) : nil
+        SettingItem(label: row.label,
+                    caption: tokens > 0
+                        ? "\(millions(used)) used this month of \(millions(tokens))."
+                        : "No budget set. Scheduled sweeps run without a limit.",
+                    error: error) {
+            HStack(spacing: 14) {
+                BudgetRing(fraction: fraction)
+                SettingSlider(draft: draft, committed: Double(committed / BudgetRow.step), range: 0...40, step: 1,
+                              valueText: { value in
+                                  let steps = Int(value.rounded())
+                                  return steps == 0 ? "No budget" : millions(steps * BudgetRow.step)
+                              },
+                              commit: { value in commit(Int(value.rounded()) * BudgetRow.step) })
             }
-            store.reload()
         }
+        .onChange(of: committed) { _, _ in draft.value = nil }
     }
 
-    /// Opens the config. When there is none, writes the commented template first (the one `Store.editRepos` wrote).
-    func openConfig(_ paths: Paths) {
-        let path = paths.configFile
-        if !FileManager.default.fileExists(atPath: path) {
-            let empty = Config(schedule: Config.defaultSchedule.compactMap(ScheduleTime.init), limits: Limits(), repos: [])
-            let template = "# Glidepath config. Add one [[repo]] table per repository to review.\n" + empty.render()
-            try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
-                                                     withIntermediateDirectories: true)
-            try? template.write(toFile: path, atomically: true, encoding: .utf8)
-        }
-        NSWorkspace.shared.open(URL(fileURLWithPath: path))
-    }
-
-    /// Selects the state folder in Finder, creating it first so there is something to select.
-    func revealStateFolder(_ paths: Paths) {
-        try? FileManager.default.createDirectory(atPath: paths.stateDir, withIntermediateDirectories: true)
-        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: paths.stateDir)])
-    }
-
-    /// Runs `glidepath uninstall` with the job's environment, output appended to the log. Called only after confirm.
-    func uninstall(_ store: Store) {
-        guard let binary = Bundle.main.executablePath else {
-            rowErrors["uninstall"] = "cannot find the glidepath binary"
-            return
-        }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = ["uninstall"]
-        process.environment = Runner.environment(store.paths)
-        let logPath = store.paths.logFile
-        try? FileManager.default.createDirectory(atPath: (logPath as NSString).deletingLastPathComponent,
-                                                 withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: logPath) {
-            FileManager.default.createFile(atPath: logPath, contents: nil)
-        }
-        if let log = FileHandle(forWritingAtPath: logPath) {
-            log.seekToEndOfFile()
-            process.standardOutput = log
-            process.standardError = log
-        }
-        process.terminationHandler = { [weak self] p in
-            let ok = p.terminationStatus == 0
-            DispatchQueue.main.async { MainActor.assumeIsolated { self?.finishUninstall(ok: ok, store: store) } }
-        }
-        rowErrors["uninstall"] = nil
-        do {
-            try process.run()
-            uninstalling = true
-        } catch {
-            rowErrors["uninstall"] = "run failed: \(error.localizedDescription)"
-        }
-    }
-
-    /// The uninstall ended: a success says what is left to do by hand; a failure points at the log. Then reloads, so
-    /// the job and the skill read as gone.
-    private func finishUninstall(ok: Bool, store: Store) {
-        uninstalling = false
-        if ok {
-            uninstallNote = "Glidepath's job, skill and app link are removed. Quit Glidepath, then run brew uninstall glidepath."
-        } else {
-            rowErrors["uninstall"] = "Uninstall failed. See the log."
-        }
-        store.reload()
+    private func millions(_ tokens: Int) -> String {
+        String(format: "%g", Double(tokens) / 1_000_000) + "M"
     }
 }

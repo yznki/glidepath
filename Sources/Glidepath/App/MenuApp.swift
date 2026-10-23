@@ -74,6 +74,10 @@ enum Snapshotter {
                 let suffix = dark ? "dark" : "light"
                 write(PopoverView(store: store, offscreen: true), dark: dark,
                       to: dir.appendingPathComponent("\(name)-\(suffix).png"), scale: 2)
+                if ["running", "drafts"].contains(name), let first = store.strips.first {
+                    write(PopoverView(store: store, offscreen: true, startOpen: first.id), dark: dark,
+                          to: dir.appendingPathComponent("\(name)-open-\(suffix).png"), scale: 2)
+                }
             }
         }
         writeMenuBar(to: dir.appendingPathComponent("menubar.png"))
@@ -90,7 +94,7 @@ enum Snapshotter {
         let now = WindowFixtures.clock
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let sections: [(String, WindowSection)] = [
-            ("overview", .overview), ("running", .overview), ("overview-dry-run", .overview), ("reviews", .reviews),
+            ("now", .now), ("running", .now), ("now-dry-run", .now), ("reviews", .reviews),
             ("repos", .repos), ("schedule", .schedule), ("settings", .settings),
         ]
         for (name, section) in sections {

@@ -1,26 +1,53 @@
 import SwiftUI
-import ServiceManagement
 import AppKit
 
 /// View-local state. SwiftUI's state wrappers are macros in the SDK and Command Line Tools cannot load
 /// their plugins, so views keep their few mutable values in observable objects instead.
 final class PopoverModel: ObservableObject {
+    init(openID: String? = nil) { self.openID = openID }
+
     @Published var loginOn = false
-    @Published var rowsHeight: CGFloat = 0
-    @Published var headerHeight: CGFloat = 0
-    /// The row the keyboard is on (its strip id). Arrows move it; Return opens it.
-    @Published var keyRow: String?
+    /// The card that is open (its strip id). An open card springs to the top; the others pile below it.
+    @Published var openID: String?
+    /// The card the pointer or the keyboard is on. It lifts, and the cards below it step down.
+    @Published var highlight: String?
+    /// The header filter: only cards with this verdict show. nil shows all.
+    @Published var filter: Verdict?
+    /// Horizontal drag offset of each card being swiped.
+    @Published var drag: [String: CGFloat] = [:]
+    /// Cards swiped off to discard: they fade before the discard runs.
+    @Published var gone: Set<String> = []
 }
 
-private struct HeaderHeight: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+/// Holds the fill of the round run button while it is held down.
+final class FillModel: ObservableObject {
+    @Published var level: CGFloat = 0
 }
 
-private struct RowsHeight: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+/// The stack's geometry, from the prototype's `layout()`. Points.
+enum StackGeometry {
+    static let width: CGFloat = 360
+    static let closed: CGFloat = 64
+    static let open: CGFloat = 232
+    static let pad: CGFloat = 12
+    /// Cards sit 12 pt in from each side of the popover.
+    static let inset: CGFloat = 12
+    static let cardWidth: CGFloat = width - 2 * inset
+
+    /// The header is 66 pt, plus 22 pt for the caption when there is one.
+    static func head(caption: Bool) -> CGFloat { caption ? 88 : 66 }
+
+    /// Overlap between closed cards: 56 pt at most, less when the stack is tall.
+    static func step(_ n: Int) -> CGFloat { n > 1 ? min(56, (420 - closed) / CGFloat(n - 1)) : 0 }
+
+    static func height(_ n: Int, head: CGFloat, opened: Bool) -> CGFloat {
+        let closedHeight = head + (n > 0 ? CGFloat(n - 1) * step(n) + closed : 150) + pad
+        guard opened, n > 0 else { return closedHeight }
+        let openHeight = head + open + 14 + CGFloat(min(n - 1, 5)) * 7 + 30 + pad
+        return max(closedHeight, openHeight)
+    }
 }
+
 
 /// "1.2k", "84k", "3.1M". Token counts in the menu.
 func compactTokens(_ n: Int) -> String {
@@ -87,8 +114,9 @@ struct HeaderCopy: Equatable {
                                   line3: next.map { "Next sweep \(clock($0)), in \(untilText($0, now))" } ?? "No sweep scheduled",
                                   line3Tone: .tertiary)
             if drafts > 0 {
-                copy.line2 = "\(drafts) draft\(drafts == 1 ? "" : "s") to post"
-                copy.line2Weight = 500
+                copy.headline = "\(drafts) waiting for you"
+                copy.headlineTone = .ink
+                copy.line2 = nil
             }
             return copy
         case .dryRun:
@@ -121,26 +149,34 @@ struct HeaderCopy: Equatable {
 
 struct PopoverView: View {
     @ObservedObject var store: Store
-    /// True only for snapshot rendering: ImageRenderer draws ScrollView and AppKit-backed controls blank.
-    var offscreen = false
-    /// Snapshot time for the profile's motion. nil uses the live clock.
-    var clock: Date?
-    @StateObject private var local = PopoverModel()
+    /// True only for snapshot rendering: ImageRenderer draws AppKit-backed controls blank.
+    var offscreen: Bool
+    @StateObject private var local: PopoverModel
+    @AppStorage("signalColour") private var signalKey = "amber"
     @Environment(\.colorScheme) private var scheme
     /// Keeps keyboard focus on the popover, so its keys work as soon as it opens.
     @FocusState private var rootFocused: Bool
 
     private var p: Palette { Palette(scheme) }
 
+    /// `startOpen` is the card to show open at first draw: snapshot rendering only.
+    init(store: Store, offscreen: Bool = false, startOpen: String? = nil) {
+        self.store = store
+        self.offscreen = offscreen
+        _local = StateObject(wrappedValue: PopoverModel(openID: startOpen))
+    }
+
     var body: some View {
+        let all = store.strips
+        let list = visible(all)
+        let copy = headerCopy
         VStack(alignment: .leading, spacing: 0) {
-            header
-            list
+            stack(all: all, list: list, copy: copy)
             updateLine
             footer
         }
-        .frame(width: Metrics.popoverWidth)
-        .background(offscreen ? p.ground : Color.clear)
+        .frame(width: StackGeometry.width)
+        .background(offscreen ? Gotham.void : Gotham.mat)
         .focusable()
         .focusEffectDisabled()
         .focused($rootFocused)
@@ -153,28 +189,57 @@ struct PopoverView: View {
         }
         .onDisappear {
             guard !offscreen else { return }
-            local.keyRow = nil
+            local.highlight = nil
+            local.openID = nil
             store.popoverClosed()
         }
     }
 
+    // MARK: Order and filter
+
+    /// Running first, then held drafts, then queued, then the rest. Ties keep the order the strips came in.
+    private func ordered(_ all: [Strip]) -> [Strip] {
+        let running = store.snap.running
+        func rank(_ s: Strip) -> Int {
+            if s.active && s.verdict == nil { return 0 }
+            if s.awaitsHold { return 1 }
+            if s.verdict == nil && running { return 2 }
+            return 3
+        }
+        return all.enumerated()
+            .sorted { a, b in
+                let ra = rank(a.element), rb = rank(b.element)
+                return ra != rb ? ra < rb : a.offset < b.offset
+            }
+            .map(\.element)
+    }
+
+    /// The cards on the stack: the ordered strips, narrowed to the header filter.
+    private func visible(_ all: [Strip]) -> [Strip] {
+        let filter = local.filter
+        return ordered(all).filter { filter == nil || $0.verdict == filter }
+    }
+
     // MARK: Keys
 
-    /// ↑ ↓ (and Home, End, Page Up, Page Down) move the row highlight; Return opens that PR on GitHub. ⌘R runs a sweep,
-    /// ⌘. stops one, ⌘O opens the window, ⌘, opens Settings, and Esc closes the popover.
+    /// ↑ ↓ (and Home, End, Page Up, Page Down) move the highlight; Return opens or closes the highlighted card. Esc
+    /// closes the open card, then the popover. ⌘R runs a sweep, ⌘. stops one, ⌘O opens the window, ⌘, opens Settings.
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         guard !TextFocus.isEditing || press.modifiers.contains(.command) else { return .ignored }
         let mods = ShortcutModifiers(press.modifiers)
-        let rows = groups.flatMap(\.rows)
+        let list = visible(store.strips)
         if press.key == .escape, mods.isEmpty {
+            if local.openID != nil {
+                local.openID = nil
+                return .handled
+            }
             // Through the status item, as ⌥⌘G does, so the menu bar knows the popover is closed.
             PopoverToggle.toggle()
             return .handled
         }
         if press.key == .return, mods.isEmpty {
-            guard let row = rows.first(where: { $0.id == local.keyRow }),
-                  let url = URL(string: "https://github.com/\(row.strip.repo)/pull/\(row.strip.number)") else { return .ignored }
-            NSWorkspace.shared.open(url)
+            guard let id = local.highlight, list.contains(where: { $0.id == id }) else { return .ignored }
+            local.openID = local.openID == id ? nil : id
             return .handled
         }
         if mods == [.command] {
@@ -182,7 +247,7 @@ struct PopoverView: View {
             case "r":
                 if !store.snap.running, store.snap.jobInstalled { Confirm.run(store) }
             case ".":
-                if store.snap.running { Confirm.stop(store) }
+                if store.snap.running { store.stopRun() }
             case "o":
                 WindowRouter.shared.open(nil)
             case ",":
@@ -193,8 +258,8 @@ struct PopoverView: View {
             return .handled
         }
         if let key = ListKey(press.key), let move = ListNav.move(key, mods) {
-            let current = rows.firstIndex { $0.id == local.keyRow }
-            if let i = ListNav.move(move, from: current, count: rows.count) { local.keyRow = rows[i].id }
+            let current = list.firstIndex { $0.id == local.highlight }
+            if let i = ListNav.move(move, from: current, count: list.count) { local.highlight = list[i].id }
             return .handled
         }
         return .ignored
@@ -202,58 +267,112 @@ struct PopoverView: View {
 
     // MARK: Header
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ApproachProfile(marks: marks, mode: profileMode, hovered: store.hovered,
-                            justLanded: store.justLanded, motion: store.profileMotion, clock: clock,
-                            onHover: { store.setHovered($0) })
-            TimelineView(.periodic(from: .now, by: 30)) { context in
-                headerText(HeaderCopy.make(Presentation.headerKind(store.snap, now: context.date), now: context.date,
-                                           drafts: store.draftCount))
-            }
+    /// The header copy for states the stack cannot show (failure, pause, setup, a sweep starting). Nil for the
+    /// quiet states, which the stack and its empty state already say.
+    private var headerCopy: HeaderCopy? {
+        let now = Date()
+        let kind = Presentation.headerKind(store.snap, now: now)
+        switch kind {
+        case .idle where store.draftCount > 0:
+            return HeaderCopy.make(kind, now: now, drafts: store.draftCount)
+        case .idle, .emptyRun: return nil
+        default: return HeaderCopy.make(kind, now: now, drafts: store.draftCount)
         }
-        .padding(.horizontal, Metrics.inset)
-        .padding(.top, Metrics.inset)
-        .background(GeometryReader { Color.clear.preference(key: HeaderHeight.self, value: $0.size.height) })
-        .onPreferenceChange(HeaderHeight.self) { local.headerHeight = $0 }
     }
 
-    private func headerText(_ copy: HeaderCopy) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(copy.headline)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(tone(copy.headlineTone))
-            if let line2 = copy.line2 {
-                Text(line2)
-                    .font(.system(size: 13, weight: copy.line2Weight == 500 ? .medium : .regular))
-                    .foregroundStyle(tone(copy.line2Tone))
-                    .lineLimit(1)
-                    .textSelection(.enabled)
-            }
-            if copy.line3 != nil || copy.openLog {
-                HStack(spacing: 0) {
-                    if let line3 = copy.line3 {
-                        Text(line3)
-                            .font(.system(size: 12))
-                            .foregroundStyle(tone(copy.line3Tone))
-                    }
-                    if copy.openLog {
-                        openLogLink
-                    }
+    private func header(all: [Strip], copy: HeaderCopy?, head: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 2) {
+                ForEach([Verdict.approve, .changes, .skipped], id: \.self) { verdict in
+                    pip(verdict, count: all.filter { $0.verdict == verdict }.count)
                 }
+                runButton
+            }
+            .padding(.leading, 10)
+            .padding(.trailing, 14)
+            .frame(height: 66)
+            if let copy {
+                captionLine(copy)
+                    .frame(height: 22)
+                    .padding(.horizontal, StackGeometry.inset + 10)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: StackGeometry.width, height: head, alignment: .topLeading)
+        .zIndex(200)
+    }
+
+    /// One verdict count: a thin numeral over its cap label. Tap filters the stack; tap again clears the filter.
+    private func pip(_ verdict: Verdict, count: Int) -> some View {
+        let on = local.filter == verdict
+        let label = verdict.word
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        return Button {
+            local.filter = on ? nil : verdict
+            local.openID = nil
+        } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(verbatim: "\(count)")
+                    .font(Gotham.numeral(26))
+                    .monospacedDigit()
+                    .foregroundStyle(pipColour(verdict))
+                Text(label).cap()
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(shape.fill(on ? Gotham.row : Color.clear))
+            .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .opacity(local.filter == nil || on ? 1 : 0.25)
+        .accessibilityLabel("\(count) \(label)")
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    private func pipColour(_ verdict: Verdict) -> Color {
+        switch verdict {
+        case .approve: return Gotham.approve
+        case .changes: return Gotham.signal(signalKey)
+        case .skipped: return Gotham.skipped
+        }
+    }
+
+    private var runButton: some View {
+        let snap = store.snap
+        let firstRun = snap.repoCount == 0 && !snap.running && !snap.dryRunning
+        let enabled = snap.running || snap.dryRunning || snap.paused || firstRun || snap.jobInstalled
+        return RunButton(running: snap.running, enabled: enabled,
+                         tap: { runTap(firstRun: firstRun) },
+                         stop: { store.stopRun() })
+    }
+
+    /// Run now; the button does the one thing its state offers when a sweep is not running.
+    private func runTap(firstRun: Bool) {
+        if store.snap.dryRunning { WindowRouter.shared.open(nil) }
+        else if store.snap.paused { store.togglePause() }
+        else if firstRun { WindowRouter.shared.openOnboarding() }
+        else { Confirm.run(store) }
+    }
+
+    private func captionLine(_ copy: HeaderCopy) -> some View {
+        HStack(spacing: 8) {
+            Text([copy.headline, copy.line2].compactMap { $0 }.joined(separator: " · "))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(tone(copy.headlineTone))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if copy.openLog { openLogLink }
+        }
     }
 
     @ViewBuilder
     private var openLogLink: some View {
         if offscreen {
-            Text("Open log").font(.system(size: 13, weight: .medium)).foregroundStyle(p.error)
+            Text("Open log").font(.system(size: 12, weight: .medium)).foregroundStyle(p.error)
         } else {
             Button("Open log") { store.openLog() }
                 .buttonStyle(.plain)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(p.error)
         }
     }
@@ -268,83 +387,70 @@ struct PopoverView: View {
         }
     }
 
-    private var profileMode: ProfileMode {
-        if store.snap.running { return .running }
-        if store.snap.paused { return .paused }
-        if let run = store.snap.run, run.finished != nil, Presentation.failureMessage(run) != nil { return .failed }
-        if store.snap.run == nil || !store.snap.jobInstalled || store.strips.isEmpty { return .empty }
-        return .idle
-    }
-
-    private var groups: [RepoGroup] {
-        Presentation.rows(from: store.strips, running: store.snap.running, repos: store.snap.run?.repos ?? [])
-    }
-
-    private var marks: [ProfileMark] {
-        Presentation.marks(groups, running: store.snap.running)
-    }
-
-    // MARK: List
+    // MARK: Stack
 
     @ViewBuilder
-    private var list: some View {
-        let groups = self.groups
-        if store.snap.run == nil || groups.flatMap(\.rows).isEmpty {
-            EmptyView()
-        } else if offscreen {
-            groupsView(groups)
-        } else {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    groupsView(groups)
-                        .background(GeometryReader { Color.clear.preference(key: RowsHeight.self, value: $0.size.height) })
-                }
-                // Header and footer take their own height; the list gets what is left under the 640 pt cap.
-                .frame(height: min(max(local.rowsHeight, 1),
-                                   max(Metrics.popoverMaxHeight - local.headerHeight - Metrics.footerRow - 24, 1)))
-                .onPreferenceChange(RowsHeight.self) { local.rowsHeight = $0 }
-                .onChange(of: local.keyRow) { _, id in
-                    if let id { proxy.scrollTo(id) }
-                }
+    private func stack(all: [Strip], list: [Strip], copy: HeaderCopy?) -> some View {
+        let n = list.count
+        let head = StackGeometry.head(caption: copy != nil)
+        let step = StackGeometry.step(n)
+        let hi = list.firstIndex { $0.id == local.highlight } ?? -1
+        // One animation for every layout change: open, highlight, filter, and the number of cards.
+        let layout = "\(local.openID ?? "")|\(hi)|\(n)|\(local.filter?.rawValue ?? "")"
+        ZStack(alignment: .topLeading) {
+            if n == 0 {
+                emptyState.offset(y: head)
             }
+            ForEach(Array(list.enumerated()), id: \.element.id) { i, strip in
+                let place = placement(i, strip, in: list, hi: hi, head: head, step: step)
+                StackCard(strip: strip, running: store.snap.running, open: local.openID == strip.id,
+                          piled: local.openID != nil && local.openID != strip.id,
+                          front: strip.id == pileFront(list), store: store, model: local)
+                    .scaleEffect(place.scale, anchor: .top)
+                    .offset(x: StackGeometry.inset, y: place.y)
+                    .zIndex(place.z)
+                    .transition(.opacity)
+            }
+            header(all: all, copy: copy, head: head)
         }
+        .frame(width: StackGeometry.width,
+               height: StackGeometry.height(n, head: head, opened: local.openID != nil), alignment: .topLeading)
+        .animation(Motion.stack, value: layout)
     }
 
-    private func groupsView(_ groups: [RepoGroup]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(groups.enumerated()), id: \.offset) { index, group in
-                if index > 0 {
-                    Rectangle().fill(p.rule).frame(height: 1)
-                        .padding(.horizontal, Metrics.inset)
-                }
-                // A heading only over rows: a repo with nothing to show gets no empty heading. Its error, if any, leads with
-                // the repo name instead.
-                let heading = groups.count > 1 && !group.rows.isEmpty
-                if heading {
-                    Text(group.repo)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(p.secondary)
-                        .padding(.horizontal, Metrics.inset)
-                        .padding(.top, 20)
-                        .padding(.bottom, 6)
-                } else {
-                    Spacer().frame(height: 12)
-                }
-                if let error = group.error {
-                    Text(groups.count > 1 && !heading ? "\(group.repo): \(error)" : error)
-                        .font(.system(size: 12))
-                        .foregroundStyle(p.error)
-                        .lineLimit(2)
-                        .padding(.horizontal, Metrics.inset)
-                        .padding(.bottom, 4)
-                }
-                ForEach(group.rows) { row in
-                    PRRow(row: row, hovered: store.hovered == row.id, store: store,
-                          dimmed: store.snap.paused, offscreen: offscreen, keyboard: local.keyRow == row.id)
-                        .id(row.id)
-                }
-            }
+    /// The id of the card on top of the pile under the open card, or nil when no card is open. Pile cards stack upward
+    /// in list order, so the last one covers the rest and is the only one whose row shows whole.
+    private func pileFront(_ list: [Strip]) -> String? {
+        list.last { $0.id != local.openID }?.id
+    }
+
+    /// Where a card sits, how large, and in which order. Closed: in list order, the highlighted card lifts 3 pt and
+    /// the cards below it step down 8 pt. Open: the open card sits at the top, the rest pile below it in 7 pt steps.
+    private func placement(_ i: Int, _ strip: Strip, in list: [Strip], hi: Int, head: CGFloat,
+                           step: CGFloat) -> (y: CGFloat, scale: CGFloat, z: Double) {
+        if local.openID != nil {
+            if strip.id == local.openID { return (head, 1, 100) }
+            let others = list.filter { $0.id != local.openID }
+            let j = others.firstIndex { $0.id == strip.id } ?? 0
+            let k = CGFloat(min(j, 5))
+            return (head + StackGeometry.open + 14 + k * 7, 0.94 - k * 0.01, Double(10 + j))
         }
+        let lift: CGFloat = i == hi ? -3 : (hi >= 0 && i > hi ? 8 : 0)
+        return (head + CGFloat(i) * step + lift, 1, Double(i))
+    }
+
+    /// Glider and "All clear" (or "None here" under a filter), centred in the space the cards would take.
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            GliderShape()
+                .fill(Gotham.mute)
+                .frame(width: 40, height: 40)
+                .opacity(0.6)
+            Text(local.filter == nil ? "All clear" : "None here")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Gotham.mute)
+        }
+        .frame(width: StackGeometry.width, height: 150)
     }
 
     // MARK: Update
@@ -425,19 +531,18 @@ struct PopoverView: View {
 
     // MARK: Footer
 
-    /// 12 pt above the footer row and 12 pt below it: the popover ends where the buttons end.
+    /// The "more" menu: everything the header does not carry. Its row ends where the menu ends.
     private var footer: some View {
         HStack(spacing: 8) {
-            footerButton
             Spacer(minLength: 0)
             if offscreen {
                 // ImageRenderer draws AppKit menus as a prohibition sign; the symbol stands in for the menu.
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 15))
-                    .foregroundStyle(p.ink)
+                    .foregroundStyle(Gotham.fg)
             } else {
                 Menu {
-                    Button("Open Glidepath") { WindowRouter.shared.open(.overview) }
+                    Button("Open Glidepath") { WindowRouter.shared.open(nil) }
                     Divider()
                     if let update = store.availableUpdate {
                         Button("Update to \(update.latest)…") { confirmAndUpdate(update) }
@@ -471,7 +576,7 @@ struct PopoverView: View {
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.system(size: 15))
-                        .foregroundStyle(p.ink)
+                        .foregroundStyle(Gotham.fg)
                         .accessibilityLabel("More")
                 }
                 .menuStyle(.borderlessButton)
@@ -485,58 +590,8 @@ struct PopoverView: View {
         .padding(.bottom, 12)
     }
 
-    /// The bordered button, drawn in SwiftUI when rendering offscreen. Same size and outline.
-    private func standIn(_ label: String, prominent: Bool = false, enabled: Bool = true) -> some View {
-        Text(label)
-            .font(.system(size: 13))
-            .foregroundStyle(prominent ? Color.white : p.ink.opacity(enabled ? 1 : 0.4))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 3)
-            .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(prominent ? p.doingMark : Color.clear)
-                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .stroke(p.ink.opacity(prominent ? 0 : 0.22), lineWidth: 1))
-            )
-    }
-
-    @ViewBuilder
-    private var footerButton: some View {
-        // Set up applies only while config.toml has no repos. A configured user with no run gets Run now.
-        let firstRun = store.snap.repoCount == 0 && !store.snap.running && !store.snap.dryRunning
-        let dryRun = store.snap.dryRunning
-        if offscreen {
-            if store.snap.running { standIn("Stop") }
-            else if dryRun { standIn("Open Glidepath", prominent: true) }
-            else if store.snap.paused { standIn("Resume", prominent: true) }
-            else if firstRun { standIn("Set up Glidepath…", prominent: true) }
-            else { standIn("Run now") }
-        } else if store.snap.running {
-            Button("Stop") { Confirm.stop(store) }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-        } else if dryRun {
-            Button("Open Glidepath") { WindowRouter.shared.open(nil) }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-        } else if store.snap.paused {
-            Button("Resume") { store.togglePause() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-        } else if firstRun {
-            Button("Set up Glidepath…") { WindowRouter.shared.openOnboarding() }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-        } else {
-            Button("Run now") { Confirm.run(store) }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(!store.snap.jobInstalled)
-        }
-    }
-
-    /// Posting is public, so a run that can post reviews asks first.
-    /// Homebrew installs update after a confirmation; anything else opens the release page.
+    /// Updating is public-facing and restarts the app, so a Homebrew install asks first; anything else opens the
+    /// release page.
     private func confirmAndUpdate(_ update: UpdateCache) {
         guard store.updatesWithBrew else {
             if let url = URL(string: update.url) { NSWorkspace.shared.open(url) }
@@ -551,288 +606,89 @@ struct PopoverView: View {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         store.startUpdate()
     }
-
 }
 
-/// One PR row (docs/design.md, pass 4): the title on line 1 with the full width; line 2 has `#number · author`
-/// on the left and the status (meter, then label, then mark) on the right; line 3 is the reason for changes.
-/// A held draft adds Post and Discard at the right of line 2, outside the row's button.
-struct PRRow: View {
-    let row: RowModel
-    let hovered: Bool
-    let store: Store
-    /// Paused: status labels and marks at 60% opacity.
-    var dimmed = false
-    var offscreen = false
-    /// The keyboard is on this row.
-    var keyboard = false
-    @Environment(\.colorScheme) private var scheme
-    @FocusState private var focused: Bool
+/// The round run button. Tap runs a sweep. While one runs it wears the tracer, and a hold of 0.9 s stops it, the fill
+/// rising under the finger as the hold builds.
+struct RunButton: View {
+    let running: Bool
+    let enabled: Bool
+    let tap: () -> Void
+    let stop: () -> Void
 
-    private var p: Palette { Palette(scheme) }
-    private var strip: Strip { row.strip }
-    /// A draft waiting for Post or Discard. A post or discard that is running shows its word instead.
-    private var showsDraftActions: Bool { strip.draft && strip.draftAction == nil }
-    /// A PR skipped for size offers Review on line 2.
-    private var showsReview: Bool { strip.skipReason == "size" && strip.verdict == .skipped }
-    private var showsActions: Bool { showsDraftActions || showsReview }
-
-    private var height: CGFloat {
-        if strip.draftError != nil { return Metrics.rowThreeLines }
-        if showsReview { return Metrics.rowThreeLines }
-        if case .changes = row.status, strip.reason != nil { return Metrics.rowThreeLines }
-        return Metrics.rowOneLine
-    }
+    @StateObject private var fill = FillModel()
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            Button {
-                if let url = URL(string: "https://github.com/\(strip.repo)/pull/\(strip.number)") {
-                    NSWorkspace.shared.open(url)
+        ZStack {
+            Circle().fill(Gotham.row)
+            Rectangle()
+                .fill(Gotham.fg.opacity(0.22))
+                .frame(height: 34 * fill.level)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .clipShape(Circle())
+            Group {
+                if running {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous).frame(width: 9, height: 9)
+                } else {
+                    PlayShape().frame(width: 11, height: 12).offset(x: 1)
                 }
-            } label: {
-                rowLabel
             }
-            .buttonStyle(.plain)
-            .focusEffectDisabled()
-            .focused($focused)
-            if showsReview {
-                reviewAction
-            } else if showsDraftActions {
-                draftActions
-            }
+            .foregroundStyle(Gotham.fg)
         }
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(p.doingMark, lineWidth: 2)
-                .padding(.horizontal, 8)
-                .opacity(focused || keyboard ? 1 : 0)
-        )
-        .onHover { inside in store.setHovered(inside ? strip.id : nil) }
-    }
-
-    private var rowLabel: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(strip.title ?? "Untitled PR")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(p.ink)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.trailing, Metrics.chevronReserve)
-            HStack(spacing: 0) {
-                // verbatim: a plain string, so PR numbers are never grouped as 1,212.
-                Text(verbatim: metaText)
-                    .font(.system(size: 12))
-                    .foregroundStyle(p.secondary)
-                    .lineLimit(1)
-                if strip.flagged {
-                    Text("Flagged")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(p.secondary)
-                        .lineLimit(1)
-                        .padding(.leading, 6)
-                }
-                Spacer(minLength: 8)
-                statusLine
-            }
-            .padding(.trailing, showsActions ? Metrics.draftActionsWidth : 0)
-            if let error = strip.draftError {
-                Text(error)
-                    .font(.system(size: 12))
-                    .foregroundStyle(p.error)
-                    .lineLimit(1)
-                    .help(error)
-            } else if showsReview, let lines = strip.changedLines {
-                Text(Presentation.sizeText(lines))
-                    .font(.system(size: 12))
-                    .foregroundStyle(p.secondary)
-                    .lineLimit(1)
-            } else if case .changes = row.status, let reason = strip.reason {
-                Text(reason)
-                    .font(.system(size: 12))
-                    .foregroundStyle(p.changesText)
-                    .lineLimit(1)
-                    .help(reason)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Metrics.inset)
-        .frame(height: height)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(p.ink.opacity(hovered ? 0.05 : 0))
-                .padding(.horizontal, 8)
-        )
-        .overlay(alignment: .topTrailing) {
-            // The chevron sits on line 1, in the strip the title leaves free.
-            Image(systemName: "chevron.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(p.secondary.opacity(hovered ? 0.5 : 0))
-                .padding(.trailing, Metrics.inset)
-                .padding(.top, 15)
-        }
-        .contentShape(Rectangle())
-    }
-
-    /// Post (accent, link style) and Discard (secondary) at the right of line 2. Sits above the row button, so the
-    /// two never nest.
-    private var draftActions: some View {
-        HStack(spacing: 12) {
-            if offscreen {
-                Text("Post").font(.system(size: 12, weight: .medium)).foregroundStyle(p.doingText)
-                Text("Discard").font(.system(size: 12)).foregroundStyle(p.secondary)
-            } else {
-                Button("Post") { confirmAndPost() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(p.doingText)
-                    .disabled(store.snap.running)
-                Button("Discard") { Confirm.discard(strip, store: store) }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(p.secondary)
-                    .disabled(store.snap.running)
-            }
-        }
-        .padding(.trailing, Metrics.inset)
-        .padding(.top, 23)
-        .frame(maxWidth: .infinity, alignment: .topTrailing)
-    }
-
-    /// Review for a PR over the size limit. Off while a sweep runs, since a second run would be refused.
-    private var reviewAction: some View {
-        HStack(spacing: 12) {
-            if offscreen {
-                Text("Review").font(.system(size: 12, weight: .medium)).foregroundStyle(p.doingText)
-            } else {
-                Button("Review") { confirmAndReview() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(p.doingText)
-                    .disabled(store.snap.running)
-            }
-        }
-        .padding(.trailing, Metrics.inset)
-        .padding(.top, 23)
-        .frame(maxWidth: .infinity, alignment: .topTrailing)
-    }
-
-    private func confirmAndReview() {
-        let alert = NSAlert()
-        alert.messageText = "Review #\(strip.number) anyway?"
-        alert.informativeText = store.reviewWarning(strip)
-        alert.addButton(withTitle: "Review")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        store.reviewPR(strip)
-    }
-
-    /// Posting is public and cannot be undone, so it asks first, with the verdict and the start of the body.
-    private func confirmAndPost() {
-        let preview = store.draftPreview(strip)
-        let alert = NSAlert()
-        alert.messageText = "Post the review on \(strip.repo) #\(strip.number)?"
-        alert.informativeText = preview.verdict + "\n\n" + preview.body
-        alert.addButton(withTitle: "Post")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        store.postDraft(strip)
-    }
-
-    private var metaText: String {
-        var text = "#\(strip.number) · \(strip.author ?? "unknown")"
-        if let carried = strip.carriedFrom {
-            text += " · from \(HeaderCopy.clock(carried))"
-        }
-        return text
-    }
-
-    /// Meter (in flight only), then the label, then the mark, in one line.
-    private var statusLine: some View {
-        HStack(spacing: 6) {
-            if let meter = row.meter, strip.draftAction == nil {
-                meterView(meter)
-            }
-            let (shape, colour, label, text) = strip.draftAction.map { action in
-                (StatusShape.hollow, p.doingMark, action == .posting ? "Posting…" : "Discarding…", p.doingText)
-            } ?? statusParts
-            Text(label)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(strip.carriedFrom == nil ? text : p.tertiary)
-                .lineLimit(1)
-            StatusMark(shape: shape, colour: strip.carriedFrom == nil ? colour : p.tertiary)
-        }
-        .opacity(dimmed ? 0.6 : 1)
-    }
-
-    private var statusParts: (StatusShape, Color, String, Color) {
-        switch row.status {
-        case .changes: return (.triangle, p.changesMark, "Changes", p.changesText)
-        case .approved: return (.disc, p.approveMark, "Approved", p.approveText)
-        case .skipped: return (.dash, p.skipMark, "Skipped", p.secondary)
-        case .noResult: return (.hollow, p.skipMark, "No result", p.secondary)
-        case .active(let phase): return (.hollow, p.doingMark, phase, p.doingText)
-        case .queued: return (.hollow, p.skipMark, "Queued", p.secondary)
-        }
-    }
-
-    /// Four dashes, 36 pt wide: done 35% ink, the current one the system blue, future 12% ink.
-    private func meterView(_ segments: [MeterSegment]) -> some View {
-        HStack(spacing: 4) {
-            ForEach(0..<segments.count, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(colour(segments[i]))
-                    .frame(width: 6, height: 3)
-            }
-        }
-        .frame(width: 36)
-    }
-
-    private func colour(_ s: MeterSegment) -> Color {
-        switch s {
-        case .done: return p.meterDone
-        case .current: return p.doingMark
-        case .future: return p.meterFuture
-        }
-    }
-
-    static func skippedText(_ reason: String?) -> String {
-        guard let reason, !reason.isEmpty else { return "Skipped" }
-        return reason.prefix(1).uppercased() + reason.dropFirst() + ", skipped"
+        .frame(width: 34, height: 34)
+        .overlay { if running { Tracer(shape: Circle(), lineWidth: 1) } }
+        .contentShape(Circle())
+        .opacity(enabled || running ? 1 : 0.4)
+        .onTapGesture { if !running && enabled { tap() } }
+        .onLongPressGesture(minimumDuration: 0.9, maximumDistance: 30, perform: {
+            guard running else { return }
+            fill.level = 0
+            stop()
+        }, onPressingChanged: { down in
+            guard running else { return }
+            withAnimation(down ? .linear(duration: 0.9) : .easeOut(duration: 0.2)) { fill.level = down ? 1 : 0 }
+        })
+        .accessibilityLabel(running ? "Hold to stop the sweep" : "Run now")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
-/// The shapes of the status idiom and of the profile's marks.
-enum StatusShape {
-    case disc, hollow, triangle, dash
-}
-
-/// A 7 pt mark in a status shape.
-struct StatusMark: View {
-    let shape: StatusShape
-    let colour: Color
-
-    var body: some View {
-        switch shape {
-        case .disc:
-            Circle().fill(colour).frame(width: 7, height: 7)
-        case .hollow:
-            Circle().strokeBorder(colour, lineWidth: 1.5).frame(width: 7, height: 7)
-        case .triangle:
-            Triangle().fill(colour).frame(width: 7, height: 7)
-        case .dash:
-            Capsule().fill(colour).frame(width: 7, height: 2.5)
-        }
-    }
-}
-
-struct Triangle: Shape {
+/// The play triangle of the run button.
+struct PlayShape: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
-        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
         p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         p.closeSubpath()
         return p
+    }
+}
+
+/// The glider glyph of the empty state: the prototype's 24-unit path, scaled to the frame.
+struct GliderShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        func pt(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: rect.minX + x * s, y: rect.minY + y * s) }
+        var p = Path()
+        p.move(to: pt(2.5, 11.2))
+        p.addLine(to: pt(21, 3.6))
+        p.addCurve(to: pt(21.8, 4.4), control1: pt(21.5, 3.4), control2: pt(22, 3.9))
+        p.addLine(to: pt(14.2, 22.9))
+        p.addCurve(to: pt(13.1, 22.9), control1: pt(14.0, 23.4), control2: pt(13.3, 23.4))
+        p.addLine(to: pt(10.5, 16.3))
+        p.addCurve(to: pt(9.9, 15.7), control1: pt(10.4, 16.0), control2: pt(10.2, 15.8))
+        p.addLine(to: pt(3.3, 13))
+        p.addCurve(to: pt(3.2, 11.8), control1: pt(2.7, 12.8), control2: pt(2.7, 12.0))
+        p.closeSubpath()
+        return p
+    }
+}
+
+/// The skipped-for-size wording of a row, used by the tests.
+enum PRRow {
+    static func skippedText(_ reason: String?) -> String {
+        guard let reason, !reason.isEmpty else { return "Skipped" }
+        return reason.prefix(1).uppercased() + reason.dropFirst() + ", skipped"
     }
 }

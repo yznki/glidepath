@@ -208,4 +208,14 @@ final class AtomicCounter: @unchecked Sendable {
         XCTAssertEqual(back.repos[0].prs[0].draft, true)
         XCTAssertEqual(back.repos[0].prs[0].flagged, true)
     }
+
+    func testRunWithoutIsDraftPRKeyStillDecodes() throws {
+        let json = """
+        {"id":"old","started":"2026-01-01T00:00:00Z","repos":[{"slug":"acme/api","prs":[
+          {"n":5,"stage":"post","active":false,"tokens":0}]}],"tokens":0}
+        """
+        let run = try RunStore.decoder().decode(RunState.self, from: Data(json.utf8))
+        XCTAssertNil(run.repos[0].prs[0].isDraftPR)
+        XCTAssertFalse(Store.strips(from: run)[0].isDraftPR)
+    }
 }

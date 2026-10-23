@@ -34,6 +34,8 @@ struct PRState: Codable, Equatable {
     var skipReason: String? = nil
     /// Additions plus deletions at gather time. Optional for 1.0.x run files.
     var changedLines: Int? = nil
+    /// Whether GitHub listed the PR as a draft at gather time. Optional for older run files.
+    var isDraftPR: Bool? = nil
 }
 
 struct RepoState: Codable, Equatable {
@@ -59,6 +61,9 @@ struct RunState: Codable, Equatable {
     /// The id of the review session the runner started last. The app reads its transcript for live token totals.
     /// Optional so older run files decode.
     var sessionId: String? = nil
+    /// The directory claude ran in (the repo's clone). With `sessionId` it locates the session transcript.
+    /// Optional so older run files decode.
+    var sessionCwd: String? = nil
 
     static func new(id: String, now: Date, kind: String? = nil) -> RunState {
         RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil, kind: kind)
@@ -181,6 +186,12 @@ struct RunState: Codable, Equatable {
         guard let ri = repoIndexIfExists(slug), let pi = repos[ri].prs.firstIndex(where: { $0.n == n }) else { return }
         repos[ri].prs[pi].draft = draft
         repos[ri].prs[pi].posted = posted ?? repos[ri].prs[pi].posted
+    }
+
+    /// Records whether GitHub lists the PR as a draft. Missing rows are left alone.
+    mutating func setDraftPR(repo slug: String, n: Int, isDraft: Bool) {
+        guard let ri = repoIndexIfExists(slug), let pi = repos[ri].prs.firstIndex(where: { $0.n == n }) else { return }
+        repos[ri].prs[pi].isDraftPR = isDraft
     }
 
     /// Records the PR's size, and whether it was skipped for size. Missing rows are left alone.

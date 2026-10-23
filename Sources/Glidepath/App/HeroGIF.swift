@@ -46,7 +46,7 @@ enum HeroGIF {
         for i in 0..<frameCount {
             let (snap, landed) = frame(i, now: now)
             let store = Store(snapshot: snap, justLanded: landed, motion: motion)
-            let view = PopoverView(store: store, offscreen: true, clock: now.addingTimeInterval(Double(i) * delay))
+            let view = PopoverView(store: store, offscreen: true)
                 .environment(\.colorScheme, .dark)
                 .background(Palette(.dark).ground)
             let renderer = ImageRenderer(content: view)

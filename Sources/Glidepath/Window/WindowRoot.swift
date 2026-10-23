@@ -3,11 +3,11 @@ import AppKit
 
 /// The sections of the main window, in sidebar order.
 enum WindowSection: String, CaseIterable {
-    case overview, reviews, repos, schedule, settings
+    case now, reviews, repos, schedule, settings
 
     var title: String {
         switch self {
-        case .overview: return "Overview"
+        case .now: return "Now"
         case .reviews: return "Reviews"
         case .repos: return "Repos"
         case .schedule: return "Schedule"
@@ -22,7 +22,9 @@ enum WindowSection: String, CaseIterable {
 final class WindowRouter: ObservableObject {
     static let shared = WindowRouter()
 
-    @Published var section: WindowSection = .overview
+    @Published var section: WindowSection = .now
+    /// A review the Now rows asked Reviews to select, by `Strip.id`. Reviews takes it when it appears.
+    @Published var reviewFocus: String?
     /// The window shows onboarding instead of the sections. Set while there is no config file, and by the popover's
     /// "Set up Glidepath…". Cleared when onboarding finishes.
     @Published var showOnboarding: Bool
@@ -34,7 +36,7 @@ final class WindowRouter: ObservableObject {
     private var launchChecked = false
 
     /// Defaults to onboarding while there is no config file.
-    init(section: WindowSection = .overview, showOnboarding: Bool? = nil) {
+    init(section: WindowSection = .now, showOnboarding: Bool? = nil) {
         self.section = section
         self.showOnboarding = showOnboarding ?? WindowRouter.needsSetup()
     }
@@ -64,6 +66,12 @@ final class WindowRouter: ObservableObject {
         if WindowRouter.needsSetup(forSection: section != nil) { showOnboarding = true }
         openAction?("main")
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Opens Reviews with the PR `stripID` selected.
+    func openReview(_ stripID: String) {
+        reviewFocus = stripID
+        open(.reviews)
     }
 
     /// Hands a view-owned action to the view. Selects `section` first when given.

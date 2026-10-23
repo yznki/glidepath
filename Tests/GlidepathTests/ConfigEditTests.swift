@@ -210,6 +210,14 @@ final class ConfigEditTests: XCTestCase {
         XCTAssertThrowsError(try ConfigEditor.setRepoReviewDrafts(base(), slug: "nope/none", true))
     }
 
+    func testSetRepoIncludeOwnChangesOnlyThatRepo() throws {
+        let c = try ConfigEditor.setRepoIncludeOwn(base(), slug: "lumen/api", true)
+        XCTAssertTrue(repo(c, "lumen/api").includeOwn)
+        XCTAssertFalse(repo(c, "lumen/web").includeOwn)
+        try assertRoundTrips(c)
+        XCTAssertThrowsError(try ConfigEditor.setRepoIncludeOwn(base(), slug: "nope/none", true))
+    }
+
     func testMonthlyBudgetRefusesNegative() throws {
         XCTAssertThrowsError(try ConfigEditor.setMonthlyTokens(base(), -1))
         XCTAssertEqual(try ConfigEditor.setMonthlyTokens(base(), 0).monthlyTokens, 0)

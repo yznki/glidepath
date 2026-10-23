@@ -224,9 +224,10 @@ final class PresentationTests: XCTestCase {
     }
     func testDraftsLineReplacesLastSweepWhenDraftsExist() {
         let copy = HeaderCopy.make(.idle(changes: 1, next: nil, lastStarted: now, total: 4), now: now, drafts: 3)
-        XCTAssertEqual(copy.line2, "3 drafts to post")
-        XCTAssertEqual(HeaderCopy.make(.idle(changes: 1, next: nil, lastStarted: now, total: 4), now: now, drafts: 1).line2,
-                       "1 draft to post")
+        XCTAssertEqual(copy.headline, "3 waiting for you")
+        XCTAssertNil(copy.line2)
+        XCTAssertEqual(HeaderCopy.make(.idle(changes: 1, next: nil, lastStarted: now, total: 4), now: now, drafts: 1).headline,
+                       "1 waiting for you")
         XCTAssertTrue(HeaderCopy.make(.idle(changes: 1, next: nil, lastStarted: now, total: 4), now: now).line2?.hasPrefix("Last sweep") == true)
     }
 

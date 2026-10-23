@@ -182,7 +182,7 @@ enum Shortcuts {
         Shortcut(action: .find, title: "Find", key: .character("f"), modifiers: .command, menu: .edit,
                  note: "Repos, onboarding"),
 
-        Shortcut(action: .showOverview, title: "Overview", key: .character("1"), modifiers: .command, menu: .view),
+        Shortcut(action: .showOverview, title: "Now", key: .character("1"), modifiers: .command, menu: .view),
         Shortcut(action: .showReviews, title: "Reviews", key: .character("2"), modifiers: .command, menu: .view),
         Shortcut(action: .showRepos, title: "Repos", key: .character("3"), modifiers: .command, menu: .view),
         Shortcut(action: .showSchedule, title: "Schedule", key: .character("4"), modifiers: .command, menu: .view),

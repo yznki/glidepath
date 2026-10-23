@@ -146,16 +146,83 @@ final class SweepTicker: ObservableObject {
     }
 }
 
+/// The glyph the user chose in Settings: the glider (the app icon's mark), a dot, or a count of reviews waiting.
+enum GlyphStyle: String {
+    case glider, dot, count
+}
+
+extension MenuGlyph {
+    /// The dot style: a disc at the centre. While a sweep runs a smaller dot orbits it at the sweep's progress.
+    static func dotImage(_ state: GlyphState, progress: Double, ink: NSColor, template: Bool, badge: Bool) -> NSImage {
+        let image = NSImage(size: NSSize(width: canvas, height: canvas), flipped: false) { _ in
+            ink.withAlphaComponent(state == .paused ? 0.5 : 1).set()
+            let centre = NSPoint(x: canvas / 2, y: canvas / 2)
+            switch state {
+            case .failed:
+                let x = NSBezierPath()
+                x.move(to: NSPoint(x: centre.x - 3, y: centre.y - 3)); x.line(to: NSPoint(x: centre.x + 3, y: centre.y + 3))
+                x.move(to: NSPoint(x: centre.x + 3, y: centre.y - 3)); x.line(to: NSPoint(x: centre.x - 3, y: centre.y + 3))
+                x.lineWidth = 1.5
+                x.lineCapStyle = .round
+                x.stroke()
+            case .running:
+                NSBezierPath(ovalIn: NSRect(x: centre.x - 2.6, y: centre.y - 2.6, width: 5.2, height: 5.2)).fill()
+                let angle = CGFloat(progress) * 2 * .pi
+                let orbit = NSPoint(x: centre.x + 7 * cos(angle), y: centre.y + 7 * sin(angle))
+                NSBezierPath(ovalIn: NSRect(x: orbit.x - 1.3, y: orbit.y - 1.3, width: 2.6, height: 2.6)).fill()
+            default:
+                NSBezierPath(ovalIn: NSRect(x: centre.x - 3.4, y: centre.y - 3.4, width: 6.8, height: 6.8)).fill()
+            }
+            if badge { badgeDot(x: 14.5, ink: ink) }
+            return true
+        }
+        image.isTemplate = template
+        return image
+    }
+
+    /// The count style: the number of reviews waiting, in the glyph's count type.
+    static func countImage(_ count: Int, ink: NSColor, template: Bool, badge: Bool) -> NSImage {
+        let label = NSAttributedString(string: "\(count)", attributes: [.font: countFont, .foregroundColor: ink])
+        let width = ceil(label.size().width) + 2
+        let image = NSImage(size: NSSize(width: width, height: canvas), flipped: false) { _ in
+            label.draw(at: NSPoint(x: 1, y: (canvas - label.size().height) / 2 - 0.5))
+            if badge { badgeDot(x: width - 3.5, ink: ink) }
+            return true
+        }
+        image.isTemplate = template
+        return image
+    }
+
+    /// The update and review badge: a 3 pt dot at the top right, the same in every style.
+    fileprivate static func badgeDot(x: CGFloat, ink: NSColor) {
+        ink.set()
+        NSBezierPath(ovalIn: NSRect(x: x, y: 14.5, width: 3, height: 3)).fill()
+    }
+}
+
 struct MenuBarLabel: View {
     @ObservedObject var store: Store
     @StateObject private var ticker = SweepTicker()
+    @AppStorage("glyphStyle") private var style = GlyphStyle.glider.rawValue
+    @AppStorage("glyphBadge") private var badgeOn = true
 
     var body: some View {
-        let glyph = store.glyph
-        Image(nsImage: MenuGlyph.image(glyph, progress: ticker.progress, ink: .black, template: true,
-                                       update: store.availableUpdate != nil))
+        // The badge marks an update, or held reviews waiting for the user (when the badge setting is on).
+        let badge = store.availableUpdate != nil || (badgeOn && store.draftCount > 0)
+        Image(nsImage: image(store.glyph, badge: badge))
             .onAppear { ticker.setRunning(store.snap.running || store.snap.dryRunning) }
             .onChange(of: store.snap.running || store.snap.dryRunning) { _, busy in ticker.setRunning(busy) }
+    }
+
+    private func image(_ glyph: GlyphState, badge: Bool) -> NSImage {
+        switch GlyphStyle(rawValue: style) ?? .glider {
+        case .glider:
+            return MenuGlyph.image(glyph, progress: ticker.progress, ink: .black, template: true, update: badge)
+        case .dot:
+            return MenuGlyph.dotImage(glyph, progress: ticker.progress, ink: .black, template: true, badge: badge)
+        case .count:
+            return MenuGlyph.countImage(store.draftCount, ink: .black, template: true, badge: badge)
+        }
     }
 }
 

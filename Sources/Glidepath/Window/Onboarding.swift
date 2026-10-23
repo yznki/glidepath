@@ -891,7 +891,7 @@ final class OnboardingModel: ObservableObject {
     private func finish() {
         Store.shared.reload()
         WindowRouter.shared.showOnboarding = false
-        WindowRouter.shared.section = .overview
+        WindowRouter.shared.section = .now
     }
 }
 

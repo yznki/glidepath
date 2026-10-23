@@ -37,7 +37,7 @@ enum WindowFixtures {
                  tokens: tokens, error: nil)
     }
 
-    /// The 1:00 PM sweep: the Overview's "Waiting on you" and "Last sweep", and the Reviews list.
+    /// The 1:00 PM sweep: the Now rows and the Reviews grid.
     static func sweepAfternoon(_ now: Date) -> RunState {
         run("fixture-1pm", at(13, 0, now), minutes: 9, prs: [
             row("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", verdict: .changes,
@@ -137,7 +137,7 @@ enum WindowFixtures {
         Checks.Item(name: "GitNexus (optional)", ok: false, fix: "npm install -g gitnexus"),
     ]
 
-    /// The snapshot for every window section. Overview shows the 1:00 PM sweep; Running shows one in flight.
+    /// The snapshot for every window section. Now shows the 1:00 PM sweep; Running shows one in flight.
     static func section(_ name: String, now: Date) -> Snapshot {
         let runs = [sweepAfternoon(now), sweepMorning(now)]
         // The next sweep comes from the same function the app uses, so the footer and the Schedule subtitle agree.
@@ -156,7 +156,7 @@ enum WindowFixtures {
             snap.run = sweepRunning(now)
             snap.running = true
         }
-        if name == "overview-dry-run" {
+        if name == "now-dry-run" {
             // The first sweep's dry run holds the lock. It is not the current run, so the run is nil.
             snap.run = nil
             snap.dryRunning = true

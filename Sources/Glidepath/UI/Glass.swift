@@ -14,8 +14,10 @@ enum VerdictLight {
 extension View {
     /// Glass card surface. `glassBlur` scales the blur: at 0 the tint is opaque. Adds a verdict light,
     /// a hairline edge and a specular highlight that follows the pointer.
-    func glassCard(radius: CGFloat = 20, verdict: VerdictLight = .none, held: Bool = false) -> some View {
-        modifier(GlassCard(radius: radius, verdict: verdict, held: held))
+    /// `piled` raises the tint, so a card under an open card does not show the text behind it.
+    func glassCard(radius: CGFloat = 20, verdict: VerdictLight = .none, held: Bool = false,
+                   piled: Bool = false) -> some View {
+        modifier(GlassCard(radius: radius, verdict: verdict, held: held, piled: piled))
     }
 }
 
@@ -23,6 +25,7 @@ private struct GlassCard: ViewModifier {
     let radius: CGFloat
     let verdict: VerdictLight
     let held: Bool
+    var piled = false
 
     @AppStorage("glassBlur") private var blur = 22.0
     @AppStorage("signalColour") private var signalKey = "amber"
@@ -74,7 +77,7 @@ private struct GlassCard: ViewModifier {
     private var blurFraction: Double { min(max(blur, 0), 40) / 40 }
 
     /// Opaque at blur 0, 0.66 (the prototype tint) at blur 40.
-    private var tintOpacity: Double { 1 - 0.34 * blurFraction }
+    private var tintOpacity: Double { piled ? max(1 - 0.34 * blurFraction, 0.94) : 1 - 0.34 * blurFraction }
 
     private var light: some View {
         let colour: Color
@@ -105,14 +108,18 @@ private struct VerdictGlow: View {
     @StateObject private var model = BreathModel()
 
     var body: some View {
-        Ellipse()
-            .fill(colour)
-            .frame(width: 150, height: 110)
-            .blur(radius: 44)
-            .opacity(held ? (model.breathing ? 0.42 : 0.08) : base)
-            .scaleEffect(held ? (model.breathing ? 1.1 : 0.85) : 1)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .offset(x: 50, y: -50)
+        // An overlay on a flexible view: the 150 x 110 light is taller than a closed card, and as a layout child it
+        // would make the whole surface that tall. Here it only paints, and the surface's clip keeps it inside.
+        Color.clear
+            .overlay(alignment: .topTrailing) {
+                Ellipse()
+                    .fill(colour)
+                    .frame(width: 150, height: 110)
+                    .blur(radius: 44)
+                    .opacity(held ? (model.breathing ? 0.42 : 0.08) : base)
+                    .scaleEffect(held ? (model.breathing ? 1.1 : 0.85) : 1)
+                    .offset(x: 50, y: -50)
+            }
             .onAppear(perform: breathe)
             .onChange(of: held) { _, _ in breathe() }
     }

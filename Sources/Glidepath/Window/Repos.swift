@@ -21,94 +21,109 @@ extension Posting {
     }
 }
 
-/// The Repos section (v1.2 mockup 7-repos): the configured repos in a 260 pt list, beside the selected repo's settings.
-/// Each control saves at once through `ConfigEditor`, then the store reloads. Invalid input writes nothing and shows
-/// its message in amber under the control it came from.
-/// Where keyboard focus sits in Repos: the list, or the detail (Return moves there).
-enum ReposFocus: Hashable { case list, detail }
-
+/// The Repos section (prototype `#rp`): the configured repos as one grouped list. Each row has its draft-PR control
+/// (Default, On, Off), saved at once through `ConfigEditor`. A row opens the repo's settings in a sheet.
 struct ReposView: View {
     @ObservedObject var store: Store
     @StateObject private var model = ReposModel()
-    @FocusState private var focus: ReposFocus?
 
     private var repos: [RepoConfig] { store.snap.config?.repos ?? [] }
 
-    /// The repo the detail shows: the selected one, or the first while none is selected or the selected one is gone.
+    /// The repo the sheet and the menu commands act on.
     private var selected: RepoConfig? {
-        repos.first { $0.slug == model.selectedSlug } ?? repos.first
+        repos.first { $0.slug == model.selectedSlug }
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            list
-                .frame(width: 260)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .overlay(alignment: .trailing) {
-                    Rectangle().fill(WinTheme.line).frame(width: 1)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: WinMetrics.s12) {
+                Text("Repos")
+                    .font(.system(size: 28, weight: .bold))
+                    .tracking(-0.8)
+                    .foregroundStyle(Gotham.fg)
+                Spacer(minLength: 0)
+                addButton
+            }
+            .padding(.bottom, WinMetrics.s16)
+            WinScroll {
+                VStack(alignment: .leading, spacing: WinMetrics.s16) {
+                    if repos.isEmpty {
+                        Text("No repos yet. Add one to start reviewing.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Gotham.mute)
+                    } else {
+                        group
+                    }
                 }
-            detail
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .focusable()
-                .focusEffectDisabled()
-                .focused($focus, equals: .detail)
+                .padding(.bottom, WinMetrics.canvasBottom)
+            }
         }
+        .padding(.horizontal, 26)
+        .padding(.top, WinMetrics.titlebarZone)
+        .padding(.bottom, 26)
         .sheet(isPresented: $model.addingRepo) {
             AddRepoSheet(store: store, model: model)
         }
+        .sheet(isPresented: $model.detailOpen) {
+            if let repo = selected {
+                VStack(spacing: 0) {
+                    HStack {
+                        Spacer()
+                        Button("Done") { model.detailOpen = false }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Gotham.fg)
+                            .padding(.horizontal, 14)
+                            .frame(height: 30)
+                            .background(Capsule().fill(Gotham.row))
+                            .keyboardShortcut(.cancelAction)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 16)
+                    RepoDetail(repo: repo, store: store, model: model, saved: model.saved)
+                }
+                .frame(width: 720, height: 640)
+                .background(Gotham.void)
+            }
+        }
         .onChange(of: model.addingRepo) { _, open in
             ShortcutContext.shared.repoSheetOpen = open
-            // The sheet took focus; when it closes the list has it again.
-            if !open { focus = .list }
         }
-        .onDisappear { ShortcutContext.shared.repoSheetOpen = false }
-        .onAppear { focus = .list }
-        .onChange(of: selected?.slug) { _ in ShortcutContext.shared.repoSelected = selected != nil }
-        .onDisappear { ShortcutContext.shared.repoSelected = false }
+        .onChange(of: model.detailOpen) { _, open in
+            ShortcutContext.shared.repoSelected = open
+        }
+        .onDisappear {
+            ShortcutContext.shared.repoSheetOpen = false
+            ShortcutContext.shared.repoSelected = false
+        }
         .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
             takeAction()
         }
-        .onKeyPress(phases: .down) { handleKey($0) }
-    }
-
-    // MARK: Keys and actions
-
-    /// Arrows, Home and End move the selection; Return moves focus to the detail; a letter jumps to a repo whose
-    /// name starts with the letters typed. Nothing fires while a text field has focus.
-    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        let mods = ShortcutModifiers(press.modifiers)
-        // ⌘E works from anywhere, the detail included, but not while a text field is being edited (⌘E is the field's
-        // then). Remove Repo is Edit > Delete.
-        if mods == [.command], press.characters == "e", !TextFocus.isEditing {
+        .onKeyPress(keys: ["e"], phases: .down) { press in
+            // ⌘E edits the rules of the repo the sheet shows, or of the first repo in the list.
+            guard press.modifiers == [.command], !TextFocus.isEditing else { return .ignored }
             WindowRouter.shared.deliver(.editRules, section: nil)
             return .handled
         }
-        guard !TextFocus.isEditing else { return .ignored }
-        // With no focus (after the add sheet, or a click elsewhere), the list takes the keys.
-        if focus == nil { focus = .list }
-        guard focus == .list else { return .ignored }
-        if press.key == .return, mods.isEmpty {
-            focus = .detail
-            return .handled
-        }
-        if let key = ListKey(press.key), let move = ListNav.move(key, mods) {
-            let current = repos.firstIndex { $0.slug == selected?.slug }
-            if let i = ListNav.move(move, from: current, count: repos.count), repos.indices.contains(i) {
-                model.select(repos[i].slug)
-            }
-            return .handled
-        }
-        if mods.subtracting(.shift).isEmpty, press.characters.count == 1, let ch = press.characters.first,
-           ch.isLetter || ch.isNumber {
-            let current = repos.firstIndex { $0.slug == selected?.slug }
-            if let i = ListNav.typeSelect(String(ch), titles: repos.map(\.slug), from: current) {
-                model.select(repos[i].slug)
-            }
-            return .handled
-        }
-        return .ignored
     }
 
+    // MARK: Header and actions
+
+    private var addButton: some View {
+        Button {
+            model.openAddRepo()
+        } label: {
+            Text("Add repo")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Gotham.fg)
+                .padding(.horizontal, 14)
+                .frame(height: 32)
+                .background(Capsule().fill(Gotham.row))
+                .overlay(Capsule().strokeBorder(Gotham.edge, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
 
     /// Add Repo, Find (the add sheet holds the repo search) and Review This Repo Now.
     private func takeAction() {
@@ -125,102 +140,119 @@ struct ReposView: View {
 
     // MARK: List
 
-    private var list: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Repos")
-                .font(.system(size: 24, weight: .bold))
-                .tracking(-0.4)
-                .foregroundStyle(WinTheme.text)
-                .frame(height: 32, alignment: .leading)
-                .padding(.horizontal, WinMetrics.s20)
-            ScrollViewReader { proxy in
-            WinScroll {
-                // The add link follows the last row, 4 below it, rather than pinning to the bottom.
-                VStack(spacing: 0) {
-                    ForEach(repos, id: \.slug) { repo in
-                        listRow(repo)
-                    }
-                    WinButton(title: "Add a repo…", style: .link) { model.openAddRepo() }
-                        .frame(height: 40, alignment: .leading)
-                        .padding(.top, WinMetrics.s4)
-                        .padding(.horizontal, WinMetrics.s20)
+    /// The grouped list: one row per repo, a hairline between rows.
+    private var group: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(repos.enumerated()), id: \.element.slug) { index, repo in
+                if index > 0 {
+                    Rectangle().fill(Gotham.edge).frame(height: 1)
                 }
-                .padding(.horizontal, WinMetrics.s12)
-                .padding(.bottom, WinMetrics.canvasBottom)
+                repoRow(repo)
             }
-            .frame(maxHeight: .infinity)
-            .onChange(of: selected?.slug) { _, slug in
-                if let slug { proxy.scrollTo(slug) }
-            }
-            }
-            .padding(.top, WinMetrics.s16)
-            .focusable()
-            .focusEffectDisabled()
-            .focused($focus, equals: .list)
         }
-        .padding(.top, WinMetrics.titlebarZone)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Gotham.row))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
     }
 
-    /// A 56 pt row: the avatar, the slug (13 medium) over the posting mode (12 faint). The selected row takes the
-    /// active fill.
-    private func listRow(_ repo: RepoConfig) -> some View {
-        let on = selected?.slug == repo.slug
-        return Button {
-            model.select(repo.slug)
-            focus = .list
-        } label: {
+    private func repoRow(_ repo: RepoConfig) -> some View {
+        let error = model.rowErrors[Self.draftsRow(repo.slug)]
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: WinMetrics.s12) {
-                Text(initials(repo.slug))
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(WinTheme.muted)
-                    .frame(width: 32, height: 32)
-                    // The selected row's fill is the avatar's colour in light theme, so its avatar takes the ground.
-                    .background(RoundedRectangle(cornerRadius: 8).fill(on ? WinTheme.ground : WinTheme.avatar))
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(repo.slug)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(WinTheme.text)
-                        .lineLimit(1)
-                        .frame(height: 20, alignment: .leading)
-                    Text(repo.posting.modeLabel)
-                        .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.faint)
-                        .frame(height: 16, alignment: .leading)
+                Button {
+                    model.select(repo.slug)
+                    model.detailOpen = true
+                } label: {
+                    HStack(spacing: WinMetrics.s12) {
+                        Text(initials(repo.slug))
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Gotham.mute)
+                            .frame(width: 34, height: 34)
+                            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Gotham.tint))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(repo.slug)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Gotham.fg)
+                                .lineLimit(1)
+                            HStack(spacing: 6) {
+                                Text("Draft PRs")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Gotham.mute)
+                                dots(repo.slug)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                draftSegments(repo)
             }
-            .padding(.horizontal, WinMetrics.s8)
-            .frame(height: 56)
-            .background(RoundedRectangle(cornerRadius: 10).fill(on ? (focus == .list ? WinTheme.active : WinTheme.active.opacity(0.5)) : Color.clear))
-            .contentShape(Rectangle())
+            if let error {
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Gotham.signal(signalKey))
+            }
         }
-        .buttonStyle(.plain)
-        .focusable(false)
-        .id(repo.slug)
+        .padding(.horizontal, WinMetrics.s16)
+        .padding(.vertical, WinMetrics.s12)
+        .frame(minHeight: 60)
     }
+
+    @AppStorage("signalColour") private var signalKey = "amber"
+
+    /// One dot per PR of the current run in this repo: silver for approved, signal for changes, hollow for the rest.
+    private func dots(_ slug: String) -> some View {
+        HStack(spacing: 4) {
+            ForEach(store.strips.filter { $0.repo == slug && !$0.draft }) { strip in
+                Circle()
+                    .fill(strip.verdict == .approve ? Gotham.approve : strip.verdict == .changes ? Gotham.signal(signalKey) : Gotham.skipped)
+                    .frame(width: 6, height: 6)
+            }
+        }
+    }
+
+    /// The draft-PR control: Default (with the global value), On, Off. Its value is the repo's `review_drafts`.
+    private func draftSegments(_ repo: RepoConfig) -> some View {
+        let global = store.snap.config?.reviewDrafts ?? false
+        let options: [(Bool?, String)] = [(nil, "Default (\(global ? "on" : "off"))"), (true, "On"), (false, "Off")]
+        return HStack(spacing: 2) {
+            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+                let on = repo.reviewDrafts == option.0
+                Button {
+                    setDrafts(repo, option.0)
+                } label: {
+                    Text(option.1)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(on ? Gotham.fg : Gotham.mute)
+                        .padding(.horizontal, 11)
+                        .frame(height: 26)
+                        .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(on ? Gotham.tint : Color.clear))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Gotham.row))
+        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
+        .fixedSize()
+    }
+
+    /// Saves one repo's draft setting through the same commit path as the detail's controls.
+    private func setDrafts(_ repo: RepoConfig, _ value: Bool?) {
+        guard repo.reviewDrafts != value else { return }
+        let slug = repo.slug
+        model.commit(Self.draftsRow(slug), store: store) { try ConfigEditor.setRepoReviewDrafts($0, slug: slug, value) }
+    }
+
+    /// The key a row's save error is kept under.
+    static func draftsRow(_ slug: String) -> String { "drafts|\(slug)" }
 
     /// Two letters for the avatar: the first of the owner and the first of the name, as "la" for lumen/api.
     private func initials(_ slug: String) -> String {
         slug.split(separator: "/").map { String($0.prefix(1)) }.joined().lowercased()
-    }
-
-    // MARK: Detail
-
-    @ViewBuilder
-    private var detail: some View {
-        if let repo = selected {
-            RepoDetail(repo: repo, store: store, model: model, saved: model.saved)
-        } else {
-            VStack(alignment: .leading, spacing: WinMetrics.s16) {
-                Text("No repos yet. Add one to start reviewing.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(WinTheme.muted)
-                WinButton(title: "Add a repo…", style: .outline) { model.openAddRepo() }
-            }
-            .padding(.top, WinMetrics.titlebarZone)
-            .padding(.leading, WinMetrics.canvasLeft)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
     }
 }
 
@@ -271,14 +303,14 @@ struct RepoDetail: View {
                     Text(repo.slug)
                         .font(.system(size: 24, weight: .bold))
                         .tracking(-0.4)
-                        .foregroundStyle(WinTheme.text)
+                        .foregroundStyle(Gotham.fg)
                         .frame(height: 32, alignment: .leading)
                     SavedStamp(shown: model.saved.shown)
                 }
                 if !subline.isEmpty {
                     Text(subline)
                         .font(.system(size: 12))
-                        .foregroundStyle(WinTheme.faint)
+                        .foregroundStyle(Gotham.mute)
                         .monospacedDigit()
                         .frame(height: 16, alignment: .leading)
                 }
@@ -315,7 +347,7 @@ struct RepoDetail: View {
             }
             previewText(repo.posting.preview)
                 .font(.system(size: 12))
-                .foregroundStyle(WinTheme.muted)
+                .foregroundStyle(Gotham.mute)
                 .padding(.horizontal, WinMetrics.s12)
                 .padding(.vertical, 10)
                 .fixedSize(horizontal: false, vertical: true)
@@ -427,7 +459,7 @@ struct RepoDetail: View {
             HStack(spacing: WinMetrics.s12) {
                 Text(tilde(path))
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(repo.rules == nil ? WinTheme.faint : WinTheme.text)
+                    .foregroundStyle(repo.rules == nil ? Gotham.mute : Gotham.fg)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .padding(.horizontal, WinMetrics.s12)
@@ -477,7 +509,7 @@ struct RepoDetail: View {
                 }
                 Text("Refresh the GitNexus index before each sweep")
                     .font(.system(size: 13))
-                    .foregroundStyle(WinTheme.text)
+                    .foregroundStyle(Gotham.fg)
             }
             .frame(height: 32)
         }
@@ -546,7 +578,7 @@ struct RepoDetail: View {
             } label: {
                 Text("Note: \(repo.flagNote)")
                     .font(.system(size: 12))
-                    .foregroundStyle(WinTheme.faint)
+                    .foregroundStyle(Gotham.mute)
             }
             .buttonStyle(.plain)
         }
@@ -576,11 +608,11 @@ struct RepoDetail: View {
         HStack(spacing: 6) {
             Text(text)
                 .font(.system(size: 12, design: mono ? .monospaced : .default))
-                .foregroundStyle(WinTheme.text)
+                .foregroundStyle(Gotham.fg)
             Button(action: remove) {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(WinTheme.faint)
+                    .foregroundStyle(Gotham.mute)
             }
             .buttonStyle(.plain)
         }
@@ -610,7 +642,7 @@ struct AddRepoSheet: View {
         VStack(alignment: .leading, spacing: WinMetrics.s16) {
             Text("Add repos")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(WinTheme.text)
+                .foregroundStyle(Gotham.fg)
             RepoPicker(catalog: catalog, search: $model.pickerSearch, selected: configured.union(model.picked),
                        locked: configured, toggle: toggle)
                 .frame(height: 300)
@@ -623,7 +655,7 @@ struct AddRepoSheet: View {
             VStack(alignment: .leading, spacing: WinMetrics.s8) {
                 Text("Or type owner/name")
                     .font(.system(size: 12))
-                    .foregroundStyle(WinTheme.faint)
+                    .foregroundStyle(Gotham.mute)
                 HStack(spacing: WinMetrics.s8) {
                     TextField("owner/name", text: $model.addText)
                         .winField()
@@ -679,6 +711,8 @@ struct AddRepoSheet: View {
 @MainActor
 final class ReposModel: ObservableObject {
     @Published var selectedSlug: String?
+    /// The settings sheet for `selectedSlug` is open.
+    @Published var detailOpen = false
     /// The message for each control's row, kept until that row saves.
     @Published var rowErrors: [String: String] = [:]
     /// True for 2 s after a successful save.
@@ -741,7 +775,12 @@ final class ReposModel: ObservableObject {
 
     /// Removes a repo, then selects the first one left.
     func remove(_ slug: String, store: Store) {
-        commit("remove", store: store, then: { [weak self] ok in if ok { self?.selectedSlug = nil } }) {
+        commit("remove", store: store, then: { [weak self] ok in
+            if ok {
+                self?.selectedSlug = nil
+                self?.detailOpen = false
+            }
+        }) {
             try ConfigEditor.removeRepo($0, slug: slug)
         }
     }

@@ -44,6 +44,8 @@ struct Strip: Identifiable, Equatable {
     /// "size" on a PR skipped for size: its row offers Review.
     var skipReason: String? = nil
     var changedLines: Int? = nil
+    /// GitHub lists the PR as a draft. Not the same as `draft`, which marks a held review on disk.
+    var isDraftPR = false
 
     var id: String { "\(repo)#\(number)" }
 }
@@ -154,6 +156,10 @@ final class Store: ObservableObject {
     /// Draft posts and discards running from this app, and the last error of each.
     @Published private(set) var draftBusy: [String: DraftAction] = [:]
     @Published private(set) var draftErrors: [String: String] = [:]
+    /// Tokens so far in the live sweep's session, read from its transcript every 2 s while the sweep runs. Zero otherwise.
+    @Published private(set) var liveTokens: (total: Int, byPR: [Int: Int]) = (0, [:])
+    private var liveTokenTask: Task<Void, Never>?
+    private var liveTokenSession: String?
 
     let paths = Paths()
     let profileMotion: ProfileMotion
@@ -326,7 +332,35 @@ final class Store: ObservableObject {
         }
         snap = s
         reconcileJob()
+        syncLiveTokens()
         hovered = hovered.flatMap { h in Store.strips(from: s.run).contains { $0.id == h } ? h : nil }
+    }
+
+    /// Starts the token poller once per session while a sweep runs, and stops it when the sweep ends. The transcript is
+    /// read off the main actor; the totals are published on it.
+    private func syncLiveTokens() {
+        guard !isFixture, snap.running, let run = snap.run, let session = run.sessionId, let cwd = run.sessionCwd else {
+            liveTokenTask?.cancel()
+            liveTokenTask = nil
+            liveTokenSession = nil
+            if liveTokens.total != 0 || !liveTokens.byPR.isEmpty { liveTokens = (0, [:]) }
+            return
+        }
+        guard liveTokenSession != session else { return }
+        liveTokenTask?.cancel()
+        liveTokenSession = session
+        let paths = self.paths
+        let kept = Set(run.repos.flatMap { $0.prs.map(\.n) })
+        liveTokenTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let usage = await Task.detached(priority: .utility) {
+                    Transcript.usage(paths: paths, cwd: cwd, sessionId: session, keptPRs: kept)
+                }.value
+                guard !Task.isCancelled else { return }
+                self?.liveTokens = (usage.total, usage.byPR)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
     }
 
     /// The lock is released after the run file is written, and releasing it writes nothing the watcher sees. So while a
@@ -697,7 +731,7 @@ final class Store: ObservableObject {
                 Strip(repo: repo.slug, number: pr.n, author: pr.author, title: pr.title, reason: pr.reason,
                       stage: pr.stage.rank + 1, active: pr.active, verdict: pr.verdict, tokens: pr.tokens,
                       carriedFrom: pr.carriedFrom, draft: pr.draft ?? false, flagged: pr.flagged ?? false,
-                      skipReason: pr.skipReason, changedLines: pr.changedLines)
+                      skipReason: pr.skipReason, changedLines: pr.changedLines, isDraftPR: pr.isDraftPR ?? false)
             }
         }
     }

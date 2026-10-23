@@ -1,193 +1,254 @@
 import SwiftUI
 
-extension ScheduleDays {
-    /// The segment this setting shows under Days.
-    fileprivate var choice: ScheduleView.DayChoice {
-        switch self {
-        case .weekdays: return .weekdays
-        case .all: return .everyDay
-        case .custom: return .custom
-        }
-    }
-}
-
-/// The Schedule section (v1.2 mockup 8-schedule): a 24 h day strip with the sweep times as pins, the times as chips,
-/// the days, the per-sweep limits and this week's counts. Each change saves at once through `ScheduleEditor`.
+/// The Schedule section (1.3 prototype `.sched`): a 24 h dial for the sweep window and interval, presets, day pills,
+/// the numbers under them, the next eight sweeps, and the pause control. Changes save 0.4 s after the last one through
+/// `ScheduleEditor`, which reinstalls the launchd job.
 struct ScheduleView: View {
-    /// The Days segments.
-    enum DayChoice: Hashable { case weekdays, everyDay, custom }
-
     @ObservedObject var store: Store
     @StateObject private var model = ScheduleModel()
-    @FocusState private var stripFocused: Bool
-    @Environment(\.undoManager) private var undoManager
+    @AppStorage("signalColour") private var signalKey = "amber"
+    @AppStorage("motion") private var motion = "full"
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var config: Config? { store.snap.config }
+    private var reduced: Bool { Motion.reduced(reduceMotion) }
+    private var signal: Color { Gotham.signal(signalKey) }
+    private static let letters = ["M", "T", "W", "T", "F", "S", "S"]
 
     var body: some View {
-        WinScroll {
+        ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                titleRow
-                dayStrip
-                    .padding(.top, WinMetrics.s24)
-                timesSection
-                daysSection
-                limitsSection
-                weekSection
+                header
+                HStack(alignment: .top, spacing: 34) {
+                    dialColumn
+                    sideColumn
+                }
+                .padding(.top, 24)
+                upcomingSection
+                    .padding(.top, 32)
             }
-            .padding(.bottom, WinMetrics.canvasBottom)
+            .padding(.horizontal, 40)
+            .padding(.vertical, 28)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.top, WinMetrics.titlebarZone)
-        .padding(.leading, WinMetrics.canvasLeft)
-        .padding(.trailing, WinMetrics.canvasRight)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .sheet(isPresented: $model.addingTime) { addTimeSheet }
-        .onChange(of: model.addingTime) { _, open in ShortcutContext.shared.timeSheetOpen = open }
         .onAppear {
-            model.refreshWeek(store)
-            model.undoManager = undoManager
             ScheduleModel.live = model
+            model.sync(store.snap.config)
         }
-        .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
-            takeAction()
-        }
-        .onChange(of: model.selectedPin) { _, pin in ShortcutContext.shared.pinSelected = pin != nil }
-        .onDisappear {
-            // Leaving the section saves a pending nudge rather than dropping it.
-            model.flush(store)
-            ShortcutContext.shared.pinSelected = false
-            ShortcutContext.shared.timeSheetOpen = false
-        }
+        .onChange(of: store.snap.schedule) { _, _ in model.sync(store.snap.config) }
+        .onChange(of: store.snap.config?.days) { _, _ in model.sync(store.snap.config) }
+        .onDisappear { model.flush(store) }
     }
 
-    // MARK: Keys and actions
+    // MARK: Header
 
-    /// On the day strip, the table's Schedule keys: ← → select a pin, ↑ ↓ or ⌥← ⌥→ move it 15 min, ⇧ moves it an hour.
-    /// Remove Time and Add Time come from the menus; the Edit menu's undo does the rest.
-    private func handleKey(_ press: KeyPress) -> KeyPress.Result {
-        guard !TextFocus.isEditing, let key = ShortcutKey.from(press),
-              let action = Shortcuts.action(key: key, modifiers: ShortcutModifiers(press.modifiers), scope: .schedule)
-        else { return .ignored }
-        switch action {
-        case .selectPrevPin: model.select(-1, times: displayed)
-        case .selectNextPin: model.select(1, times: displayed)
-        default:
-            guard let minutes = action.pinMinutes else { return .ignored }
-            model.nudge(store, by: minutes)
-        }
-        return .handled
-    }
-
-    /// Remove Time (Edit > Delete) and Add Time (File > New) arrive here as pending actions.
-    private func takeAction() {
-        guard let action = WindowRouter.shared.take([.deletePin, .addTime]) else { return }
-        switch action {
-        case .deletePin: model.deletePin(store)
-        case .addTime: model.addingTime = true
-        default: break
-        }
-    }
-
-    /// The pins as the strip shows them, with a pin mid-nudge already at its new time.
-    private var displayed: [ScheduleTime] { model.displayedTimes(config) }
-
-    // MARK: Title row
-
-    private var titleRow: some View {
-        HStack(alignment: .top, spacing: WinMetrics.s16) {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(alignment: .firstTextBaseline, spacing: WinMetrics.s12) {
-                    Text("Schedule")
-                        .font(.system(size: 24, weight: .bold))
-                        .tracking(-0.4)
-                        .foregroundStyle(WinTheme.text)
-                        .frame(height: 32, alignment: .leading)
-                    SavedStamp(shown: model.saved.shown)
+    private var header: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            let next = DialUpcoming.next(1, after: context.date, times: model.times, days: model.scheduleDays).first
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text("Schedule")
+                            .font(.system(size: 24, weight: .semibold))
+                            .tracking(-0.4)
+                            .foregroundStyle(Gotham.fg)
+                        SavedNote(saved: model.saved)
+                    }
+                    Text(status(now: context.date, next: next))
+                        .monospacedDigit()
+                        .cap()
                 }
-                Text(subline)
-                    .font(.system(size: 13))
-                    .foregroundStyle(WinTheme.muted)
-                    .monospacedDigit()
-                    .frame(height: 20, alignment: .leading)
+                Spacer(minLength: 16)
+                pauseControl(now: context.date)
             }
-            Spacer(minLength: WinMetrics.s16)
-            HStack(spacing: WinMetrics.s12) {
-                Text("Pause sweeps")
-                    .font(.system(size: 13))
-                    .foregroundStyle(WinTheme.muted)
-                WinToggle(isOn: store.snap.paused) { store.togglePause() }
-            }
-            .frame(height: 32)
         }
     }
 
-    /// "Three sweeps every weekday. Next at 7:00 PM, in 2 h 41 min." Each part is left out when it is unknown.
-    private var subline: String {
-        var parts: [String] = []
-        if let config {
-            let count = config.schedule.count
-            let words = NumberFormatter.spelledOut(count)
-            let days: String
-            switch config.days {
-            case .weekdays: days = "every weekday"
-            case .all: days = "every day"
-            case .custom: days = "on " + config.days.active.map { $0.name.capitalized }.joined(separator: ", ")
-            }
-            parts.append("\(words) sweeps \(days).")
-        }
-        if let next = store.snap.nextRun {
-            parts.append("Next at \(HeaderCopy.clock(next)), in \(HeaderCopy.untilText(next, store.snap.now ?? Date())).")
-        }
-        return parts.joined(separator: " ")
+    private func status(now: Date, next: Date?) -> String {
+        if store.snap.paused { return "Paused" }
+        guard let next else { return "No sweeps scheduled" }
+        let minutes = Int(next.timeIntervalSince(now) / 60)
+        return "Next \(DialFormat.clock(next)) · in \(DialFormat.interval(minutes: minutes))"
     }
 
-    // MARK: Day strip
-
-    private var dayStrip: some View {
-        DayStrip(
-            times: displayed,
-            now: store.snap.now,
-            onAdd: { minute in model.addTime(store, hour: minute / 60, minute: minute % 60) },
-            onMove: { time, minute in model.movePin(store, time, hour: minute / 60, minute: minute % 60) },
-            selected: model.selectedPin,
-            focused: stripFocused
-        )
-        .focusable()
-        .focusEffectDisabled()
-        .focused($stripFocused)
-        .onKeyPress(phases: .down) { handleKey($0) }
-    }
-
-    // MARK: Sections
-
-    private var timesSection: some View {
-        SettingRow(title: "Sweep times", detail: "Or click the day above.", error: model.rowErrors["time"]) {
-            HStack(spacing: WinMetrics.s8) {
-                ForEach(config?.schedule ?? [], id: \.self) { time in
-                    chip(time.clock) { model.removeTime(store, time) }
+    /// Running, Pause 1 h, Until tomorrow. The segment that matches the marker file is filled.
+    private func pauseControl(now: Date) -> some View {
+        let paused = store.snap.paused
+        let selected: SchedulePause?
+        if !paused {
+            selected = .running
+        } else if let until = Pause.until(store.paths) {
+            selected = until.timeIntervalSince(now) <= 3700 ? .hour : .tomorrow
+        } else {
+            selected = nil
+        }
+        return HStack(spacing: 2) {
+            ForEach(SchedulePause.allCases, id: \.self) { choice in
+                let on = selected == choice
+                Button {
+                    model.setPause(choice, store: store, now: Date())
+                } label: {
+                    Text(choice.title)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(on ? Color(hex: "060607") : Gotham.mute)
+                        .padding(.horizontal, 12)
+                        .frame(height: 26)
+                        .background(Capsule().fill(on ? Gotham.fg : Color.clear))
+                        .contentShape(Capsule())
                 }
-                WinButton(title: "Add time…", style: .link) { model.addingTime = true }
-                    .padding(.leading, WinMetrics.s4)
+                .buttonStyle(.plain)
             }
+        }
+        .padding(3)
+        .background(Capsule().fill(Gotham.row))
+        .overlay(Capsule().strokeBorder(Gotham.edge, lineWidth: 1))
+    }
+
+    // MARK: Dial column
+
+    private var dialColumn: some View {
+        VStack(spacing: 10) {
+            DialView(start: Double(model.window.start), span: Double(model.window.span),
+                     every: Double(model.window.every), model: model, store: store,
+                     custom: model.custom, reduced: reduced, signal: signal)
+            HStack(spacing: 8) {
+                roundButton("−") { model.stepEvery(1, store: store) }
+                Spacer(minLength: 4)
+                Text(model.custom == nil ? "Drag the ends · scroll the centre" : "Custom times · drag to replace")
+                    .cap()
+                    .multilineTextAlignment(.center)
+                Spacer(minLength: 4)
+                roundButton("+") { model.stepEvery(-1, store: store) }
+            }
+            .frame(width: DialView.side)
+            if let error = model.error {
+                Text(error)
+                    .font(.system(size: 12))
+                    .foregroundStyle(signal)
+                    .frame(width: DialView.side, alignment: .leading)
+            }
+        }
+        .frame(width: DialView.side)
+    }
+
+    private func roundButton(_ glyph: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(glyph)
+                .font(.system(size: 14))
+                .foregroundStyle(Gotham.fg)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(Gotham.row))
+                .overlay(Circle().strokeBorder(Gotham.edge, lineWidth: 1))
+                .contentShape(Circle())
+        }
+        .buttonStyle(PressStyle(reduced: reduced, scale: 0.9))
+    }
+
+    // MARK: Side column
+
+    private var sideColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Presets").cap()
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(DialPreset.all, id: \.key) { preset in presetButton(preset) }
+            }
+            .padding(.top, 12)
+            Text("Days").cap().padding(.top, 26)
+            dayPills.padding(.top, 12)
+            stats.padding(.top, 26)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func presetButton(_ preset: DialPreset) -> some View {
+        let pressed = model.matches(preset)
+        return Button {
+            model.apply(preset, store: store, animated: !reduced)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(preset.name)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Gotham.fg)
+                Text(preset.detail).cap()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Gotham.row))
+            .overlay(RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(pressed ? Gotham.fg : Gotham.edge, lineWidth: pressed ? 1.5 : 1))
+            .shadow(color: pressed ? .white.opacity(0.3) : .clear, radius: 12)
+            .contentShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(PressStyle(reduced: reduced, scale: 0.98))
+    }
+
+    private var dayPills: some View {
+        HStack(spacing: 6) {
+            ForEach(Weekday.allCases, id: \.self) { day in
+                let on = model.days.contains(day)
+                Button {
+                    model.toggleDay(day, store: store, animated: !reduced)
+                } label: {
+                    Text(Self.letters[day.rawValue])
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(on ? Color(hex: "060607") : Gotham.mute)
+                        .frame(width: 35, height: 35)
+                        .background(Circle().fill(on ? Gotham.fg : Gotham.row))
+                        .overlay(Circle().strokeBorder(Gotham.edge, lineWidth: 1))
+                        .shadow(color: on ? .white.opacity(0.35) : .clear, radius: 9)
+                        .springy(value: on)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(PressStyle(reduced: reduced, scale: 0.9))
+                .accessibilityLabel(day.name.capitalized)
+            }
+        }
+        .modifier(ShakeEffect(animatableData: model.shake))
+    }
+
+    /// Sweeps a day, a week, and the month's tokens estimate. Over the budget (when one is set) the last one turns
+    /// into the signal colour.
+    private var stats: some View {
+        let perDay = model.times.count
+        let perWeek = perDay * model.days.count
+        let tokens = DialStats.tokensPerMonth(perWeek: perWeek)
+        let over = DialStats.overBudget(tokens: tokens, budget: store.snap.config?.monthlyTokens ?? 0)
+        return HStack(alignment: .top, spacing: 26) {
+            stat("\(perDay)", "Sweeps a day", warn: false)
+            stat("\(perWeek)", "A week", warn: false)
+            stat("~" + DialFormat.compact(tokens), over ? "Over budget" : "Tokens a month", warn: over)
         }
     }
 
-    private var daysSection: some View {
-        SettingRow(title: "Days", detail: "Sweeps skip the other days.", error: model.rowErrors["days"]) {
-            VStack(alignment: .leading, spacing: WinMetrics.s12) {
-                WinSegmented(
-                    segments: [
-                        .init(value: DayChoice.weekdays, title: "Weekdays"),
-                        .init(value: DayChoice.everyDay, title: "Every day"),
-                        .init(value: DayChoice.custom, title: "Custom…"),
-                    ],
-                    selected: config?.days.choice ?? .weekdays,
-                    onSelect: { model.chooseDays(store, $0) }
-                )
-                if config?.days.choice == .custom {
-                    HStack(spacing: WinMetrics.s4) {
-                        ForEach(Weekday.allCases, id: \.self) { day in
-                            dayToggle(day)
+    private func stat(_ value: String, _ label: String, warn: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(Gotham.numeral(26))
+                .monospacedDigit()
+                .foregroundStyle(warn ? signal : Gotham.fg)
+            Text(label)
+                .cap()
+                .foregroundStyle(warn ? signal : Gotham.mute)
+        }
+    }
+
+    // MARK: Upcoming
+
+    private var upcomingSection: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            let dates = DialUpcoming.next(8, after: context.date, times: model.times, days: model.scheduleDays)
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Upcoming").cap()
+                if dates.isEmpty {
+                    Text("No sweeps scheduled. Pick at least one day.").cap()
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(alignment: .top, spacing: 0) {
+                            ForEach(Array(dates.enumerated()), id: \.offset) { index, date in
+                                upcomingTick(date, first: index == 0, now: context.date)
+                            }
+                        }
+                        .background(alignment: .topLeading) {
+                            Rectangle().fill(Gotham.edge).frame(height: 1).padding(.top, 4)
                         }
                     }
                 }
@@ -195,227 +256,446 @@ struct ScheduleView: View {
         }
     }
 
-    /// A day toggle: 32 tall, the active fill when the day sweeps.
-    private func dayToggle(_ day: Weekday) -> some View {
-        let on = config?.days.active.contains(day) ?? false
-        return Button {
-            model.toggleDay(store, day)
-        } label: {
-            Text(day.name.capitalized)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(on ? WinTheme.text : WinTheme.faint)
-                .frame(width: 44, height: 32)
-                .background(RoundedRectangle(cornerRadius: 8).fill(on ? WinTheme.active : Color.clear))
-                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(on ? WinTheme.segRing : WinTheme.control, lineWidth: 1))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var limitsSection: some View {
-        SettingRow(title: "Limits per sweep", detail: "Keep the token bill predictable.", error: model.rowErrors["limits"]) {
-            HStack(alignment: .center, spacing: WinMetrics.s24) {
-                stepper("PRs", value: config?.limits.maxPRsPerRun ?? 0, step: 1, low: 1, high: nil) { prs in
-                    model.setLimits(store, prs: prs, lines: config?.limits.maxChangedLines ?? 0)
-                }
-                stepper("Lines per PR", value: config?.limits.maxChangedLines ?? 0, step: 500, low: 500,
-                        high: ScheduleEditor.maxLinesPerPR) { lines in
-                    model.setLimits(store, prs: config?.limits.maxPRsPerRun ?? 0, lines: lines)
-                }
-            }
-        }
-    }
-
-    /// A stepper (base.css `.stp`): the label, then a 32 pt box with the value and − and + cells.
-    private func stepper(_ label: String, value: Int, step: Int, low: Int, high: Int?,
-                         onChange: @escaping (Int) -> Void) -> some View {
-        HStack(spacing: WinMetrics.s8) {
-            Text(label)
-                .font(.system(size: 13))
-                .foregroundStyle(WinTheme.muted)
-            HStack(spacing: 0) {
-                Text(value.formatted(.number))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(WinTheme.text)
-                    .monospacedDigit()
-                    .frame(minWidth: 56, alignment: .trailing)
-                    .padding(.horizontal, WinMetrics.s12)
-                stepCell("−") { onChange(max(low, value - step)) }
-                stepCell("+") { onChange(min(high ?? Int.max, value + step)) }
-            }
-            .frame(height: 32)
-            .background(RoundedRectangle(cornerRadius: 8).fill(WinTheme.surface))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(WinTheme.control, lineWidth: 1))
-        }
-    }
-
-    private func stepCell(_ glyph: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(glyph)
-                .font(.system(size: 13))
-                .foregroundStyle(WinTheme.muted)
-                .frame(width: 28, height: 32)
-                .overlay(alignment: .leading) {
-                    Rectangle().fill(WinTheme.control).frame(width: 1)
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var weekSection: some View {
-        SettingRow(title: "This week", detail: "Since Monday.", error: nil) {
-            HStack(alignment: .top, spacing: WinMetrics.s32) {
-                kpi(model.week.reviews, "reviews")
-                kpi(model.week.needChanges, "need changes")
-                kpi(model.week.tokens, "tokens", compact: true)
-            }
-        }
-    }
-
-    private func kpi(_ value: Int, _ label: String, compact: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(compact ? compactTokens(value) : value.formatted(.number))
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundStyle(WinTheme.text)
+    private func upcomingTick(_ date: Date, first: Bool, now: Date) -> some View {
+        VStack(spacing: 7) {
+            Circle()
+                .fill(first ? Gotham.fg : Gotham.void)
+                .overlay(Circle().strokeBorder(first ? Color.clear : Gotham.mute, lineWidth: 1.5))
+                .frame(width: 9, height: 9)
+                .shadow(color: first ? .white.opacity(0.8) : .clear, radius: 6)
+            Text(DialFormat.clock(date))
+                .font(.system(size: 17, weight: .light))
                 .monospacedDigit()
-                .frame(height: 32, alignment: .leading)
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundStyle(WinTheme.faint)
-                .frame(height: 16, alignment: .leading)
+                .foregroundStyle(Gotham.fg)
+            Text(Calendar.current.isDate(date, inSameDayAs: now) ? "Today" : date.formatted(.dateTime.weekday(.abbreviated)))
+                .cap()
         }
-    }
-
-    /// A chip (base.css `.chip`): 28 tall, raised fill, a × that removes it.
-    private func chip(_ text: String, remove: @escaping () -> Void) -> some View {
-        HStack(spacing: 6) {
-            Text(text)
-                .font(.system(size: 12))
-                .foregroundStyle(WinTheme.text)
-                .monospacedDigit()
-            Button(action: remove) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(WinTheme.faint)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, WinMetrics.s12)
-        .frame(height: 28)
-        .background(Capsule().fill(WinTheme.raised))
-    }
-
-    // MARK: Add time sheet
-
-    private var addTimeSheet: some View {
-        VStack(alignment: .leading, spacing: WinMetrics.s16) {
-            Text("Add a sweep time")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(WinTheme.text)
-            DatePicker("Time", selection: $model.newTime, displayedComponents: .hourAndMinute)
-                .labelsHidden()
-                .datePickerStyle(.field)
-            if let error = model.rowErrors["time"] {
-                Text(error)
-                    .font(.system(size: 12))
-                    .foregroundStyle(WinTheme.amberInk)
-            }
-            HStack {
-                Spacer()
-                WinButton(title: "Cancel", style: .outline, small: true) { model.addingTime = false }
-                WinButton(title: "Add", style: .primary, small: true) { model.addFromSheet(store) }
-            }
-        }
-        .padding(WinMetrics.s24)
-        .frame(width: 320)
+        .frame(width: 72)
     }
 }
 
-/// The Schedule section's state: the day's drag, the sheet's time, this week's counts, and the Saved stamp. Each
-/// change goes through `commit`, which saves the config and reinstalls the job, or writes nothing and shows a message.
+// MARK: - Pieces
+
+/// The pause segments.
+enum SchedulePause: CaseIterable {
+    case running, hour, tomorrow
+
+    var title: String {
+        switch self {
+        case .running: return "Running"
+        case .hour: return "Pause 1 h"
+        case .tomorrow: return "Until tomorrow"
+        }
+    }
+}
+
+/// Where a drag on the dial began.
+enum DialHit: Equatable { case none, start, end, centre }
+
+/// The "Saved" stamp. Observes `SavedFlash` directly, since the model does not forward its changes.
+private struct SavedNote: View {
+    @ObservedObject var saved: SavedFlash
+
+    var body: some View {
+        Text("Saved")
+            .cap()
+            .opacity(saved.shown ? 1 : 0)
+    }
+}
+
+/// Press feedback for the dial's buttons. The scale is skipped under reduced motion.
+private struct PressStyle: ButtonStyle {
+    var reduced: Bool
+    var scale: CGFloat
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1)
+            .animation(reduced ? nil : .easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
+/// A horizontal shake for a refused change. `animatableData` counts shakes; whole numbers are at rest.
+private struct ShakeEffect: GeometryEffect {
+    var animatableData: CGFloat
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(CGAffineTransform(translationX: 7 * sin(animatableData * .pi * 4), y: 0))
+    }
+}
+
+/// Keys: the knobs and the centre are focusable. Focus enlarges the knob.
+private enum DialFocus: Hashable { case start, end, centre }
+
+/// A scroll-wheel probe: a local monitor that takes scroll events over the dial's centre and passes their steps on.
+/// It takes no clicks (`hitTest` is nil), so the drag gesture keeps them.
+private struct ScrollProbe: NSViewRepresentable {
+    let centre: CGPoint
+    let radius: CGFloat
+    let onStep: (Int) -> Void
+
+    func makeNSView(context: Context) -> ProbeView { ProbeView() }
+
+    func updateNSView(_ view: ProbeView, context: Context) {
+        view.centre = centre
+        view.radius = radius
+        view.onStep = onStep
+    }
+
+    final class ProbeView: NSView {
+        var centre = CGPoint.zero
+        var radius: CGFloat = 0
+        var onStep: ((Int) -> Void)?
+        private var monitor: Any?
+        private var accumulated: CGFloat = 0
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            removeMonitor()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self, event.window === self.window else { return event }
+                let p = self.convert(event.locationInWindow, from: nil)
+                guard hypot(p.x - self.centre.x, p.y - self.centre.y) <= self.radius else { return event }
+                self.accumulated += event.scrollingDeltaY
+                if abs(self.accumulated) >= 8 {
+                    // Scrolling up (negative delta) lengthens the interval, as on the prototype.
+                    self.onStep?(self.accumulated < 0 ? 1 : -1)
+                    self.accumulated = 0
+                }
+                return nil
+            }
+        }
+
+        private func removeMonitor() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+        }
+
+        deinit { removeMonitor() }
+    }
+}
+
+/// The dial. Animatable over the window's start, span and interval, so a preset tweens through `withAnimation`.
+/// Drawn with Canvas in a 348-unit space scaled to `side`, midnight at the top.
+private struct DialView: View, Animatable {
+    static let side: CGFloat = 300
+
+    var start: Double
+    var span: Double
+    var every: Double
+    let model: ScheduleModel
+    let store: Store
+    let custom: [ScheduleTime]?
+    let reduced: Bool
+    let signal: Color
+    @FocusState private var focus: DialFocus?
+
+    init(start: Double, span: Double, every: Double, model: ScheduleModel, store: Store,
+         custom: [ScheduleTime]?, reduced: Bool, signal: Color) {
+        self.start = start
+        self.span = span
+        self.every = every
+        self.model = model
+        self.store = store
+        self.custom = custom
+        self.reduced = reduced
+        self.signal = signal
+    }
+
+    var animatableData: AnimatablePair<Double, AnimatablePair<Double, Double>> {
+        get { AnimatablePair(start, AnimatablePair(span, every)) }
+        set {
+            start = newValue.first
+            span = newValue.second.first
+            every = newValue.second.second
+        }
+    }
+
+    private var k: CGFloat { Self.side / 348 }
+    private var centre: CGPoint { CGPoint(x: Self.side / 2, y: Self.side / 2) }
+    private var full: Bool { span >= 1440 }
+    private var endMinute: Double { start + span }
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: reduced ? 30 : 1.0 / 30)) { context in
+            ZStack {
+                Canvas { canvas, _ in
+                    draw(&canvas, now: context.date)
+                }
+                if custom == nil {
+                    focusTarget(.start, at: point(start, 128), size: 28 * k)
+                    focusTarget(.end, at: point(endMinute, 128), size: 28 * k)
+                }
+                focusTarget(.centre, at: centre, size: 128 * k)
+            }
+            .frame(width: Self.side, height: Self.side)
+            .contentShape(Rectangle())
+            .gesture(drag)
+            .background(ScrollProbe(centre: centre, radius: 64 * k) { step in
+                model.stepEvery(step, store: store)
+            })
+        }
+        .frame(width: Self.side, height: Self.side)
+    }
+
+    // MARK: Geometry
+
+    /// The point at `minute` on the ring of radius `r` (348-unit space).
+    private func point(_ minute: Double, _ r: CGFloat) -> CGPoint {
+        let a = minute / 1440 * 2 * Double.pi - Double.pi / 2
+        return CGPoint(x: centre.x + r * k * CGFloat(cos(a)), y: centre.y + r * k * CGFloat(sin(a)))
+    }
+
+    private func circle(_ p: CGPoint, _ r: CGFloat) -> Path {
+        Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r))
+    }
+
+    /// The arc from start to end, sampled every 5 minutes so it follows the ring exactly.
+    private func arcPath(_ r: CGFloat) -> Path {
+        var path = Path()
+        let steps = max(2, Int(span / 5))
+        for i in 0...steps {
+            let p = point(start + span * Double(i) / Double(steps), r)
+            if i == 0 { path.move(to: p) } else { path.addLine(to: p) }
+        }
+        return path
+    }
+
+    /// The minute of the day of the next sweep, when it is today.
+    private func nextMinuteToday(_ now: Date) -> Int? {
+        guard let next = DialUpcoming.next(1, after: now, times: model.times, days: model.scheduleDays).first,
+              Calendar.current.isDate(next, inSameDayAs: now) else { return nil }
+        let c = Calendar.current.dateComponents([.hour, .minute], from: next)
+        return (c.hour ?? 0) * 60 + (c.minute ?? 0)
+    }
+
+    // MARK: Drawing
+
+    private func draw(_ c: inout GraphicsContext, now: Date) {
+        let w = 18 * k
+        // Base ring.
+        c.stroke(circle(centre, 128 * k), with: .color(Gotham.row), lineWidth: w)
+
+        if custom == nil {
+            // Glowing arc, from start to end (the whole ring for a whole day).
+            let arc = full ? circle(centre, 128 * k) : arcPath(128)
+            var glow = c
+            glow.addFilter(.blur(radius: 6 * k))
+            glow.stroke(arc, with: .color(Gotham.fg.opacity(0.35)), style: StrokeStyle(lineWidth: w, lineCap: .round))
+            c.stroke(arc, with: .color(Gotham.fg), style: StrokeStyle(lineWidth: w, lineCap: .round))
+        }
+
+        // Ticks every hour, labels at 00, 06, 12, 18.
+        for h in 0..<24 {
+            let major = h % 6 == 0
+            var tick = Path()
+            tick.move(to: point(Double(h * 60), 146))
+            tick.addLine(to: point(Double(h * 60), major ? 153 : 150))
+            c.stroke(tick, with: .color(Gotham.mute.opacity(major ? 1 : 0.5)), lineWidth: (major ? 1.5 : 1) * k)
+        }
+        for h in [0, 6, 12, 18] {
+            c.draw(Text(String(format: "%02d", h))
+                .font(.system(size: 9 * k, weight: .semibold))
+                .tracking(1.1 * k)
+                .foregroundStyle(Gotham.mute),
+                at: point(Double(h * 60), 166), anchor: .center)
+        }
+
+        // Sweep dots. The next sweep, when it is today, is larger and breathes (not under reduced motion).
+        let nextMinute = nextMinuteToday(now)
+        let phase: CGFloat = reduced ? 0.5 : CGFloat((1 + sin(now.timeIntervalSinceReferenceDate * .pi)) / 2)
+        let dots: [Double]
+        if let custom {
+            dots = custom.map { Double($0.minutes) }
+        } else {
+            dots = Array(stride(from: 0.0, through: span - (full ? 1 : 0), by: every)).map { start + $0 }
+        }
+        for minute in dots {
+            let p = point(minute, 104)
+            if let nextMinute, Int(minute.rounded()) % 1440 == nextMinute {
+                let r = 4.5 * k * (reduced ? 1 : 0.85 + 0.25 * phase)
+                var glow = c
+                glow.addFilter(.blur(radius: 4 * k))
+                glow.fill(circle(p, r * 1.6), with: .color(.white.opacity(0.8)))
+                c.fill(circle(p, r), with: .color(.white))
+            } else {
+                c.fill(circle(p, 2.2 * k), with: .color(Gotham.fg.opacity(0.55)))
+            }
+        }
+
+        // Now hand, in the signal colour.
+        let parts = Calendar.current.dateComponents([.hour, .minute, .second], from: now)
+        let nowMinute = Double((parts.hour ?? 0) * 60 + (parts.minute ?? 0)) + Double(parts.second ?? 0) / 60
+        var hand = Path()
+        hand.move(to: point(nowMinute, 74))
+        hand.addLine(to: point(nowMinute, 138))
+        c.stroke(hand, with: .color(signal), style: StrokeStyle(lineWidth: 1.5 * k, lineCap: .round))
+        c.fill(circle(point(nowMinute, 138), 3 * k), with: .color(signal))
+
+        // Knobs and their times.
+        if custom == nil {
+            for (minute, focused, isEnd) in [(start, focus == .start, false), (endMinute, focus == .end, true)] {
+                if isEnd && full { continue }
+                let p = point(minute, 128)
+                let r = (focused ? 11.5 : 9.5) * k
+                c.fill(circle(p, r), with: .color(Color(hex: "0B0B0E")))
+                c.stroke(circle(p, r), with: .color(Gotham.fg), lineWidth: 2.5 * k)
+                c.draw(Text(DialFormat.clock(minute: Int(minute.rounded())))
+                    .font(.system(size: 10 * k, weight: .semibold))
+                    .foregroundStyle(Gotham.fg),
+                    at: CGPoint(x: p.x, y: p.y - 14 * k), anchor: .bottom)
+            }
+        }
+
+        // Centre: the interval.
+        c.fill(circle(centre, 64 * k), with: .color(Gotham.row))
+        c.stroke(circle(centre, 64 * k), with: .color(Gotham.edge), lineWidth: k)
+        if focus == .centre {
+            c.stroke(circle(centre, 66 * k), with: .color(Gotham.fg), lineWidth: 1.5 * k)
+        }
+        let every = Int(self.every.rounded())
+        let big: String
+        let unit: String
+        if every < 60 {
+            big = "\(every)"
+            unit = "MINUTES"
+        } else if every == 60 {
+            big = "1"
+            unit = "HOUR"
+        } else {
+            big = every % 60 == 0 ? "\(every / 60)" : String(format: "%.2f", Double(every) / 60).replacingOccurrences(of: "0$", with: "", options: .regularExpression)
+            unit = "HOURS"
+        }
+        c.draw(Text(big)
+            .font(Gotham.numeral(46 * k))
+            .monospacedDigit()
+            .foregroundStyle(Gotham.fg),
+            at: CGPoint(x: centre.x, y: centre.y - 4 * k), anchor: .center)
+        c.draw(Text(unit)
+            .font(.system(size: 8.5 * k, weight: .semibold))
+            .tracking(2 * k)
+            .foregroundStyle(Gotham.mute),
+            at: CGPoint(x: centre.x, y: centre.y + 30 * k), anchor: .center)
+    }
+
+    // MARK: Interaction
+
+    /// Keyboard focus targets. Invisible; they take focus and keys, not the mouse.
+    private func focusTarget(_ target: DialFocus, at p: CGPoint, size: CGFloat) -> some View {
+        Circle()
+            .fill(Color.clear)
+            .frame(width: size, height: size)
+            .position(p)
+            .focusable()
+            .focusEffectDisabled()
+            .focused($focus, equals: target)
+            .allowsHitTesting(false)
+            .onKeyPress(phases: .down) { press in keyDown(target, press) }
+    }
+
+    private func keyDown(_ target: DialFocus, _ press: KeyPress) -> KeyPress.Result {
+        let step: Int
+        switch press.key {
+        case .upArrow, .rightArrow: step = 1
+        case .downArrow, .leftArrow: step = -1
+        default: return .ignored
+        }
+        switch target {
+        case .start: model.moveStart(to: model.window.start + 15 * step, store: store)
+        case .end: model.moveEnd(to: model.window.end + 15 * step, store: store)
+        case .centre: model.stepEvery(step, store: store)
+        }
+        return .handled
+    }
+
+    /// Which knob, if any, a press at `p` grabs. Inside the centre is the interval. With custom times, the ring is
+    /// the handle: any press on it replaces them.
+    private func hit(at p: CGPoint) -> DialHit {
+        let dx = p.x - centre.x, dy = p.y - centre.y
+        if hypot(dx, dy) < 64 * k + 6 { return .centre }
+        if custom != nil {
+            return abs(hypot(dx, dy) - 128 * k) < 24 ? .start : .none
+        }
+        let ps = point(start, 128), pe = point(endMinute, 128)
+        let ds = hypot(p.x - ps.x, p.y - ps.y), de = hypot(p.x - pe.x, p.y - pe.y)
+        if min(ds, de) > 20 { return .none }
+        return de <= ds ? .end : .start   // on a whole day both knobs meet: the end one takes the press
+    }
+
+    private var drag: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if !model.dragActive {
+                    model.beginDrag(hit(at: value.startLocation), y: value.startLocation.y)
+                }
+                let dx = Double(value.location.x - centre.x), dy = Double(value.location.y - centre.y)
+                switch model.dragHit {
+                case .start: model.moveStart(to: DialWindow.minute(dx: dx, dy: dy), store: store)
+                case .end: model.moveEnd(to: DialWindow.minute(dx: dx, dy: dy), store: store)
+                case .centre: model.dragCentre(y: value.location.y, store: store)
+                case .none: break
+                }
+            }
+            .onEnded { _ in model.endDrag() }
+    }
+}
+
+// MARK: - Model
+
+/// The Schedule section's state: the dial's window and days, the custom times when no window describes them, the
+/// pause and drag bookkeeping, and the debounced save. Every change goes through `edit` or `toggleDay`, which mark the
+/// model dirty; `save` writes the times and days through `ScheduleEditor` and reinstalls the job.
 @MainActor
 final class ScheduleModel: ObservableObject {
-    @Published var addingTime = false
-    /// The pin the keyboard has selected.
-    @Published var selectedPin: ScheduleTime?
-    /// A pin being nudged: its time on disk, and where it is now. Saved once the keys go quiet.
-    @Published private(set) var draft: PinMove?
-    /// The schedule before the current nudge burst: what one undo restores.
-    private var burstStart: [ScheduleTime]?
-    /// The window's undo manager. Schedule changes register with it, so Edit > Undo and Redo work.
-    weak var undoManager: UndoManager?
-    private var saveTask: Task<Void, Never>?
-    private var saveInFlight = false
-    /// The model whose window is open, so a window close can flush its pending nudge.
-    static weak var live: ScheduleModel?
+    @Published private(set) var window = DialWindow(start: 540, span: 540, every: 30)
+    @Published private(set) var days: Set<Weekday> = DialPreset.weekdays
+    /// Saved times that no window describes. They show as dots with no arc until the user drags.
+    @Published private(set) var custom: [ScheduleTime]?
+    /// The last save's error, shown under the dial.
+    @Published private(set) var error: String?
+    /// Counts refused changes; each step is one shake.
+    @Published private(set) var shake: CGFloat = 0
+    let saved = SavedFlash()
 
-    /// Flushes the live model's pending nudge, if any. Called when the window closes and the app quits.
+    /// The model whose window is open, so a window close can flush its pending save.
+    static weak var live: ScheduleModel?
+    /// Held while a save is pending, so the model outlives its window and quit can still wait for the write.
+    private static var pendingSave: ScheduleModel?
+
+    /// Set on every change, cleared when a save starts.
+    private var dirty = false
+    private var saveInFlight = false
+    private var saveTask: Task<Void, Never>?
+    /// What config.toml holds as far as this model knows, so a reload of our own save does not reset the dial.
+    private var synced: (times: [ScheduleTime], days: ScheduleDays)?
+
+    /// Drag bookkeeping for the dial view. Not published: the window changes are.
+    private(set) var dragActive = false
+    private(set) var dragHit: DialHit = .none
+    private var dragY0: CGFloat = 0
+    private var dragEvery0 = 30
+
+    /// The sweep times the dial stands for.
+    var times: [ScheduleTime] { custom ?? window.times }
+    var scheduleDays: ScheduleDays { DialDays.schedule(days) }
+
+    /// Flushes the live model's pending save, if any. Called when the window closes and the app quits.
     static func flushLive(_ store: Store) {
         live?.flush(store)
     }
-    @Published var newTime = Date()
-    @Published var rowErrors: [String: String] = [:]
-    @Published var week = WeekStats()
-    let saved = SavedFlash()
 
-    func refreshWeek(_ store: Store) {
-        let runs = store.allRuns()
-        week = WeekStats.compute(runs: runs, since: WeekStats.weekStart(of: Date()) ?? .distantPast)
-    }
+    /// True while a change waits to be saved or a save is running.
+    var hasPendingSave: Bool { dirty || saveInFlight }
 
-    func addTime(_ store: Store, hour: Int, minute: Int) {
-        commit("time", store, undoTo: store.snap.config?.schedule) { try ScheduleEditor.addTime($0, hour: hour, minute: minute) }
-    }
-
-    func addFromSheet(_ store: Store) {
-        let cal = Calendar.current
-        let hour = cal.component(.hour, from: newTime)
-        let minute = cal.component(.minute, from: newTime)
-        commit("time", store, undoTo: store.snap.config?.schedule, then: { [self] ok in if ok { addingTime = false } }) {
-            try ScheduleEditor.addTime($0, hour: hour, minute: minute)
-        }
-    }
-
-    func removeTime(_ store: Store, _ time: ScheduleTime) {
-        commit("time", store, undoTo: store.snap.config?.schedule) { try ScheduleEditor.removeTime($0, time) }
-    }
-
-    /// The sweep times as the strip shows them: the saved times, with a pin mid-nudge at its new time.
-    func displayedTimes(_ config: Config?) -> [ScheduleTime] {
-        let saved = config?.schedule ?? []
-        guard let draft else { return saved }
-        return saved.map { $0 == draft.from ? draft.to : $0 }
-    }
-
-    /// Moves the selected pin by `minutes`. Each press moves the pin on screen at once; the save waits 500 ms for the
-    /// keys to go quiet, so a burst of presses is one write, and ⌘Z undoes the whole burst.
-    func nudge(_ store: Store, by minutes: Int) {
-        guard let config = store.snap.config, let current = draft?.to ?? selectedPin else { return }
-        let origin = draft?.from ?? current
-        guard let target = PinNudge.target(from: current, by: minutes, among: displayedTimes(config)) else { return }
-        if draft == nil { burstStart = config.schedule }
-        draft = PinMove(from: origin, to: target)
-        selectedPin = target
-        saveTask?.cancel()
-        // The task holds the model until it has saved, so a view that goes away mid-burst still writes.
-        saveTask = Task {
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            guard !Task.isCancelled else { return }
-            self.commitDraft(store)
-        }
-    }
-
-    /// Saves the pending nudge now: when the section changes, or the window closes.
+    /// Saves the pending change now: when the section goes away, or the window closes.
     func flush(_ store: Store) {
         saveTask?.cancel()
-        commitDraft(store)
+        save(store)
     }
 
-    /// True while a nudge is waiting to be saved or a save is running.
-    var hasPendingSave: Bool { draft != nil || saveInFlight }
-
-    /// Saves the pending nudge and waits for the save to land, for quitting. Gives up after `timeout`.
+    /// Saves the pending change and waits for it to land, for quitting. Gives up after `timeout`.
     func flushAndWait(_ store: Store, timeout: TimeInterval) async {
         flush(store)
         let deadline = Date().addingTimeInterval(timeout)
@@ -424,133 +704,165 @@ final class ScheduleModel: ObservableObject {
         }
     }
 
-    /// Saves the draft as one move from its time on disk. One save is in flight at a time. When the keys moved the pin
-    /// again meanwhile, the draft is rebased on the time now saved and the next save follows.
-    /// `undoable` is false for the rebased saves of a burst: the burst's first save already registered the undo entry
-    /// that restores the schedule from before the burst.
-    private func commitDraft(_ store: Store, undoable: Bool = true) {
-        guard !saveInFlight, let saving = draft else { return }
-        guard saving.from != saving.to else {
-            draft = nil
-            burstStart = nil
-            return
+    // MARK: Loading
+
+    /// Takes the config's schedule when it differs from what this model last saved or loaded.
+    func sync(_ config: Config?) {
+        guard let config, !dirty, !saveInFlight else { return }
+        if let synced, synced.times == config.schedule, synced.days == config.days { return }
+        synced = (config.schedule, config.days)
+        days = DialDays.set(config.days)
+        if let window = DialWindow.from(times: config.schedule) {
+            custom = nil
+            self.window = window
+        } else {
+            custom = config.schedule
         }
-        saveInFlight = true
-        commit("time", store, undoTo: undoable ? burstStart : nil, then: { [self] ok in
-            saveInFlight = false
-            if ok {
-                draft = PinMove.settle(draft, saved: saving)
-                if draft != nil { commitDraft(store, undoable: false) } else { burstStart = nil }
-            } else {
-                draft = nil
-                burstStart = nil
+    }
+
+    /// The window standing in for custom times, when the user first drags.
+    private static func dialWindow(fromCustom times: [ScheduleTime]) -> DialWindow {
+        let minutes = times.map(\.minutes).sorted()
+        let first = minutes.first ?? 540
+        let last = minutes.last ?? first
+        return DialWindow(start: first, span: last - first, every: 60)
+    }
+
+    /// True when the dial already stands on `preset`, so its button shows pressed.
+    func matches(_ preset: DialPreset) -> Bool {
+        custom == nil && window.times == preset.window.times && days == preset.days
+    }
+
+    // MARK: Edits
+
+    /// Applies one change to the window. Custom times become a window first. Nothing is marked when nothing changed.
+    private func edit(_ store: Store, _ change: (DialWindow) -> DialWindow) {
+        let base = custom.map(Self.dialWindow(fromCustom:)) ?? window
+        let next = change(base)
+        guard custom != nil || next != window else { return }
+        custom = nil
+        window = next
+        changed(store)
+    }
+
+    func moveStart(to minute: Int, store: Store) {
+        edit(store) { $0.movedStart(to: minute) }
+    }
+
+    func moveEnd(to minute: Int, store: Store) {
+        edit(store) { $0.movedEnd(to: minute) }
+    }
+
+    /// Changes the interval by `step` quarter-hour-based steps: positive is less often. Clamped to 15...240.
+    func stepEvery(_ step: Int, store: Store) {
+        edit(store) { DialWindow(start: $0.start, span: $0.span, every: $0.every + 15 * step) }
+    }
+
+    /// A centre drag: the interval follows the pointer, 15 minutes per 14 points, relative to where the drag began.
+    func dragCentre(y: CGFloat, store: Store) {
+        let every = dragEvery0 + Int(((dragY0 - y) / 14).rounded()) * 15
+        edit(store) { DialWindow(start: $0.start, span: $0.span, every: every) }
+    }
+
+    func beginDrag(_ hit: DialHit, y: CGFloat) {
+        dragActive = true
+        dragHit = hit
+        dragY0 = y
+        dragEvery0 = window.every
+    }
+
+    func endDrag() {
+        dragActive = false
+        dragHit = .none
+    }
+
+    func apply(_ preset: DialPreset, store: Store, animated: Bool) {
+        guard !matches(preset) else { return }
+        withAnimation(animated ? Animation.easeOut(duration: 0.65) : nil) {
+            custom = nil
+            window = preset.window
+            days = preset.days
+        }
+        changed(store)
+    }
+
+    /// Turns a day on or off. The last day on cannot go off: it shakes instead.
+    func toggleDay(_ day: Weekday, store: Store, animated: Bool) {
+        var next = days
+        if next.contains(day) {
+            guard next.count > 1 else {
+                if animated { withAnimation(.linear(duration: 0.4)) { shake += 1 } }
+                return
             }
-            // A pin that no longer exists is not selected.
-            if let pin = selectedPin, !(store.snap.config?.schedule.contains(pin) ?? true) { selectedPin = nil }
-        }) {
-            try ScheduleEditor.moveTime($0, from: saving.from, hour: saving.to.hour, minute: saving.to.minute)
+            next.remove(day)
+        } else {
+            next.insert(day)
         }
+        days = next
+        changed(store)
     }
 
-    /// Selects the pin `step` places along from the selection. With none, → takes the first and ← the last.
-    func select(_ step: Int, times: [ScheduleTime]) {
-        let sorted = times.sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
-        guard !sorted.isEmpty else { return }
-        guard let current = selectedPin, let index = sorted.firstIndex(of: current) else {
-            selectedPin = step > 0 ? sorted.first : sorted.last
-            return
-        }
-        selectedPin = sorted[min(max(index + step, 0), sorted.count - 1)]
-    }
+    // MARK: Pause
 
-    /// Deletes the selected pin. The selection moves to its neighbour. ⌘Z brings it back.
-    func deletePin(_ store: Store) {
-        guard let config = store.snap.config, let pin = selectedPin, config.schedule.contains(pin) else { return }
-        let sorted = config.schedule.sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
-        let index = sorted.firstIndex(of: pin) ?? 0
-        let neighbour = index + 1 < sorted.count ? sorted[index + 1] : (index > 0 ? sorted[index - 1] : nil)
-        commit("time", store, undoTo: config.schedule, then: { [weak self] ok in
-            if ok { self?.selectedPin = neighbour }
-        }) { try ScheduleEditor.removeTime($0, pin) }
-    }
-
-    /// Puts the schedule back to `times`. Undo and Redo call this; the inverse is registered before the save, so the
-    /// undo manager files it on the right stack.
-    func restoreSchedule(_ times: [ScheduleTime], _ store: Store) {
-        let current = store.snap.config?.schedule ?? []
-        undoManager?.registerUndo(withTarget: self) { $0.restoreSchedule(current, store) }
-        commit("time", store) { try ScheduleEditor.setSchedule($0, times) }
-    }
-
-    func movePin(_ store: Store, _ time: ScheduleTime, hour: Int, minute: Int) {
-        commit("time", store, undoTo: store.snap.config?.schedule) { try ScheduleEditor.moveTime($0, from: time, hour: hour, minute: minute) }
-    }
-
-    func chooseDays(_ store: Store, _ choice: ScheduleView.DayChoice) {
-        commit("days", store) { config in
+    /// Running resumes; the two pauses write the marker file, so the launchd job sees them.
+    func setPause(_ choice: SchedulePause, store: Store, now: Date) {
+        do {
             switch choice {
-            case .weekdays: return try ScheduleEditor.setDays(config, .weekdays)
-            case .everyDay: return try ScheduleEditor.setDays(config, .all)
-            case .custom: return try ScheduleEditor.setDays(config, .custom(Set(config.days.active)))
+            case .running:
+                try Pause.set(false, store.paths)
+            case .hour:
+                try Pause.set(true, store.paths, until: now.addingTimeInterval(3600))
+            case .tomorrow:
+                let until = DialPause.tomorrow(now: now, times: times, days: scheduleDays)
+                try Pause.set(true, store.paths, until: until ?? now.addingTimeInterval(86400))
             }
+            error = nil
+        } catch {
+            self.error = "Pause: \(error.localizedDescription)"
+        }
+        store.reload()
+    }
+
+    // MARK: Saving
+
+    /// Marks a change and saves 0.4 s after the last one.
+    private func changed(_ store: Store) {
+        dirty = true
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+            self.save(store)
         }
     }
 
-    /// Turns one day on or off in a custom week. The last day on cannot go off.
-    func toggleDay(_ store: Store, _ day: Weekday) {
-        commit("days", store) { config in
-            var set = Set(config.days.active)
-            if set.contains(day) { set.remove(day) } else { set.insert(day) }
-            return try ScheduleEditor.setDays(config, .custom(set))
-        }
-    }
-
-    func setLimits(_ store: Store, prs: Int, lines: Int) {
-        commit("limits", store) { try ScheduleEditor.setLimits($0, prs: prs, lines: lines) }
-    }
-
-    /// Applies one edit to config.toml as it is on disk now, and saves it off the main actor. On success the store
-    /// reloads, the stamp shows and the counts refresh. On failure the message goes to `row` and nothing is written.
-    /// The store reloads either way. `done` gets the outcome.
-    private func commit(_ row: String, _ store: Store, undoTo before: [ScheduleTime]? = nil,
-                        then done: @escaping (Bool) -> Void = { _ in },
-                        _ change: @escaping @Sendable (Config) throws -> Config) {
+    /// Writes the times and days in one config edit and reinstalls the job, as the old Schedule section did. One save
+    /// runs at a time; a change made meanwhile saves once it lands.
+    private func save(_ store: Store) {
+        guard dirty, !saveInFlight else { return }
+        dirty = false
+        saveInFlight = true
+        Self.pendingSave = self
+        let times = self.times
+        let days = self.scheduleDays
         let paths = store.paths
         Task {
-            let ok: Bool
             do {
-                // A deferred reinstall needs no call here: the store's reload runs the reconcile once the lock frees.
-                _ = try await ConfigWriter.shared.apply(paths: paths, change: change) {
-                    try ScheduleEditor.save($0, paths: paths)
-                }
-                rowErrors[row] = nil
+                _ = try await ConfigWriter.shared.apply(paths: paths, change: { config in
+                    try ScheduleEditor.setDays(try ScheduleEditor.setSchedule(config, times), days)
+                }) { try ScheduleEditor.save($0, paths: paths) }
+                error = nil
+                synced = (times, days)
                 saved.flash()
-                ok = true
-            } catch let error as ConfigError {
-                rowErrors[row] = error.message
-                ok = false
+            } catch let failure as ConfigError {
+                error = failure.message
             } catch {
-                rowErrors[row] = "Could not save: \(error.localizedDescription)"
-                ok = false
+                self.error = "Could not save: \(error.localizedDescription)"
             }
-            // The change is undoable when the schedule really changed: the file is read back to compare.
-            if ok, let before, let after = (try? Config.load(paths))?.schedule, after != before {
-                undoManager?.registerUndo(withTarget: self) { $0.restoreSchedule(before, store) }
-                undoManager?.setActionName("Change Sweep Times")
-            }
+            saveInFlight = false
+            Self.pendingSave = nil
             store.reload()
-            if ok { refreshWeek(store) }
-            done(ok)
+            if dirty { save(store) }
         }
-    }
-}
-
-extension NumberFormatter {
-    /// "three" for 3, sentence-cased as "Three". Digits for anything the spell-out cannot name.
-    static func spelledOut(_ n: Int) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .spellOut
-        guard let word = f.string(from: NSNumber(value: n)) else { return "\(n)" }
-        return word.prefix(1).uppercased() + word.dropFirst()
     }
 }

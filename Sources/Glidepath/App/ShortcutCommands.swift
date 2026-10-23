@@ -3,7 +3,7 @@ import AppKit
 
 /// What the menus need to know to enable or disable their items. Pure, so the rules are testable.
 struct ShortcutState: Equatable {
-    var section: WindowSection = .overview
+    var section: WindowSection = .now
     var onboarding = false
     var sweepRunning = false
     var paused = false
@@ -215,7 +215,7 @@ enum ShortcutDispatch {
             break
         }
         switch action {
-        case .showOverview: router.open(.overview)
+        case .showOverview: router.open(.now)
         case .showReviews: router.open(.reviews)
         case .showRepos: router.open(.repos)
         case .showSchedule: router.open(.schedule)

@@ -147,6 +147,11 @@ enum ConfigEditor {
         try edit(config, slug) { $0.reviewDrafts = on }
     }
 
+    /// A repo's "Review my own PRs" switch: `include_own` on the repo.
+    static func setRepoIncludeOwn(_ config: Config, slug: String, _ on: Bool) throws -> Config {
+        try edit(config, slug) { $0.includeOwn = on }
+    }
+
     static func setIncludeBots(_ config: Config, _ on: Bool) -> Config {
         var out = config
         out.includeBots = on
