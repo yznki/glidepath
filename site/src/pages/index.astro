@@ -27,11 +27,14 @@ const ft = (n: number) => n.toLocaleString('en-US');
         </h1>
         <p class="hero__sub" data-intro>{hero.sub}</p>
         <div class="hero__cta" data-intro>
-          <div class="install" id="install">
-            <code>{site.install}</code>
-            <button class="btn btn--ghost copy-btn" type="button" data-copy={site.install} data-fill aria-label="Copy the install command"><span class="btn__fill" aria-hidden="true"></span><span class="copy-label">Copy</span></button>
+          <div class="cta" id="install">
+            <p class="cta__label instr">Install</p>
+            <div class="install">
+              <code>{site.install}</code>
+              <button class="copy-btn" type="button" data-copy={site.install} aria-label="Copy install command"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.5" /><path d="M15.5 8.5V6.5A2.5 2.5 0 0 0 13 4H6.5A2.5 2.5 0 0 0 4 6.5V13a2.5 2.5 0 0 0 2.5 2.5h2" /></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></button>
+            </div>
+            <a class="cta__gh nav-link" href={site.repo} rel="noopener">View on GitHub <span aria-hidden="true">&rarr;</span></a>
           </div>
-          <a class="btn btn--ghost" href={site.repo} data-fill rel="noopener"><span class="btn__fill" aria-hidden="true"></span><span>GitHub</span></a>
         </div>
       </div>
       <div class="hero__instr instr" aria-hidden="true" data-intro>
@@ -115,26 +118,33 @@ const ft = (n: number) => n.toLocaleString('en-US');
     </div>
   </section>
 
-  <!-- 4. THE APP: four screens in glass frames on a gentle arc. -->
-  <section class="section" id="app" aria-labelledby="app-title">
+  <!-- 4. THE APP: one large screen at a time on desktop (pinned, crossfade); a stacked list on phones and with reduced motion. -->
+  <section class="section app" id="app" aria-labelledby="app-title">
     <div class="wrap">
-      <div class="gallery__head grid">
-        <h2 class="h2" id="app-title" style="grid-column: 1 / span 8">The window is for setup and history.</h2>
-        <p class="muted" style="grid-column: 9 / span 4; align-self: end">
-          Now shows the live sweep, with its stages, tokens and hold to stop. Reviews keeps the history. Schedule is a
-          24-hour dial. Settings has search and a live view of the config file.
-        </p>
-      </div>
-      <div class="gallery">
-        <div class="gallery__track" data-gallery>
-          {shots.map((s) => (
-            <figure class="frame" data-reveal>
-              <div class="frame__inner" data-tilt>
-                <img class="frame__img" src={`${base}${s.src}`} width={s.w} height={s.h} alt={s.alt} loading="lazy" decoding="async" />
-              </div>
-              <figcaption class="instr">{s.caption}</figcaption>
-            </figure>
+      <h2 class="h2 app__title" id="app-title">The window is for setup and history.</h2>
+    </div>
+    <div class="app__pin" data-app-pin>
+      <div class="app__sticky wrap grid">
+        <nav class="app__index" aria-label="Screens">
+          {shots.map((s, i) => (
+            <a class="app__item" href={`#shot-${i}`} data-app-item={i}>
+              <span class="instr app__label">{s.caption}</span>
+              <span class="app__copy">{s.note}</span>
+            </a>
           ))}
+        </nav>
+        <div class="app__stage">
+          <div class="frame glass app__frame" data-tilt>
+            {shots.map((s, i) => (
+              <figure class="app__screen" id={`shot-${i}`} data-screen={i}>
+                <img class="frame__img" src={`${base}${s.src}`} width={s.w} height={s.h} alt={s.alt} decoding="async" />
+                <figcaption class="app__caption">
+                  <span class="instr app__label">{s.caption}</span>
+                  <span class="app__copy">{s.note}</span>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -190,6 +200,7 @@ const ft = (n: number) => n.toLocaleString('en-US');
           ))}
         </ul>
       </div>
+      <div class="lights lights--row" data-lights aria-hidden="true"></div>
     </div>
   </section>
 
@@ -214,17 +225,18 @@ const ft = (n: number) => n.toLocaleString('en-US');
   <section class="section final" id="final" aria-labelledby="final-title">
     <div class="wrap">
       <h2 class="final__type" id="final-title" data-reveal>Cleared for approach.</h2>
-      <div class="final__row">
+      <div class="cta cta--final">
+        <p class="cta__label instr">Install</p>
         <div class="install">
           <code>{site.install}</code>
-          <button class="btn btn--ghost copy-btn" type="button" data-copy={site.install} data-fill aria-label="Copy the install command"><span class="btn__fill" aria-hidden="true"></span><span class="copy-label">Copy</span></button>
+          <button class="copy-btn" type="button" data-copy={site.install} aria-label="Copy install command"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2.5" /><path d="M15.5 8.5V6.5A2.5 2.5 0 0 0 13 4H6.5A2.5 2.5 0 0 0 4 6.5V13a2.5 2.5 0 0 0 2.5 2.5h2" /></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></button>
         </div>
-        <a class="btn btn--ghost" href={site.repo} data-fill rel="noopener"><span class="btn__fill" aria-hidden="true"></span><span>GitHub</span></a>
+        <a class="cta__gh nav-link" href={site.repo} rel="noopener">View on GitHub <span aria-hidden="true">&rarr;</span></a>
       </div>
       <p class="final__meta instr">
         MIT · Made for Claude Code · Codex: vote in <a class="link" href={site.issue1} rel="noopener" style="display:inline-block;line-height:24px;padding-inline:4px;margin-inline:-4px">#1</a>
       </p>
     </div>
-    <div class="runway-floor" aria-hidden="true"></div>
+    <div class="runway-floor" data-lights aria-hidden="true"></div>
   </section>
 </Base>

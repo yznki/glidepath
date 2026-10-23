@@ -64,10 +64,10 @@ export const bullets = [
 ];
 
 export const shots = [
-  { src: 'shots/now-dark.webp', caption: 'Now', alt: 'The Now view: a live sweep with its stages and token count.', w: 1180, h: 800 },
-  { src: 'shots/reviews-dark.webp', caption: 'Reviews', alt: 'The Reviews view: one row per PR with its verdict.', w: 1180, h: 800 },
-  { src: 'shots/schedule-dark.webp', caption: 'Schedule', alt: 'The Schedule view: a 24-hour dial with presets.', w: 1180, h: 800 },
-  { src: 'shots/settings-dark.webp', caption: 'Settings', alt: 'The Settings view with search and the config file.', w: 1180, h: 800 },
+  { src: 'shots/now-dark.webp', caption: 'Now', note: 'Now shows the live sweep, with its stages, tokens and hold to stop.', alt: 'The Now view during a sweep: each PR with its stages, tokens and verdict.', w: 1800, h: 1177 },
+  { src: 'shots/reviews-dark.webp', caption: 'Reviews', note: 'Reviews keeps the history.', alt: 'The Reviews view: one row per PR with its verdict.', w: 1800, h: 1177 },
+  { src: 'shots/schedule-dark.webp', caption: 'Schedule', note: 'Schedule is a 24-hour dial.', alt: 'The Schedule view: a 24-hour dial with the sweep times.', w: 1800, h: 1177 },
+  { src: 'shots/settings-dark.webp', caption: 'Settings', note: 'Settings has search and a live view of the config file.', alt: 'The Settings view with search and the config file.', w: 1800, h: 1177 },
 ];
 
 export const safety = [

@@ -18,13 +18,14 @@
 :root {
   --ground: #030304;
   --ink: #ececef;
-  --muted: rgba(236, 236, 242, 0.62);
+  --muted: #a9a9b0; /* ~8.8:1 on ground; was rgba .62, which failed review */
   --line: rgba(255, 255, 255, 0.08);
   --accent: #d29b45;
   --glass: rgba(11, 11, 14, 0.84);
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --fast: 280ms;
   --slow: 1100ms;
+  --section-y: clamp(96px, 14vh, 180px);
   --gutter: 64px;
   --col-gap: 24px;
   --sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
@@ -156,7 +157,7 @@ p {
 .section {
   position: relative;
   background: var(--ground);
-  padding-block: clamp(96px, 14vh, 180px);
+  padding-block: var(--section-y);
   z-index: 1;
 }
 .eyebrow {
@@ -190,36 +191,67 @@ p {
   background-size: 100% 0.4em;
 }
 .nav-link {
-  background: linear-gradient(currentColor, currentColor) left bottom / 0% 1px no-repeat;
+  position: relative;
   padding-bottom: 3px;
   display: inline-flex;
   align-items: center;
   min-height: 24px;
-  transition: background-size 0.45s var(--ease);
+}
+/* The underline is a pseudo-element, so the text keeps a plain background for contrast checks. */
+.nav-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.45s var(--ease);
 }
 @media (hover: hover) {
-  .nav-link:hover {
-    background-size: 100% 1px;
+  .nav-link:hover::after {
+    transform: none;
   }
 }
-.nav-link:focus-visible,
-.nav-link[aria-current='page'] {
-  background-size: 100% 1px;
+.nav-link:focus-visible::after,
+.nav-link[aria-current='page']::after {
+  transform: none;
 }
 
 .install {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 4px;
-  height: 56px;
-  padding: 4px 4px 4px 22px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.045);
+  justify-content: space-between;
+  gap: 12px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 18px 14px 18px 22px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.035);
   box-shadow: inset 0 0 0 1px var(--line);
   font-family: var(--mono);
-  font-size: 14px;
-  letter-spacing: 0.02em;
+  font-size: 16px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+}
+.cta {
+  display: grid;
+  justify-items: start;
+  gap: 14px;
   max-width: 100%;
+}
+.cta__label {
+  color: var(--muted);
+}
+.cta__gh span {
+  margin-left: 0.25em;
+}
+.cta__gh {
+  margin-top: 14px;
+  font-size: 16px;
+  color: var(--ink);
 }
 .install code {
   white-space: nowrap;
@@ -277,10 +309,41 @@ p {
   }
 }
 .copy-btn {
-  height: 48px;
-  min-width: 96px;
-  font-size: 15px;
-  box-shadow: inset 0 0 0 1px rgba(236, 236, 242, 0.5);
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-right: -8px;
+  border-radius: 999px;
+  color: var(--ink);
+  opacity: 0.8;
+  transition: opacity 0.3s, color 0.3s;
+}
+.copy-btn:hover {
+  opacity: 1;
+}
+.copy-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.copy-btn .i-check {
+  display: none;
+}
+.copy-btn.is-done {
+  color: var(--accent);
+  opacity: 1;
+}
+.copy-btn.is-done .i-copy {
+  display: none;
+}
+.copy-btn.is-done .i-check {
+  display: block;
 }
 .copy-btn:active {
   transform: scale(0.97);
@@ -288,7 +351,7 @@ p {
 
 /* Glass, only on things that are cards in the app. */
 .glass {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 38%), var(--glass);
+  background: var(--glass);
   -webkit-backdrop-filter: blur(24px) saturate(1.6);
   backdrop-filter: blur(24px) saturate(1.6);
   border-radius: 20px;
@@ -312,12 +375,12 @@ p {
 /* Hero intro: CSS only, so the headline paints at once (it is the LCP) and the motion starts on load. */
 .motion .hero h1 .line > span {
   display: inline-block;
-  animation: settle 1.3s var(--ease) both;
-  animation-delay: calc(0.1s + var(--i, 0) * 0.12s);
+  animation: settle 0.8s var(--ease) both;
+  animation-delay: calc(0.05s + var(--i, 0) * 0.08s);
 }
 .motion .hero [data-intro] {
-  animation: rise 0.9s var(--ease) both;
-  animation-delay: 0.6s;
+  animation: rise 0.6s var(--ease) both;
+  animation-delay: 0.2s;
 }
 @keyframes settle {
   from {
@@ -381,14 +444,18 @@ p {
   font-size: 15px;
   padding-block: 6px;
 }
+@media (max-width: 900px) {
+  .nav__links {
+    display: none;
+  }
+}
 
 /* Hero */
 .hero {
   position: relative;
   min-height: 100svh;
-  display: flex;
-  align-items: flex-end;
-  padding-block: 120px 10svh;
+  padding-top: 28svh;
+  padding-bottom: 10svh;
   z-index: 1;
   background: transparent;
   overflow: hidden;
@@ -404,10 +471,21 @@ p {
   display: none;
 }
 .hero__grid {
-  align-items: end;
+  align-items: start;
 }
 .hero__copy {
   grid-column: 1 / span 9;
+  position: relative;
+  z-index: 0;
+}
+/* Soft dark scrim behind the copy so the runway never runs through the text. */
+.hero__copy::before {
+  content: '';
+  position: absolute;
+  inset: -56px -96px -48px -72px;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgba(3, 3, 4, 0.9), rgba(3, 3, 4, 0.7) 62%, rgba(3, 3, 4, 0) 100%);
+  pointer-events: none;
 }
 .hero h1 .line {
   white-space: nowrap;
@@ -434,11 +512,14 @@ p {
   gap: 12px;
   align-items: center;
 }
+.hero__grid {
+  position: static;
+}
 .hero__instr {
-  grid-column: 10 / span 3;
-  justify-self: end;
+  position: absolute;
+  top: 96px;
+  right: var(--gutter);
   text-align: right;
-  align-self: start;
   display: grid;
   gap: 8px;
   color: var(--muted);
@@ -453,6 +534,13 @@ p {
   left: var(--gutter);
   bottom: 28px;
   color: var(--muted);
+}
+.hero__hint::before {
+  content: '';
+  position: absolute;
+  inset: -12px -24px;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgba(3, 3, 4, 0.8), rgba(3, 3, 4, 0));
 }
 
 /* Descent: 400svh, the stage is sticky. With WebGL the stage carries the scene's labels and card. */
@@ -780,6 +868,133 @@ p {
   display: none;
 }
 
+/* Horizon glow: a soft silver haze at the vanishing point (scene positions it each frame). */
+.horizon {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1200px;
+  height: 640px;
+  margin: -320px 0 0 -600px;
+  pointer-events: none;
+  background: radial-gradient(closest-side, rgba(190, 196, 210, 0.2), rgba(190, 196, 210, 0.06) 45%, rgba(190, 196, 210, 0) 100%);
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+
+/* Runway light rows (costs, closing): the same silver dots as the approach, slowly pulsing. */
+.lights {
+  position: relative;
+  height: 22px;
+  margin-top: 96px;
+  background: radial-gradient(circle, rgba(236, 236, 242, 0.9) 1.2px, transparent 2px) 0 50% / 26px 22px repeat-x;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+  animation: lights-pulse 4.8s ease-in-out infinite;
+}
+.lights.is-off {
+  animation-play-state: paused;
+}
+@keyframes lights-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.75;
+  }
+}
+
+/* Phone menu: a 44 px button and a full-screen dark sheet. Motion: expo out, 400 ms. */
+.nav__menu {
+  display: none;
+  position: relative;
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  border-radius: 999px;
+  flex: none;
+}
+.nav__menu span {
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  height: 1.5px;
+  background: var(--ink);
+  border-radius: 2px;
+  transition: transform 0.4s var(--ease), opacity 0.4s var(--ease);
+}
+.nav__menu span:first-child {
+  top: 17px;
+}
+.nav__menu span:last-child {
+  top: 25px;
+}
+.nav__menu[aria-expanded='true'] span:first-child {
+  transform: translateY(4px) rotate(45deg);
+}
+.nav__menu[aria-expanded='true'] span:last-child {
+  transform: translateY(-4px) rotate(-45deg);
+}
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 49;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 96px var(--gutter) 40px;
+  background: var(--ground);
+  overscroll-behavior: contain;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(-14px);
+  transition: opacity 0.4s var(--ease), transform 0.4s var(--ease), visibility 0s linear 0.4s;
+}
+.sheet.is-open {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition-delay: 0s;
+}
+.sheet ul {
+  list-style: none;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.sheet li {
+  border-bottom: 1px solid var(--line);
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
+}
+.sheet.is-open li {
+  opacity: 1;
+  transform: none;
+  transition-delay: calc(0.08s + var(--i, 0) * 0.04s);
+}
+.sheet a {
+  display: flex;
+  align-items: center;
+  min-height: 72px;
+  font-size: clamp(30px, 9vw, 44px);
+  font-weight: 200;
+  letter-spacing: -0.03em;
+}
+.sheet a:focus-visible {
+  outline-offset: -4px;
+}
+@media (max-width: 900px) {
+  .nav__menu {
+    display: block;
+  }
+}
+@media (min-width: 901px) {
+  .sheet {
+    display: none;
+  }
+}
+
 /* Scene: fixed canvas behind hero and descent. Sections after it are opaque, which hides it. */
 #gl {
   position: fixed;
@@ -854,53 +1069,146 @@ html:not(.gl-on) .hero {
   text-align: center;
 }
 
-/* Gallery */
-.gallery {
-  overflow: hidden;
-  perspective: 1600px;
-}
-.gallery__head {
+/* App screens: one big window at a time when pinned (desktop, motion allowed); a stacked list otherwise. */
+.app__title {
   margin-bottom: 64px;
 }
-.gallery__track {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--col-gap);
-  transform-style: preserve-3d;
-  will-change: transform;
-}
-.frame {
+.app__pin {
   position: relative;
-  margin: 0;
-  display: grid;
-  gap: 16px;
 }
-.frame__inner {
+.app__sticky {
   position: relative;
-  border-radius: 20px;
-  overflow: hidden;
+}
+.app__index {
+  display: none;
+}
+.app__stage {
+  grid-column: 1 / -1;
+  position: relative;
+}
+.app__frame {
+  position: relative;
   padding: 10px;
+  border-radius: 20px;
   transform-style: preserve-3d;
-  transition: box-shadow 0.6s var(--ease);
 }
-.frame__inner::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+.app__screen {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 0 72px;
 }
-.frame__img {
-  border-radius: 12px;
+.app__caption {
+  display: grid;
+  gap: 6px;
+  order: -1;
+  color: var(--muted);
+}
+.app__caption .app__copy {
+  font-size: 18px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.app__frame .frame__img {
   width: 100%;
   height: auto;
-  aspect-ratio: 1180 / 800;
-  object-fit: cover;
+  border-radius: 12px;
   background: #0b0b0e;
 }
-.frame figcaption {
+
+/* Pinned: the sticky stage holds one big frame; the index on the left names the screens. */
+.app.is-pinned .app__pin {
+  height: 300svh;
+}
+.app.is-pinned .app__sticky {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: var(--col-gap);
+  align-items: center;
+}
+.app.is-pinned .app__title {
+  display: none;
+}
+.app.is-pinned .app__index {
+  display: grid;
+  grid-column: 1 / span 3;
+  gap: 32px;
+  align-self: center;
+}
+.app.is-pinned .app__item {
+  position: relative;
+  display: grid;
+  gap: 12px;
+  padding: 6px 0 6px 30px;
   color: var(--muted);
+  transition: color 0.5s var(--ease);
+}
+.app.is-pinned .app__item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 1.15em;
+  width: 0;
+  height: 1px;
+  background: var(--accent);
+  transition: width 0.6s var(--ease);
+}
+.app.is-pinned .app__item.is-active {
+  color: var(--ink);
+}
+.app.is-pinned .app__item.is-active::before {
+  width: 18px;
+}
+.app.is-pinned .app__copy {
+  display: none;
+  max-width: 28ch;
+  font-size: 18px;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+}
+.app.is-pinned .app__item.is-active .app__copy {
+  display: block;
+}
+.app.is-pinned .app__stage {
+  grid-column: 5 / span 8;
+  perspective: 1400px;
+}
+.app.is-pinned .app__frame {
+  aspect-ratio: 1800 / 1177;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 40px 90px -40px rgba(0, 0, 0, 0.8);
+}
+.app.is-pinned .app__screen {
+  position: absolute;
+  inset: 10px;
+  margin: 0;
+  opacity: 0;
+  transform: scale(1.02);
+  filter: blur(4px);
+  transition: opacity 0.9s var(--ease), transform 0.9s var(--ease), filter 0.9s var(--ease);
+}
+.app.is-pinned .app__screen .frame__img {
+  height: 100%;
+  object-fit: cover;
+}
+.app.is-pinned .app__screen.is-on {
+  opacity: 1;
+  transform: none;
+  filter: none;
+}
+.app.is-pinned .app__screen.is-prev {
+  opacity: 0;
+  transform: scale(0.97);
+  filter: blur(4px);
+}
+.app.is-pinned .app__caption {
+  display: none;
 }
 
 /* Safety checklist */
@@ -1183,7 +1491,24 @@ html.still #gl {
     --col-gap: 16px;
   }
   .hero {
-    padding-block: 110px 56px;
+    padding-top: 22svh;
+    padding-bottom: 56px;
+  }
+  .hero__instr {
+    top: 84px;
+  }
+  .hero__copy::before {
+    inset: -48px -40px -36px -40px;
+  }
+  .section,
+  .touch {
+    --section-y: 96px;
+  }
+  .section {
+    padding-block: 96px;
+  }
+  .touch {
+    padding-top: 96px;
   }
   .hero__copy {
     grid-column: 1 / -1;
@@ -1191,19 +1516,7 @@ html.still #gl {
   .hero h1 .line {
     white-space: normal;
   }
-  .hero__instr {
-    grid-column: 1 / -1;
-    justify-self: start;
-    text-align: left;
-    margin-top: 32px;
-    grid-auto-flow: column;
-    justify-content: start;
-    gap: 28px;
-  }
   .hero__hint {
-    display: none;
-  }
-  .nav__links a.hide-sm {
     display: none;
   }
   .fixes,
@@ -1220,9 +1533,6 @@ html.still #gl {
   }
   .touch__demo {
     margin-top: 56px;
-  }
-  .gallery__track {
-    grid-template-columns: 1fr;
   }
   .costs__text,
   .costs__gauges {

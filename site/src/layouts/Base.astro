@@ -37,6 +37,7 @@ const jsonLd = {
     {noindex && <meta name="robots" content="noindex" />}
     <meta name="theme-color" content="#030304" />
     <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
+    <link rel="sitemap" type="application/xml" href={`${base}sitemap-index.xml`} />
     <link rel="preload" href={`${base}fonts/geist-variable.woff2`} as="font" type="font/woff2" crossorigin />
     <link rel="preload" href={`${base}fonts/geist-mono-400.woff2`} as="font" type="font/woff2" crossorigin />
     <meta property="og:type" content="website" />
@@ -60,7 +61,7 @@ const jsonLd = {
   </head>
   <body class={bodyClass}>
     <a class="skip-link" href="#main">Skip to content</a>
-    <div id="gl" aria-hidden="true"></div>
+    <div id="gl" aria-hidden="true"><div class="horizon"></div></div>
     <header class="nav" id="top">
       <div class="nav__inner">
         <a class="nav__brand" href={base} aria-label="Glidepath, home">
@@ -74,8 +75,23 @@ const jsonLd = {
           <a class="nav-link" href="#install">Install</a>
           <a class="nav-link" href={site.repo} rel="noopener">GitHub</a>
         </nav>
+        <button class="nav__menu" type="button" aria-expanded="false" aria-controls="menu" aria-label="Open menu">
+          <span aria-hidden="true"></span><span aria-hidden="true"></span>
+        </button>
       </div>
     </header>
+    <div class="sheet" id="menu" role="region" aria-label="Menu">
+      <nav aria-label="Menu">
+        <ul>
+          <li style="--i: 0"><a href="#descent">Approach</a></li>
+          <li style="--i: 1"><a href="#app">The app</a></li>
+          <li style="--i: 2"><a href="#costs">Cost</a></li>
+          <li style="--i: 3"><a href="#questions">Questions</a></li>
+          <li style="--i: 4"><a href="#install">Install</a></li>
+          <li style="--i: 5"><a href={site.repo} rel="noopener">GitHub</a></li>
+        </ul>
+      </nav>
+    </div>
     <main id="main" tabindex="-1">
       <slot />
     </main>

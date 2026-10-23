@@ -45,6 +45,7 @@ const $$ = <T extends Element = HTMLElement>(sel: string, root: ParentNode = doc
 const html = document.documentElement;
 const drive = { p: 0, target: 0, t: 0, intro: 0, visible: true };
 let scene: Scene | null = null;
+let horizon: HTMLElement | null = null;
 let introStart = -1;
 
 // Reduced motion: no Lenis, no GL, no scrub. Everything is visible and static (CSS handles the rest).
@@ -192,28 +193,61 @@ function setupReveals() {
   });
 }
 
+// App screens. Desktop with motion: one big frame, pinned, crossfading with a depth move as you scroll; the index
+// on the left jumps to a screen. Phones and reduced motion keep the stacked list (CSS only, nothing to do here).
 function setupGallery(gallery: HTMLElement) {
-  const track = $<HTMLElement>('[data-gallery]', gallery);
-  if (!track || reduced || mobile) return;
-  gsap.fromTo(
-    track,
-    { rotateY: -9 },
-    { rotateY: 9, ease: 'none', scrollTrigger: { trigger: gallery, start: 'top bottom', end: 'bottom top', scrub: true } },
+  const pin = $<HTMLElement>('[data-app-pin]', gallery);
+  const screens = $$<HTMLElement>('[data-screen]', gallery);
+  const items = $$<HTMLElement>('[data-app-item]', gallery);
+  const frame = $<HTMLElement>('[data-tilt]', gallery);
+  if (!pin || !screens.length || reduced || mobile) return;
+  gallery.classList.add('is-pinned');
+  const n = screens.length;
+  let cur = -1;
+  const show = (k: number) => {
+    if (k === cur) return;
+    const prev = cur;
+    cur = k;
+    screens.forEach((el, i) => {
+      el.classList.toggle('is-on', i === k);
+      el.classList.toggle('is-prev', i === prev && i !== k);
+    });
+    items.forEach((el, i) => {
+      el.classList.toggle('is-active', i === k);
+      if (i === k) el.setAttribute('aria-current', 'true');
+      else el.removeAttribute('aria-current');
+    });
+  };
+  show(0);
+  ScrollTrigger.create({
+    trigger: pin,
+    start: 'top top',
+    end: 'bottom bottom',
+    invalidateOnRefresh: true,
+    onUpdate: (s) => show(Math.min(n - 1, Math.floor(s.progress * n))),
+  });
+  // Index clicks scroll to the middle of that screen's share of the pin.
+  items.forEach((el, i) =>
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      const top = pin.getBoundingClientRect().top + scrollY;
+      const y = top + ((i + 0.5) / n) * (pin.offsetHeight - innerHeight);
+      if (lenis) lenis.scrollTo(y);
+      else window.scrollTo({ top: y, behavior: 'smooth' });
+    }),
   );
-  // Pointer tilt on the hovered frame (fine pointers only).
-  if (matchMedia('(hover: hover) and (pointer: fine)').matches) {
-    $$<HTMLElement>('[data-tilt]', gallery).forEach((el) => {
-      const rx = gsap.quickTo(el, 'rotateX', { duration: 0.8, ease: 'expo.out' });
-      const ry = gsap.quickTo(el, 'rotateY', { duration: 0.8, ease: 'expo.out' });
-      el.addEventListener('pointermove', (e) => {
-        const r = el.getBoundingClientRect();
-        rx((0.5 - (e.clientY - r.top) / r.height) * 12);
-        ry(((e.clientX - r.left) / r.width - 0.5) * 12);
-      });
-      el.addEventListener('pointerleave', () => {
-        rx(0);
-        ry(0);
-      });
+  // Pointer tilt on the frame, +-4 degrees (fine pointers only).
+  if (frame && matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    const rx = gsap.quickTo(frame, 'rotateX', { duration: 0.8, ease: 'expo.out' });
+    const ry = gsap.quickTo(frame, 'rotateY', { duration: 0.8, ease: 'expo.out' });
+    frame.addEventListener('pointermove', (e) => {
+      const r = frame.getBoundingClientRect();
+      rx((0.5 - (e.clientY - r.top) / r.height) * 8);
+      ry(((e.clientX - r.left) / r.width - 0.5) * 8);
+    });
+    frame.addEventListener('pointerleave', () => {
+      rx(0);
+      ry(0);
     });
   }
 }
@@ -239,18 +273,19 @@ function setupFillButtons() {
   });
 }
 
+// Copy: the icon turns into a check for 1.5 s. Failure leaves the button as it was.
 function setupCopy() {
   $$<HTMLButtonElement>('[data-copy]').forEach((btn) => {
-    const label = $<HTMLElement>('.copy-label', btn) ?? btn;
-    const text = label.textContent ?? 'Copy';
+    let timer = 0;
     btn.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(btn.dataset.copy ?? '');
-        label.textContent = 'Copied';
       } catch {
-        label.textContent = 'Select the text';
+        return;
       }
-      setTimeout(() => (label.textContent = text), 1800);
+      btn.classList.add('is-done');
+      clearTimeout(timer);
+      timer = window.setTimeout(() => btn.classList.remove('is-done'), 1500);
     });
   });
 }
@@ -270,11 +305,54 @@ function setupNav() {
   });
 }
 
+// Phone menu: a 44 px button opens a full-screen sheet. Esc closes; focus moves in on open and back to the
+// button on Esc. Scroll (Lenis) stops while it is open. Motion is CSS (400 ms, expo out; off under reduced motion).
+function setupMenu() {
+  const btn = $<HTMLButtonElement>('.nav__menu');
+  const sheet = $<HTMLElement>('#menu');
+  if (!btn || !sheet) return;
+  const links = $$<HTMLAnchorElement>('a', sheet);
+  const set = (open: boolean, refocus = false) => {
+    if (sheet.classList.contains('is-open') === open) return;
+    sheet.classList.toggle('is-open', open);
+    sheet.toggleAttribute('inert', !open);
+    sheet.setAttribute('aria-hidden', String(!open));
+    btn.setAttribute('aria-expanded', String(open));
+    btn.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+    if (open) {
+      lenis?.stop();
+      links[0]?.focus({ preventScroll: true });
+    } else {
+      lenis?.start();
+      if (refocus) btn.focus({ preventScroll: true });
+    }
+  };
+  btn.addEventListener('click', () => set(!sheet.classList.contains('is-open'), true));
+  links.forEach((a) => a.addEventListener('click', () => set(false)));
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') set(false, true);
+  });
+  // Leaving the phone layout while open must not strand the page with scroll stopped.
+  matchMedia('(min-width: 901px)').addEventListener('change', (e) => e.matches && set(false));
+}
+
+// Light rows pause when they are off screen (the closing rail and the cost row are not always visible).
+function setupLights() {
+  const rows = $$<HTMLElement>('[data-lights]');
+  if (!rows.length || reduced || !('IntersectionObserver' in window)) return;
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e) => e.target.classList.toggle('is-off', !e.isIntersecting));
+  });
+  rows.forEach((el) => io.observe(el));
+}
+
 function boot() {
   // Page-agnostic behaviour first (the 404 page has none of the home sections).
   setupFillButtons();
   setupCopy();
   setupNav();
+  setupMenu();
+  setupLights();
   setupReveals();
 
   const hero = $<HTMLElement>('#hero');
@@ -295,6 +373,7 @@ function boot() {
     return;
   }
 
+  horizon = $<HTMLElement>('.horizon');
   setupScene(descent, hero);
   const frame = setupDescent(descent);
   setupCurrentGauges();
@@ -312,12 +391,15 @@ function boot() {
         frame?.();
         return;
       }
-      // The approach lights switch on over the first 1.1 s (scene.ts intro gating).
+      // The approach lights switch on over the first 0.8 s; the headline settles by about 1 s.
       if (introStart < 0) introStart = t;
-      const intro = Math.min(1, (t - introStart) / 1.1);
+      const intro = Math.min(1, (t - introStart) / 0.8);
       drive.intro = intro;
       if (drive.visible) {
         scene.render(drive.p, t, intro);
+        // The haze sits on the vanishing point: the far end of the runway on the camera axis.
+        const vp = scene.project(0, 0, -460);
+        if (horizon) horizon.style.transform = `translate3d(${vp.x}px, ${vp.y}px, 0)`;
       }
       frame?.();
     });

@@ -34,7 +34,7 @@ export const cardPose = (p: number): Pose => {
 export const fixPose = (at: number): Pose => ({ x: -9.5, y: 0.2, z: camPose(at).z });
 
 const vertex = /* glsl */ `
-attribute float aKind;   // 0 edge light, 1 approach bar, 2 amber signal, 3 threshold
+attribute float aKind;   // 0 edge light, 1 approach bar, 2 amber signal, 3 threshold, 4 white PAPI
 attribute float aSeq;    // approach: 0 at the threshold, 1 at the far end of the bar line
 attribute float aDepth;  // 0 near the threshold, 1 at the far end (intro order)
 attribute float aSize;
@@ -101,8 +101,12 @@ export function createScene(host: HTMLElement, mobile: boolean): Scene | null {
   host.appendChild(renderer.domElement);
 
   const camera = new PerspectiveCamera(50, 1, 0.5, 900);
-  // Shift the view so the vanishing point sits right of centre, clear of the hero copy.
-  const shift = () => camera.setViewOffset(window.innerWidth, window.innerHeight, mobile ? 0 : -window.innerWidth * 0.2, 0, window.innerWidth, window.innerHeight);
+  // Shift the view so the vanishing point sits in the upper right (desktop) or above the copy (phone).
+  const shift = () => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    camera.setViewOffset(w, h, mobile ? 0 : -w * 0.2, mobile ? h * 0.25 : h * 0.13, w, h);
+  };
 
   // Edge lights, two rows converging on the vanishing point.
   const step = mobile ? 11 : 3.2;
@@ -120,10 +124,15 @@ export function createScene(host: HTMLElement, mobile: boolean): Scene | null {
   };
   const edgeStart = 30;
   const edgeEnd = -FAR;
-  for (let z = edgeStart; z >= edgeEnd; z -= step) {
-    const dpt = Math.min(1, Math.max(0, -z / -edgeEnd));
-    addPoint(-16, 0.25, z, 0, 1.6, dpt);
-    addPoint(16, 0.25, z, 0, 1.6, dpt);
+  const nearEnd = -48; // denser edge lights from here to the camera, around the threshold
+  const dptOf = (z: number) => Math.min(1, Math.max(0, -z / -edgeEnd));
+  for (let z = edgeStart; z >= nearEnd; z -= mobile ? 4 : 1.6) {
+    addPoint(-16, 0.25, z, 0, 1.4, dptOf(z));
+    addPoint(16, 0.25, z, 0, 1.4, dptOf(z));
+  }
+  for (let z = nearEnd - step; z >= edgeEnd; z -= step) {
+    addPoint(-16, 0.25, z, 0, 1.6, dptOf(z));
+    addPoint(16, 0.25, z, 0, 1.6, dptOf(z));
   }
   // Approach lights: bars across the centreline, from the threshold toward the camera.
   const bars = mobile ? 6 : 12;
@@ -136,6 +145,8 @@ export function createScene(host: HTMLElement, mobile: boolean): Scene | null {
   // Threshold bar and the amber signal light beside it.
   for (let i = -4; i <= 4; i++) addPoint(i * 2, 0.05, 0, 3, 1.1, 0);
   addPoint(-10.5, 0.7, -2, 2, 1.7, 0);
+  // PAPI: four lights in a row beside the runway, near the threshold. Two white, two amber: on slope.
+  for (let i = 0; i < 4; i++) addPoint(-24 + i * 2.4, 0.6, -6, i < 2 ? 4 : 2, 1.5, 0);
 
   const geo = new BufferGeometry();
   geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
@@ -169,6 +180,10 @@ export function createScene(host: HTMLElement, mobile: boolean): Scene | null {
 
   const sc = new ThreeScene();
   sc.add(lights, lines);
+  // Compile the shaders now, not on the first frame, so the intro starts on time.
+  camera.position.set(0, 26, 120);
+  camera.lookAt(0, 6, -120);
+  renderer.compile(sc, camera);
 
   const resize = () => {
     const w = window.innerWidth;
