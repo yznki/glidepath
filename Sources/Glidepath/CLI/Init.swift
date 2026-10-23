@@ -31,7 +31,7 @@ enum InitCommand {
                     eprint("--clone must be an absolute path or start with ~/")
                     return 2
                 }
-                let repo = RepoConfig(slug: slug, clone: clone)
+                let repo = RepoConfig(slug: slug, clone: clone, posting: .draft)
                 config = Config(schedule: Config.defaultSchedule.compactMap(ScheduleTime.init),
                                 limits: Limits(), repos: [repo])
                 try fm.createDirectory(atPath: (paths.configFile as NSString).deletingLastPathComponent,

@@ -62,7 +62,8 @@ struct OnboardingState: Equatable {
     var tools = ToolStatus()
     /// Selected repo slugs, in the order they were picked.
     var repos: [String] = []
-    var posting: Posting = .comment
+    /// New repos start as drafts that wait for you to post them. A config without `posting` still means comment.
+    var posting: Posting = .draft
     var authors: AuthorPolicy = .collaborators
     var schedule: [ScheduleTime] = Config.defaultSchedule.compactMap(ScheduleTime.init)
     var days: ScheduleDays = .weekdays

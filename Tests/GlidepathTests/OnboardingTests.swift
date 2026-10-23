@@ -77,6 +77,15 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(s.canContinue(from: .firstSweep))
     }
 
+    func testNewReposDefaultToDraftAndWriteItExplicitly() throws {
+        var s = OnboardingState()
+        s.repos = ["acme/new"]
+        XCTAssertEqual(s.posting, .draft)
+        let text = s.config(base: nil, home: "/home/me").render()
+        XCTAssertTrue(text.contains("posting = \"draft\""), text)
+        XCTAssertEqual(try Config.parse(text, home: "/home/me").repos[0].posting, .draft)
+    }
+
     func testConfigKeepsExistingReposAndAppliesChoicesToNewOnes() throws {
         let base = Config(schedule: [ScheduleTime("07:00")!], limits: Limits(), repos: [
             RepoConfig(slug: "acme/a", clone: "/clones/a", posting: .review),

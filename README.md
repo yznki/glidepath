@@ -26,7 +26,7 @@ glidepath init
 - A strict filter rejects any other shell command.
 - Reads and writes stay inside the repo checkout and the run's scratch folder.
 - GitHub tokens never reach the model.
-- Only collaborators' PRs are reviewed, and reviews are posted as comments, by default.
+- Only collaborators' PRs are reviewed. New repos hold each review as a draft until you post it.
 
 Tested against one adversarial PR; see the transcript in [docs/security-test.md](docs/security-test.md). The full
 design is in [docs/security.md](docs/security.md).
@@ -59,9 +59,9 @@ On each scheduled time, for each configured repo:
 4. **Check.** The `checker` agent (Sonnet), one per PR, re-opens every quoted line and drops any finding that does
    not match the code. It keeps verified blockers. If the checker changes the verdict or a finding, one more check
    runs on the fixed draft.
-5. **Land.** One review per PR, posted as a comment by default. The comment's first line is the verdict. With
-   `posting = "review"`, the review is APPROVE or REQUEST_CHANGES instead. With `posting = "draft"`, the review is
-   held for you to post from the app or the CLI (see [Drafts](#drafts)).
+5. **Land.** One review per PR. A new repo starts with `posting = "draft"`: each review is held for you to post
+   from the app or the CLI (see [Drafts](#drafts)). With `posting = "comment"`, the review is posted directly as a
+   comment whose first line is the verdict. With `posting = "review"`, it is APPROVE or REQUEST_CHANGES instead.
 
 Each run starts `claude -p` in the checkout with the `glidepath` skill. The skill gathers and reviews through the
 steps above, and posts with `glidepath post`.
@@ -216,7 +216,7 @@ split_over_lines = 1500       # reviews are split by area above this
 [[repo]]
 slug = "acme/api"
 clone = "~/glidepath/clones/acme-api"   # init clones a dedicated detached checkout
-posting = "comment"           # comment | review | draft
+posting = "draft"             # draft | comment | review
 authors = "collaborators"     # collaborators | anyone | ["login", ...]
 rules = "~/.config/glidepath/rules/acme-api.md"   # optional
 rules_mode = "extend"         # extend | replace
@@ -249,7 +249,7 @@ flag_note = "Needs a devops code-owner approval."  # optional: the note text
 | `limits.split_over_lines` | `1500` | Above this, the review is split into one reviewer per area. |
 | `repo.slug` | required | `owner/name` on GitHub. |
 | `repo.clone` | `~/glidepath/clones/<owner>-<name>` | Detached checkout the skill reads. Never used for work. |
-| `repo.posting` | `comment` | `comment` posts a COMMENT review whose first line is `Verdict: approve` or `Verdict: changes`. `review` posts APPROVE or REQUEST_CHANGES. `draft` holds the review until you post it; see [Drafts](#drafts). |
+| `repo.posting` | `comment` when omitted; `draft` for new repos | `draft` holds the review until you post it; see [Drafts](#drafts). New repos, from `init`, onboarding and Repos, are written with `posting = "draft"`. `comment` posts directly as a COMMENT review whose first line is `Verdict: approve` or `Verdict: changes`. `review` posts APPROVE or REQUEST_CHANGES. |
 | `repo.authors` | `collaborators` | `collaborators` means write, maintain or admin access on the repo. `anyone` means any author. A list means only those logins. |
 | `repo.rules` | none | A Markdown file with extra review rules for this repo. |
 | `repo.rules_mode` | `extend` | `extend` adds the file to the built-in rubric. `replace` swaps out the rubric's review bar. Safety and output sections always apply. |

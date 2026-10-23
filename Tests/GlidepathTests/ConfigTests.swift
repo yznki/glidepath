@@ -42,6 +42,11 @@ final class ConfigTests: XCTestCase {
         XCTAssertThrowsError(try Config.parse("check_updates = \"no\"\n", home: home))
     }
 
+    func testRepoWithoutPostingStillMeansComment() throws {
+        let c = try Config.parse("[[repo]]\nslug = \"acme/old\"\n", home: home)
+        XCTAssertEqual(c.repos[0].posting, .comment)
+    }
+
     func testDefaults() throws {
         let c = try Config.parse("[[repo]]\nslug = \"acme/web\"\n", home: home)
         XCTAssertEqual(c.schedule.map(\.text), ["07:00", "13:00", "19:00"])
