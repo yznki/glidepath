@@ -199,7 +199,7 @@ notify = true                 # false turns off the notification when a sweep fi
 notify_changes_only = false   # true notifies only when changes are waiting
 notify_sound = "glass"        # none | glass | pop | tink | hero
 respect_focus = true          # false lets notifications break through Focus
-model = "opus"                # haiku | sonnet | opus
+model = "sonnet"              # haiku | sonnet | opus
 strictness = "balanced"       # relaxed | easygoing | balanced | exacting | ruthless
 review_drafts = false         # true also reviews draft PRs
 include_bots = false          # true also reviews PRs opened by bots
@@ -209,7 +209,7 @@ dry_run = false               # true reviews and posts nothing
 hotkey = true                 # true is ⌥⌘G, false is off, or a shortcut such as "⌥⌘G"
 
 [limits]
-max_prs_per_run = 10
+max_prs_per_run = 5
 max_changed_lines = 3000      # bigger PRs are skipped with reason "too large"
 split_over_lines = 1500       # reviews are split by area above this
 
@@ -238,13 +238,13 @@ flag_note = "Needs a devops code-owner approval."  # optional: the note text
 | `respect_focus` | `true` | Notifications are held while a Focus mode is on. `false` lets them through. |
 | `review_drafts` | `false` | Review draft PRs too. Draft PRs get normal verdicts. |
 | `include_bots` | `false` | Review PRs opened by bots too. |
-| `model` | `opus` | Model for the review: `haiku`, `sonnet` or `opus`. |
+| `model` | `opus` when omitted; new setups write `sonnet` | Model for the review: `haiku`, `sonnet` or `opus`. New setups from onboarding and `init` start on Sonnet. |
 | `strictness` | `balanced` | How much the review flags: `relaxed`, `easygoing`, `balanced`, `exacting` or `ruthless`. |
 | `monthly_tokens` | `0` | Token budget for the calendar month. `0` is no budget. The Schedule page and Settings show the month's use against it. |
 | `pause_at_budget` | `true` | Skip scheduled runs once the month's tokens reach `monthly_tokens`. Manual runs still work. |
 | `dry_run` | `false` | Review everything and post nothing, as `glidepath run --dry-run` does. |
 | `hotkey` | `true` | The global shortcut that opens the popover: `true` is ⌥⌘G, `false` turns it off, or a shortcut string such as `"⌥⌘G"`. |
-| `limits.max_prs_per_run` | `10` | PRs per repo per run. Extra PRs are skipped with reason "over max_prs_per_run". |
+| `limits.max_prs_per_run` | `10` when omitted; new setups write `5` | PRs per repo per run. Extra PRs are skipped with reason "over max_prs_per_run". New setups start with five per sweep. |
 | `limits.max_changed_lines` | `3000` | Additions plus deletions above this are skipped with reason "too large". |
 | `limits.split_over_lines` | `1500` | Above this, the review is split into one reviewer per area. |
 | `repo.slug` | required | `owner/name` on GitHub. |

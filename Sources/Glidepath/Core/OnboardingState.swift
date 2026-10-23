@@ -114,7 +114,7 @@ struct OnboardingState: Equatable {
     /// The config this state describes. Repos already in `base` keep their settings; each newly selected repo gets the
     /// posting mode and authors policy chosen here. Repos not selected are dropped.
     func config(base: Config?, home: String) -> Config {
-        var config = base ?? Config(schedule: schedule, limits: Limits(), repos: [])
+        var config = base ?? Config.newSetup(schedule: schedule, repos: [])
         config.schedule = schedule
         config.days = days
         let kept = config.repos.filter { repos.contains($0.slug) }

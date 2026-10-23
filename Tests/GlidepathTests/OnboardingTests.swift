@@ -86,6 +86,24 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(try Config.parse(text, home: "/home/me").repos[0].posting, .draft)
     }
 
+    func testNewSetupWritesSonnetAndFivePRsExplicitly() throws {
+        let text = OnboardingState.initial(existing: nil).config(base: nil, home: "/home/me").render()
+        XCTAssertTrue(text.contains("model = \"sonnet\""), text)
+        XCTAssertTrue(text.contains("max_prs_per_run = 5"), text)
+        let back = try Config.parse(text, home: "/home/me")
+        XCTAssertEqual(back.model, .sonnet)
+        XCTAssertEqual(back.limits.maxPRsPerRun, 5)
+    }
+
+    func testAddingReposToExistingConfigKeepsItsModelAndLimits() {
+        let base = Config(schedule: [ScheduleTime("07:00")!], limits: Limits(), repos: [])
+        var s = OnboardingState()
+        s.repos = ["acme/new"]
+        let config = s.config(base: base, home: "/home/me")
+        XCTAssertEqual(config.model, .opus)
+        XCTAssertEqual(config.limits.maxPRsPerRun, 10)
+    }
+
     func testConfigKeepsExistingReposAndAppliesChoicesToNewOnes() throws {
         let base = Config(schedule: [ScheduleTime("07:00")!], limits: Limits(), repos: [
             RepoConfig(slug: "acme/a", clone: "/clones/a", posting: .review),
