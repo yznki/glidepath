@@ -119,6 +119,7 @@ PR is a dot on the slope at the stage it is in.
 - Footer: Run now (or Resume while paused, or Stop while running) on the left, and a menu on the right with Pause,
   Open log, Open dashboard, the last run's token count, Open at login and Quit. On a first run, Edit repos… opens the config file.
 - The popover is at most 640 pt tall. Past that, the list scrolls.
+- Held reviews are cards in a stack on the strip. Click a card to open it, hold **Post** to post it, or swipe it away to discard it.
 - Menu bar: a glyph echoing the app icon, a striped disc with a slot cut into it. A dot moves along the slot while
   running (with the count of active PRs), a count when changes are waiting (cleared when you open the popover), faded
   stripes while paused, and a cross at the touchdown point for a failed run. A small dot at the top right means a newer
@@ -130,19 +131,21 @@ PR is a dot on the slope at the stage it is in.
 Pause writes a marker file, so scheduled runs skip until you resume. Manual runs still work.
 
 The app is the same binary as the CLI. Launched with no arguments, or with `app`, it opens the menu bar. Only one copy
-runs: a second start prints "Glidepath is already running in the menu bar" and exits.
+runs: a second start prints "Glidepath is already running in the menu bar" and exits. While the window is open, the app
+also shows a Dock icon, with a Dock menu and a badge for reviews waiting for you.
 
 
 ## Window
 
 The menu bar popover is the quick glance. The window (Overview, Reviews, Repos, Schedule, Settings) is for setup,
 settings and the review history, and opens from the popover's "Open Glidepath". With no config file, it opens on
-onboarding. Light and dark:
+onboarding. The window sections are Now (the live sweep, with stages, tokens and hold to stop), Reviews, Repos,
+Schedule (a 24-hour dial with presets) and Settings (with search and a live view of `config.toml`). Light and dark:
 
-| Overview | Reviews |
+| Now | Reviews |
 | --- | --- |
-| ![Overview, light](docs/shots/app/overview-light.png) | ![Reviews, light](docs/shots/app/reviews-light.png) |
-| ![Overview, dark](docs/shots/app/overview-dark.png) | ![Reviews, dark](docs/shots/app/reviews-dark.png) |
+| ![Now, light](docs/shots/app/now-light.png) | ![Reviews, light](docs/shots/app/reviews-light.png) |
+| ![Now, dark](docs/shots/app/now-dark.png) | ![Reviews, dark](docs/shots/app/reviews-dark.png) |
 
 ## Drafts
 
@@ -181,7 +184,9 @@ Clicking the notification opens the popover. The first launch after an
 update asks for permission. If it is denied, the app logs that once and carries on.
 
 Turn notifications off with `notify = false` in the config. The app has no menu item for this; the config is the
-one place to change it.
+one place to change it. Three more keys: `notify_changes_only = true` skips the notification unless changes are waiting,
+`notify_sound` picks the sound (`none`, `glass`, `pop`, `tink` or `hero`; default `glass`), and `respect_focus = false`
+lets the notification break through a Focus mode.
 
 ## Config
 
@@ -191,6 +196,17 @@ one place to change it.
 schedule = ["07:00", "13:00", "19:00"]   # global; one launchd job
 check_updates = true          # false turns off the automatic check for new releases
 notify = true                 # false turns off the notification when a sweep finishes
+notify_changes_only = false   # true notifies only when changes are waiting
+notify_sound = "glass"        # none | glass | pop | tink | hero
+respect_focus = true          # false lets notifications break through Focus
+model = "opus"                # haiku | sonnet | opus
+strictness = "balanced"       # relaxed | easygoing | balanced | exacting | ruthless
+review_drafts = false         # true also reviews draft PRs
+include_bots = false          # true also reviews PRs opened by bots
+monthly_tokens = 0            # monthly token budget; 0 is no budget
+pause_at_budget = true        # pause scheduled runs once the budget is used
+dry_run = false               # true reviews and posts nothing
+hotkey = true                 # true is ⌥⌘G, false is off, or a shortcut such as "⌥⌘G"
 
 [limits]
 max_prs_per_run = 10
@@ -207,6 +223,7 @@ rules_mode = "extend"         # extend | replace
 gitnexus = "auto"             # auto | on | off
 gitnexus_refresh = true       # re-index the clone before a sweep that reviews something (GitNexus on only)
 include_own = false           # true to review your own PRs too
+review_drafts = true          # optional: overrides the top-level review_drafts for this repo
 flag_paths = ["infra/", ".github/workflows/"]   # optional: PRs touching these get a note
 flag_note = "Needs a devops code-owner approval."  # optional: the note text
 ```
@@ -216,6 +233,17 @@ flag_note = "Needs a devops code-owner approval."  # optional: the note text
 | `schedule` | `07:00`, `13:00`, `19:00` | Local times for scheduled runs. One launchd job for all repos. |
 | `check_updates` | `true` | Check GitHub for a newer release at launch, daily and when the popover opens. `false` turns those checks off; "Check for updates…" still works. |
 | `notify` | `true` | Notify when a sweep finishes. See [Notifications](#notifications). |
+| `notify_changes_only` | `false` | Notify only when a sweep has changes waiting. |
+| `notify_sound` | `glass` | `none`, `glass`, `pop`, `tink` or `hero`. |
+| `respect_focus` | `true` | Notifications are held while a Focus mode is on. `false` lets them through. |
+| `review_drafts` | `false` | Review draft PRs too. Draft PRs get normal verdicts. |
+| `include_bots` | `false` | Review PRs opened by bots too. |
+| `model` | `opus` | Model for the review: `haiku`, `sonnet` or `opus`. |
+| `strictness` | `balanced` | How much the review flags: `relaxed`, `easygoing`, `balanced`, `exacting` or `ruthless`. |
+| `monthly_tokens` | `0` | Token budget for the calendar month. `0` is no budget. The Schedule page and Settings show the month's use against it. |
+| `pause_at_budget` | `true` | Skip scheduled runs once the month's tokens reach `monthly_tokens`. Manual runs still work. |
+| `dry_run` | `false` | Review everything and post nothing, as `glidepath run --dry-run` does. |
+| `hotkey` | `true` | The global shortcut that opens the popover: `true` is ⌥⌘G, `false` turns it off, or a shortcut string such as `"⌥⌘G"`. |
 | `limits.max_prs_per_run` | `10` | PRs per repo per run. Extra PRs are skipped with reason "over max_prs_per_run". |
 | `limits.max_changed_lines` | `3000` | Additions plus deletions above this are skipped with reason "too large". |
 | `limits.split_over_lines` | `1500` | Above this, the review is split into one reviewer per area. |
@@ -227,6 +255,7 @@ flag_note = "Needs a devops code-owner approval."  # optional: the note text
 | `repo.rules_mode` | `extend` | `extend` adds the file to the built-in rubric. `replace` swaps out the rubric's review bar. Safety and output sections always apply. |
 | `repo.gitnexus` | `auto` | Use the GitNexus MCP tools for blast radius. `auto` uses them when the `gitnexus` command is on your PATH and `authors` is not `"anyone"`. Otherwise the skill uses grep. |
 | `repo.gitnexus_refresh` | `true` | Before a sweep that reviews something, run `gitnexus analyze --index-only` in the clone (10-minute limit). If that fails or times out, GitNexus is off for this repo in this run. Has no effect when GitNexus is off. |
+| `repo.review_drafts` | inherits | `true` or `false` overrides the top-level `review_drafts` for this repo. Leave it out to inherit. |
 | `repo.include_own` | `false` | Review PRs you opened too. Off by default. GitHub accepts only a COMMENT review on your own PR, so `post` sends COMMENT for those whatever `posting` says. |
 | `repo.flag_paths` | none | Path prefixes that need an extra approval. A PR whose changed files start with one gets a final line on its review: the note, and up to three matched paths. The verdict does not change, and the row shows "Flagged". |
 | `repo.flag_note` | "Touches flagged paths; needs an extra approval." | The text of that note. Used only with `flag_paths`. |

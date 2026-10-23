@@ -216,7 +216,7 @@ the quick glance; the window holds setup, settings and the review history. The m
 
 - Size 1100 x 720 by default, 960 x 640 minimum, full-size content view with a hidden title. Traffic lights sit over
   the sidebar. Every title row starts at y 52, level with the sidebar's brand row.
-- Sidebar 220 wide: Overview, Reviews, Repos, Schedule, Settings. Nav rows are 32 tall, 4 apart; the active row is a
+- Sidebar 220 wide: Now, Reviews, Repos, Schedule, Settings. Nav rows are 32 tall, 4 apart; the active row is a
   neutral pill, never accent-coloured.
 - Canvas inset 32 left and right, 52 top, 32 bottom. Panels radius 14, rows 56 tall, rules drawn inside the row.
 - Onboarding replaces the sidebar: a 400 pt rail with the glide slope and six steps, and a 520 pt pane with a footer
@@ -235,3 +235,14 @@ Tokens live in `Sources/Glidepath/App/Theme.swift`:
 
 Snapshot mode renders every section and onboarding step in both appearances from `WindowFixtures`, so the look can be
 checked against the mockups without touching a real config or state folder.
+
+## 13. Redesign 1.3
+
+Dark only. The plan and the approved prototype are in [docs/design/v1.3/](design/v1.3/); the prototype is the spec for
+looks and motion, the plan for behaviour. The popover is a stack of glass cards: a held review is posted by holding
+its card's button, and discarded by swiping the card away. Now replaces Overview as the window's first section. The
+Dock icon shows while the window is open.
+
+- App-only look settings (glyph style, badge, signal colour, glass blur, motion) live in `UserDefaults`.
+- Reviewing settings (model, strictness, drafts, bots, budget, notifications, shortcut) live in `config.toml`. The
+  Settings page writes that file and shows its text.
