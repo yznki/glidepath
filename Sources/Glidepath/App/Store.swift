@@ -357,7 +357,9 @@ final class Store: ObservableObject {
                     Transcript.usage(paths: paths, cwd: cwd, sessionId: session, keptPRs: kept)
                 }.value
                 guard !Task.isCancelled else { return }
-                self?.liveTokens = (usage.total, usage.byPR)
+                if let self, usage.total != self.liveTokens.total || usage.byPR != self.liveTokens.byPR {
+                    self.liveTokens = (usage.total, usage.byPR)
+                }
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
