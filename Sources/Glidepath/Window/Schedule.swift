@@ -15,10 +15,11 @@ struct ScheduleView: View {
     private var signal: Color { Gotham.signal(signalKey) }
     private static let letters = ["M", "T", "W", "T", "F", "S", "S"]
 
-    /// The model starts from the config, not from onAppear, since snapshot rendering never fires onAppear.
+    /// The model starts from the config and the run history, not from onAppear, since snapshot rendering never fires onAppear.
     init(store: Store) {
         self.store = store
-        _model = StateObject(wrappedValue: ScheduleModel(config: store.snap.config))
+        _model = StateObject(wrappedValue: ScheduleModel(config: store.snap.config,
+                                                         sweepTokens: DialStats.sweepTokens(store.allRuns(), now: Date())))
     }
 
     var body: some View {
@@ -41,6 +42,7 @@ struct ScheduleView: View {
         .onAppear {
             ScheduleModel.live = model
             model.sync(store.snap.config)
+            model.loadHistory(store.allRuns())
         }
         .onChange(of: store.snap.schedule) { _, _ in model.sync(store.snap.config) }
         .onChange(of: store.snap.config?.days) { _, _ in model.sync(store.snap.config) }
@@ -218,12 +220,15 @@ struct ScheduleView: View {
     private var stats: some View {
         let perDay = model.times.count
         let perWeek = perDay * model.days.count
-        let tokens = DialStats.tokensPerMonth(perWeek: perWeek)
+        let maxPRs = store.snap.config?.limits.maxPRsPerRun ?? Limits().maxPRsPerRun
+        let measured = model.sweepTokens != nil
+        let perSweep = model.sweepTokens ?? DialStats.perSweepGuess(maxPRs: maxPRs)
+        let tokens = DialStats.tokensPerMonth(perWeek: perWeek, perSweep: perSweep)
         let over = DialStats.overBudget(tokens: tokens, budget: store.snap.config?.monthlyTokens ?? 0)
         return HStack(alignment: .top, spacing: 26) {
             stat("\(perDay)", "Sweeps a day", warn: false)
             stat("\(perWeek)", "A week", warn: false)
-            stat("~" + DialFormat.compact(tokens), over ? "Over budget" : "Tokens a month", warn: over)
+            stat((measured ? "~" : "≤") + DialFormat.compact(tokens), over ? "Over budget" : "Tokens a month", warn: over)
         }
     }
 
@@ -675,6 +680,8 @@ final class ScheduleModel: ObservableObject {
     @Published private(set) var error: String?
     /// Counts refused changes; each step is one shake.
     @Published private(set) var shake: CGFloat = 0
+    /// Mean tokens per finished sweep over the last 30 days, or nil until there are enough to measure.
+    @Published private(set) var sweepTokens: Int?
     let saved = SavedFlash()
 
     /// The model whose window is open, so a window close can flush its pending save.
@@ -724,8 +731,14 @@ final class ScheduleModel: ObservableObject {
 
     // MARK: Loading
 
-    init(config: Config? = nil) {
+    init(config: Config? = nil, sweepTokens: Int? = nil) {
+        self.sweepTokens = sweepTokens
         sync(config)
+    }
+
+    /// Re-reads the run history for the estimate. Called when the section appears.
+    func loadHistory(_ runs: [RunState]) {
+        sweepTokens = DialStats.sweepTokens(runs, now: Date())
     }
 
     /// Takes the config's schedule when it differs from what this model last saved or loaded.

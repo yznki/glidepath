@@ -111,13 +111,28 @@ enum DialFormat {
     }
 }
 
-/// The numbers under the dial. Tokens are the prototype's estimate: 9000 tokens per sweep, 4.3 weeks a month.
+/// The numbers under the dial. Tokens per sweep come from finished sweeps when there are enough, else a guess.
 enum DialStats {
-    static let tokensPerSweep = 9000
+    /// Median tokens per reviewed PR measured on real use (about 340k). Guess until history exists.
+    static let tokensPerPRGuess = 340_000
     static let weeksPerMonth = 4.3
+    static let minSweepsForHistory = 3
 
-    static func tokensPerMonth(perWeek: Int) -> Int {
-        Int(Double(perWeek * tokensPerSweep) * weeksPerMonth)
+    /// Mean tokens of the finished sweeps started in the last 30 days, or nil when there are fewer than three.
+    static func sweepTokens(_ runs: [RunState], now: Date) -> Int? {
+        let since = now.addingTimeInterval(-30 * 86_400)
+        let recent = runs.filter { $0.kind == nil && $0.finished != nil && $0.started >= since }
+        guard recent.count >= minSweepsForHistory else { return nil }
+        return recent.reduce(0) { $0 + $1.tokens } / recent.count
+    }
+
+    /// The guess for one sweep: every PR in it uses the measured per-PR tokens.
+    static func perSweepGuess(maxPRs: Int) -> Int {
+        tokensPerPRGuess * maxPRs
+    }
+
+    static func tokensPerMonth(perWeek: Int, perSweep: Int) -> Int {
+        Int((Double(perWeek * perSweep) * weeksPerMonth).rounded())
     }
 
     /// True only when a budget is set (`monthly_tokens` > 0) and the estimate is over it.
