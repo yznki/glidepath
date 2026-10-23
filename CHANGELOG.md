@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.1
+
+Fixes the build on macOS 15 and older SDKs (menu commands over the builder limit).
+
 ## 1.3.0
 
 **New look**
