@@ -60,7 +60,7 @@ struct NowView: View {
                 rail
                     .padding(.bottom, 28)
                 header
-                VStack(spacing: 8) {
+                LazyVStack(spacing: 8) {
                     if rows.isEmpty {
                         capLabel("Nothing in flight")
                             .frame(maxWidth: .infinity)
@@ -375,7 +375,7 @@ struct Pulse: View {
 
     var body: some View {
         let still = Motion.reduced(reduceMotion)
-        TimelineView(.animation(paused: still)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: still)) { context in
             let k = still ? 0 : (1 - cos(2 * Double.pi * context.date.timeIntervalSinceReferenceDate / period)) / 2
             ZStack {
                 Circle()
@@ -414,7 +414,7 @@ struct LineSweep: View {
     var body: some View {
         let still = Motion.reduced(reduceMotion)
         GeometryReader { geo in
-            TimelineView(.animation(paused: still)) { context in
+            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: still)) { context in
                 let w = geo.size.width
                 let t = still ? 0 : context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.1) / 1.1
                 LinearGradient(colors: [.clear, .white, .clear], startPoint: .leading, endPoint: .trailing)
