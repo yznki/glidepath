@@ -26,10 +26,13 @@ enum PRFilter {
     /// lookups are API calls and only happen for PRs that get that far. A lookup that fails skips
     /// the PR with a reason instead of failing the repo.
     /// `draftHeads` are the heads of this PR's open drafts: a draft at the current head counts as reviewed.
-    static func evaluate(_ pr: PRInfo, me: String, includeOwn: Bool = false, authors: AuthorPolicy, limits: Limits,
+    /// `reviewDrafts` and `includeBots` turn off the draft and bot skips. The runner passes the repo's value of
+    /// `review_drafts` when it has one, else the global value.
+    static func evaluate(_ pr: PRInfo, me: String, includeOwn: Bool = false, reviewDrafts: Bool = false,
+                         includeBots: Bool = false, authors: AuthorPolicy, limits: Limits,
                          draftHeads: Set<String> = [], isCollaborator: () -> Bool?, reviewedHeads: () -> Set<String>?) -> Decision {
         if !includeOwn && pr.author.caseInsensitiveCompare(me) == .orderedSame { return .skip("your own PR") }
-        if pr.isDraft { return .skip("draft") }
+        if pr.isDraft && !reviewDrafts { return .skip("draft") }
         // A bot listed by name in `authors` is an explicit opt-in.
         let listed: Bool
         if case .logins(let logins) = authors {
@@ -37,7 +40,7 @@ enum PRFilter {
         } else {
             listed = false
         }
-        if !listed && (pr.authorIsBot || pr.author.hasSuffix("[bot]")) { return .skip("bot author") }
+        if !includeBots && !listed && (pr.authorIsBot || pr.author.hasSuffix("[bot]")) { return .skip("bot author") }
         if pr.changedLines > limits.maxChangedLines {
             return .skip("\(tooLargeReason) (\(pr.changedLines) changed lines)")
         }

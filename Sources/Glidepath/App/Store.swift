@@ -277,7 +277,7 @@ final class Store: ObservableObject {
         s.repoCount = config?.repos.count ?? 0
         s.config = config
         // The shortcut follows the config as it is now, not only as it was at launch.
-        if !isFixture { GlobalHotkey.shared.apply(on: config?.hotkey ?? true) }
+        if !isFixture { GlobalHotkey.shared.apply(config?.hotkey ?? .on) }
         s.hovered = snap.hovered
         s.update = Updates.cached(paths)
         s.checkUpdates = config?.checkUpdates ?? true
@@ -292,8 +292,12 @@ final class Store: ObservableObject {
                 pendingNoticeRunID = run.id
             } else if run.id == pendingNoticeRunID {
                 pendingNoticeRunID = nil
-                if config?.notify ?? true, let notice = Presentation.notice(run) {
-                    Notifier.post(notice, runID: run.id)
+                // notify_changes_only: a sweep with no PR that needs changes stays quiet, but a failure still speaks.
+                let hasChanges = run.repos.flatMap(\.prs).contains { $0.verdict == .changes }
+                if config?.notify ?? true, let notice = Presentation.notice(run),
+                   hasChanges || config?.notifyChangesOnly != true || Presentation.failureMessage(run) != nil {
+                    Notifier.post(notice, runID: run.id, sound: config?.notifySound ?? .glass,
+                                  respectFocus: config?.respectFocus ?? true)
                 }
             }
         }
@@ -305,7 +309,8 @@ final class Store: ObservableObject {
         } else if let id = pendingDryRunID {
             pendingDryRunID = nil
             if let ended = try? RunStore(paths: paths).load(id), ended.finished != nil, config?.notify ?? true {
-                Notifier.post(Presentation.dryRunNotice(ended), runID: ended.id)
+                Notifier.post(Presentation.dryRunNotice(ended), runID: ended.id, sound: config?.notifySound ?? .glass,
+                              respectFocus: config?.respectFocus ?? true)
             }
         }
 

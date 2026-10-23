@@ -13,8 +13,14 @@ struct SettingsView: View {
     /// The reason the switch is not working: the last save's error, or the shortcut being on but not registered.
     private var hotkeyError: String? {
         if let error = model.rowErrors["hotkey"] { return error }
-        guard !store.isFixture, config?.hotkey ?? true, !GlobalHotkey.shared.registered else { return nil }
-        return "Another app already uses ⌥⌘G, so Glidepath cannot register it."
+        guard !store.isFixture, config?.hotkey.isOn ?? true, !GlobalHotkey.shared.registered else { return nil }
+        return "Another app already uses \(shortcutText), so Glidepath cannot register it."
+    }
+
+    /// The shortcut as the user wrote it, or ⌥⌘G when it is the default.
+    private var shortcutText: String {
+        if case .custom(let text) = config?.hotkey ?? .on { return text }
+        return "⌥⌘G"
     }
 
     var body: some View {
@@ -35,9 +41,9 @@ struct SettingsView: View {
                             model.commit("autoUpdates", store: store) { ConfigEditor.setCheckUpdates($0, !($0.checkUpdates)) }
                         }
                     }
-                    SettingRow(title: "Open Glidepath with ⌥⌘G", detail: "Opens the menu bar popover from any app.",
+                    SettingRow(title: "Open Glidepath with \(shortcutText)", detail: "Opens the menu bar popover from any app.",
                                error: hotkeyError) {
-                        WinToggle(isOn: config?.hotkey ?? true) { model.toggleHotkey(store) }
+                        WinToggle(isOn: config?.hotkey.isOn ?? true) { model.toggleHotkey(store) }
                     }
                     SettingRow(title: "Open at login", detail: "Starts Glidepath when you log in.",
                                error: model.rowErrors["login"]) {
@@ -256,19 +262,26 @@ final class SettingsModel: ObservableObject {
         runChecks(store.paths)
     }
 
-    /// Turns the ⌥⌘G shortcut on or off. Turning it on registers the shortcut first: when the system refuses it, the
-    /// setting stays off and the row says why.
+    /// The custom shortcut text last switched off, so turning the shortcut back on restores it.
+    private var rememberedShortcut: String?
+
+    /// Turns the shortcut on or off. Turning it on registers the shortcut first: when the system refuses it, the
+    /// setting stays off and the row says why. A custom shortcut comes back as it was.
     func toggleHotkey(_ store: Store) {
-        let on = !(store.snap.config?.hotkey ?? true)
-        if on {
-            guard GlobalHotkey.shared.register() else {
-                rowErrors["hotkey"] = "Another app already uses ⌥⌘G, so Glidepath cannot register it."
-                return
-            }
-        } else {
+        let current = store.snap.config?.hotkey ?? .on
+        if current.isOn {
+            if case .custom(let text) = current { rememberedShortcut = text }
             GlobalHotkey.shared.unregister()
+            commit("hotkey", store: store) { ConfigEditor.setHotkey($0, .off) }
+            return
         }
-        commit("hotkey", store: store) { ConfigEditor.setHotkey($0, on) }
+        let setting = rememberedShortcut.map(HotkeySetting.custom) ?? .on
+        guard let spec = HotkeySpec.from(setting), GlobalHotkey.shared.register(spec) else {
+            let text = rememberedShortcut ?? "⌥⌘G"
+            rowErrors["hotkey"] = "Another app already uses \(text), so Glidepath cannot register it."
+            return
+        }
+        commit("hotkey", store: store) { ConfigEditor.setHotkey($0, setting) }
     }
 
     /// Runs `Checks.tools()` and `Checks.installed(paths)` off the main thread. Shows "Checking…" until they return.

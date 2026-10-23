@@ -75,17 +75,31 @@ enum GitNexus {
     }
 }
 
-/// Pause is a marker file, so the launchd job and the menu bar app agree without talking to each other.
+/// Pause is a marker file, so the launchd job and the menu bar app agree without talking to each other. Its lines are
+/// "paused <time>" and, for a timed pause, "until <time>".
 enum Pause {
-    static func isPaused(_ paths: Paths) -> Bool {
-        FileManager.default.fileExists(atPath: paths.pausedFile)
+    /// True while the marker exists. A timed pause ends on its own: once `until` has passed, the marker is removed.
+    static func isPaused(_ paths: Paths, now: Date = Date()) -> Bool {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: paths.pausedFile) else { return false }
+        if let until = until(paths), now >= until {
+            try? fm.removeItem(atPath: paths.pausedFile)
+            return false
+        }
+        return true
     }
 
     /// When the pause started, read from the marker file. nil when not paused or unreadable.
-    static func since(_ paths: Paths) -> Date? {
+    static func since(_ paths: Paths) -> Date? { field("paused", paths) }
+
+    /// When a timed pause ends. nil for an open-ended pause.
+    static func until(_ paths: Paths) -> Date? { field("until", paths) }
+
+    private static func field(_ key: String, _ paths: Paths) -> Date? {
         guard let text = try? String(contentsOfFile: paths.pausedFile, encoding: .utf8) else { return nil }
-        let stamp = text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "paused ", with: "")
-        return ISO8601DateFormatter().date(from: stamp)
+        let prefix = key + " "
+        guard let line = text.split(separator: "\n").first(where: { $0.hasPrefix(prefix) }) else { return nil }
+        return ISO8601DateFormatter().date(from: String(line.dropFirst(prefix.count)))
     }
 
     /// Whether setup pauses the schedule. A job that is already installed keeps its state; with no job yet, the first
@@ -99,12 +113,15 @@ enum Pause {
         createdJob
     }
 
-    static func set(_ paused: Bool, _ paths: Paths) throws {
+    /// Pauses, optionally until `until`, or resumes. Resuming removes the marker.
+    static func set(_ paused: Bool, _ paths: Paths, until: Date? = nil) throws {
         let fm = FileManager.default
         if paused {
             try fm.createDirectory(atPath: paths.stateDir, withIntermediateDirectories: true)
-            try Data("paused \(ISO8601DateFormatter().string(from: Date()))\n".utf8)
-                .write(to: URL(fileURLWithPath: paths.pausedFile))
+            let iso = ISO8601DateFormatter()
+            var text = "paused \(iso.string(from: Date()))\n"
+            if let until { text += "until \(iso.string(from: until))\n" }
+            try Data(text.utf8).write(to: URL(fileURLWithPath: paths.pausedFile))
         } else if fm.fileExists(atPath: paths.pausedFile) {
             try fm.removeItem(atPath: paths.pausedFile)
         }

@@ -133,13 +133,14 @@ enum Claude {
     }
 
     /// Full argument list for the review session. The skill text is the system prompt; the run
-    /// arguments are the user prompt. Nothing is passed as a slash command.
+    /// arguments are the user prompt. Nothing is passed as a slash command. `model` is a `ReviewModel` raw value.
     static func arguments(prompt: String, systemPrompt: String, sessionId: String, scratch: String,
-                          mcpConfig: String, agents: String, settings: String, allowlist: [String]) -> [String] {
+                          mcpConfig: String, agents: String, settings: String, allowlist: [String],
+                          model: String) -> [String] {
         [
             "-p", prompt,
             "--append-system-prompt", systemPrompt,
-            "--model", "opus",
+            "--model", model,
             "--permission-mode", "dontAsk",
             "--session-id", sessionId,
             // Project and local settings live in the clone, which is untrusted. User settings are the

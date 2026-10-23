@@ -43,6 +43,26 @@ final class FilterTests: XCTestCase {
         XCTAssertEqual(eval(pr(author: "me", draft: true)), .skip("draft"), "other rules still apply to own PRs")
     }
 
+    func testDraftsAreSkippedUnlessReviewed() {
+        func decide(reviewDrafts: Bool, draft: Bool = true) -> Decision {
+            PRFilter.evaluate(pr(draft: draft), me: "me", reviewDrafts: reviewDrafts, authors: .collaborators, limits: limits,
+                              isCollaborator: { true }, reviewedHeads: { [] })
+        }
+        XCTAssertEqual(decide(reviewDrafts: false), .skip("draft"))
+        XCTAssertEqual(decide(reviewDrafts: true), .keep)
+        XCTAssertEqual(decide(reviewDrafts: true, draft: false), .keep, "a ready PR is kept either way")
+    }
+
+    func testBotsAreSkippedUnlessIncluded() {
+        func decide(includeBots: Bool, author: String = "dependabot[bot]", listed: AuthorPolicy = .collaborators) -> Decision {
+            PRFilter.evaluate(pr(author: author, bot: true), me: "me", includeBots: includeBots, authors: listed,
+                              limits: limits, isCollaborator: { true }, reviewedHeads: { [] })
+        }
+        XCTAssertEqual(decide(includeBots: false), .skip("bot author"))
+        XCTAssertEqual(decide(includeBots: true), .keep)
+        XCTAssertEqual(decide(includeBots: false, listed: .logins(["dependabot[bot]"])), .keep, "listed by name is opt-in")
+    }
+
     func testReviewedAtOtherHeadIsKept() {
         XCTAssertEqual(eval(pr(sha: "new"), reviewed: ["old"]), .keep)
     }

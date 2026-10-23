@@ -1,6 +1,19 @@
 import AppKit
 import UserNotifications
 
+extension NotifySound {
+    /// The system sound's name, as `UNNotificationSound(named:)` takes it.
+    var soundName: String {
+        switch self {
+        case .none: return ""
+        case .glass: return "Glass"
+        case .pop: return "Pop"
+        case .tink: return "Tink"
+        case .hero: return "Hero"
+        }
+    }
+}
+
 /// Sweep notifications. Best effort: when permission is denied or a request fails, the failure is logged once and
 /// the app carries on. Clicking a notification opens the popover.
 final class Notifier: NSObject, UNUserNotificationCenterDelegate {
@@ -27,10 +40,15 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     }
 
     /// One notification per sweep: the identifier is the run's, so a repeat replaces rather than stacks.
-    static func post(_ notice: SweepNotice, runID: String) {
+    /// `respectFocus` false marks it time-sensitive; macOS may lower that without the entitlement.
+    static func post(_ notice: SweepNotice, runID: String, sound: NotifySound = .glass, respectFocus: Bool = true) {
         let content = UNMutableNotificationContent()
         content.title = notice.title
         content.body = notice.body
+        if sound != .none {
+            content.sound = UNNotificationSound(named: UNNotificationSoundName(sound.soundName))
+        }
+        if !respectFocus { content.interruptionLevel = .timeSensitive }
         let request = UNNotificationRequest(identifier: "sweep-\(runID)", content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request) { error in
             if let error { shared.logOnce("notification: \(error.localizedDescription)") }

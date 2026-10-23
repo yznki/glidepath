@@ -87,6 +87,34 @@ enum Posting: String, Equatable { case comment, review, draft }
 enum AuthorPolicy: Equatable { case collaborators, anyone, logins([String]) }
 enum RulesMode: String, Equatable { case extend, replace }
 enum GitNexusMode: String, Equatable { case auto, on, off }
+/// The model the review sessions run on. Opus is the default, as it was before the key existed.
+enum ReviewModel: String, CaseIterable, Equatable { case haiku, sonnet, opus }
+
+/// How hard the review prompt pushes. Balanced adds nothing to the prompt, as it did before the key existed.
+enum Strictness: String, CaseIterable, Equatable {
+    case relaxed, easygoing, balanced, exacting, ruthless
+
+    /// The sentence appended to the review prompt. Empty for balanced.
+    var promptLine: String {
+        switch self {
+        case .relaxed: return "Let style and small things go; flag only real bugs."
+        case .easygoing: return "Flag only what could break."
+        case .balanced: return ""
+        case .exacting: return "Also flag naming, missing tests and unhandled edge cases."
+        case .ruthless: return "Flag every issue you find, including nits."
+        }
+    }
+}
+
+/// The sound a sweep notification plays. `none` plays nothing.
+enum NotifySound: String, CaseIterable, Equatable { case none, glass, pop, tink, hero }
+
+/// The `hotkey` key: a bool (true is ⌥⌘G, false is off) or a shortcut such as "⌥⌘G".
+enum HotkeySetting: Equatable {
+    case off, on, custom(String)
+
+    var isOn: Bool { self != .off }
+}
 
 struct RepoConfig: Equatable {
     var slug: String
@@ -98,6 +126,8 @@ struct RepoConfig: Equatable {
     var gitnexus: GitNexusMode = .auto
     /// Review the user's own PRs too. Off by default; posting to your own PR is always a COMMENT review.
     var includeOwn = false
+    /// Review draft PRs. nil inherits the top-level `review_drafts`.
+    var reviewDrafts: Bool?
     /// Refresh the GitNexus index in the clone before a sweep that reviews something. Only when GitNexus is on.
     var gitnexusRefresh = true
     /// Path prefixes that need an extra approval. A PR touching one gets a note on its review.
@@ -130,7 +160,24 @@ struct Config: Equatable {
     var days: ScheduleDays = .all
     /// The global ⌥⌘G shortcut that opens the menu bar popover from any app. Settings writes it; a config without it
     /// keeps the shortcut on.
-    var hotkey = true
+    var hotkey: HotkeySetting = .on
+    /// Review draft PRs, unless a repo says otherwise.
+    var reviewDrafts = false
+    /// Review PRs from bot accounts too. A bot listed by name in `authors` is reviewed either way.
+    var includeBots = false
+    var model: ReviewModel = .opus
+    var strictness: Strictness = .balanced
+    /// Notify only when a sweep has a PR that needs changes.
+    var notifyChangesOnly = false
+    var notifySound: NotifySound = .glass
+    /// False marks the notification time-sensitive, so it can break through a Focus.
+    var respectFocus = true
+    /// Tokens the scheduled sweeps may use in a calendar month. 0 means no budget.
+    var monthlyTokens = 0
+    /// Scheduled sweeps stop at the budget. Manual runs ignore it.
+    var pauseAtBudget = true
+    /// Runs review but post nothing, as `glidepath run --dry-run` does.
+    var dryRun = false
 
     static func load(_ paths: Paths) throws -> Config {
         guard let text = try? String(contentsOfFile: paths.configFile, encoding: .utf8) else {
@@ -146,7 +193,9 @@ struct Config: Equatable {
         } catch let e as TOMLError {
             throw ConfigError(message: "config.toml: \(e)")
         }
-        try checkKeys(doc, allowed: ["schedule", "days", "limits", "repo", "check_updates", "notify", "hotkey"],
+        try checkKeys(doc, allowed: ["schedule", "days", "limits", "repo", "check_updates", "notify", "hotkey",
+                                     "review_drafts", "include_bots", "model", "strictness", "notify_changes_only",
+                                     "notify_sound", "respect_focus", "monthly_tokens", "pause_at_budget", "dry_run"],
                       where: "top level")
 
         let scheduleText = try strings(doc["schedule"], key: "schedule") ?? defaultSchedule
@@ -181,9 +230,34 @@ struct Config: Equatable {
         }
         let checkUpdates = try bool(doc["check_updates"], key: "check_updates") ?? true
         let notify = try bool(doc["notify"], key: "notify") ?? true
-        let hotkey = try bool(doc["hotkey"], key: "hotkey") ?? true
+        let hotkey = try hotkeySetting(doc["hotkey"])
+        let monthlyTokens = try nonNegativeInt(doc["monthly_tokens"], key: "monthly_tokens") ?? 0
         return Config(schedule: schedule, limits: limits, repos: repos, checkUpdates: checkUpdates, notify: notify,
-                      days: days, hotkey: hotkey)
+                      days: days, hotkey: hotkey,
+                      reviewDrafts: try bool(doc["review_drafts"], key: "review_drafts") ?? false,
+                      includeBots: try bool(doc["include_bots"], key: "include_bots") ?? false,
+                      model: try choice(doc["model"], key: "model") ?? .opus,
+                      strictness: try choice(doc["strictness"], key: "strictness") ?? .balanced,
+                      notifyChangesOnly: try bool(doc["notify_changes_only"], key: "notify_changes_only") ?? false,
+                      notifySound: try choice(doc["notify_sound"], key: "notify_sound") ?? .glass,
+                      respectFocus: try bool(doc["respect_focus"], key: "respect_focus") ?? true,
+                      monthlyTokens: monthlyTokens,
+                      pauseAtBudget: try bool(doc["pause_at_budget"], key: "pause_at_budget") ?? true,
+                      dryRun: try bool(doc["dry_run"], key: "dry_run") ?? false)
+    }
+
+    /// `hotkey`: true (⌥⌘G), false (off), or a shortcut string that `HotkeySpec` can read.
+    private static func hotkeySetting(_ v: TOMLValue?) throws -> HotkeySetting {
+        guard let v else { return .on }
+        switch v {
+        case .bool(let b): return b ? .on : .off
+        case .string(let s):
+            guard HotkeySpec.parse(s) != nil else {
+                throw ConfigError(message: "hotkey \"\(s)\" must be modifiers and a key, such as \"⌥⌘G\"")
+            }
+            return .custom(s)
+        default: throw ConfigError(message: "hotkey must be true, false or a shortcut such as \"⌥⌘G\"")
+        }
     }
 
     /// `days`: "weekdays", "all" (the default when absent) or a list of mon..sun.
@@ -211,7 +285,7 @@ struct Config: Equatable {
 
     private static func parseRepo(_ t: [String: TOMLValue], home: String) throws -> RepoConfig {
         try checkKeys(t, allowed: ["slug", "clone", "posting", "authors", "rules", "rules_mode", "gitnexus", "gitnexus_refresh",
-                                   "include_own", "flag_paths", "flag_note"], where: "[[repo]]")
+                                   "include_own", "review_drafts", "flag_paths", "flag_note"], where: "[[repo]]")
         guard let slug = try string(t["slug"], key: "slug") else { throw ConfigError(message: "[[repo]] needs slug") }
         guard RepoConfig.isValidSlug(slug) else {
             throw ConfigError(message: "slug \"\(slug)\" must look like owner/name")
@@ -253,6 +327,7 @@ struct Config: Equatable {
             repo.gitnexus = v
         }
         repo.gitnexusRefresh = try bool(t["gitnexus_refresh"], key: "gitnexus_refresh") ?? true
+        repo.reviewDrafts = try bool(t["review_drafts"], key: "review_drafts")
         if let paths = try strings(t["flag_paths"], key: "flag_paths") {
             guard paths.allSatisfy({ !$0.isEmpty }) else { throw ConfigError(message: "flag_paths must not contain empty paths") }
             repo.flagPaths = paths
@@ -266,9 +341,23 @@ struct Config: Equatable {
         var out = "schedule = [" + schedule.map { tomlQuoted($0.text) }.joined(separator: ", ") + "]\n"
         out += "check_updates = \(checkUpdates)\n"
         out += "notify = \(notify)\n"
-        // Written only when off: a config with the default leaves the key out, so an older binary still reads it.
-        if !hotkey { out += "hotkey = false\n" }
+        // Non-default values only: a config with the defaults leaves the keys out, so an older binary still reads it.
+        switch hotkey {
+        case .on: break
+        case .off: out += "hotkey = false\n"
+        case .custom(let shortcut): out += "hotkey = \(tomlQuoted(shortcut))\n"
+        }
         if days != .all { out += "days = \(days.tomlText)\n" }
+        if reviewDrafts { out += "review_drafts = true\n" }
+        if includeBots { out += "include_bots = true\n" }
+        if model != .opus { out += "model = \(tomlQuoted(model.rawValue))\n" }
+        if strictness != .balanced { out += "strictness = \(tomlQuoted(strictness.rawValue))\n" }
+        if notifyChangesOnly { out += "notify_changes_only = true\n" }
+        if notifySound != .glass { out += "notify_sound = \(tomlQuoted(notifySound.rawValue))\n" }
+        if !respectFocus { out += "respect_focus = false\n" }
+        if monthlyTokens != 0 { out += "monthly_tokens = \(monthlyTokens)\n" }
+        if !pauseAtBudget { out += "pause_at_budget = false\n" }
+        if dryRun { out += "dry_run = true\n" }
         out += "\n[limits]\n"
         out += "max_prs_per_run = \(limits.maxPRsPerRun)\n"
         out += "max_changed_lines = \(limits.maxChangedLines)\n"
@@ -293,6 +382,7 @@ struct Config: Equatable {
             }
             out += "gitnexus = \(tomlQuoted(r.gitnexus.rawValue))\n"
             out += "include_own = \(r.includeOwn)\n"
+            if let drafts = r.reviewDrafts { out += "review_drafts = \(drafts)\n" }
             out += "gitnexus_refresh = \(r.gitnexusRefresh)\n"
             if !r.flagPaths.isEmpty {
                 out += "flag_paths = [" + r.flagPaths.map { tomlQuoted($0) }.joined(separator: ", ") + "]\n"
@@ -359,4 +449,20 @@ private func positiveInt(_ v: TOMLValue?, key: String) throws -> Int? {
     guard let v else { return nil }
     guard case .int(let n) = v, n > 0 else { throw ConfigError(message: "\(key) must be a positive integer") }
     return n
+}
+
+private func nonNegativeInt(_ v: TOMLValue?, key: String) throws -> Int? {
+    guard let v else { return nil }
+    guard case .int(let n) = v, n >= 0 else { throw ConfigError(message: "\(key) must be a whole number, 0 or more") }
+    return n
+}
+
+/// A string key whose value is one of the enum's raw values.
+private func choice<T: CaseIterable & RawRepresentable>(_ v: TOMLValue?, key: String) throws -> T? where T.RawValue == String {
+    guard let v else { return nil }
+    guard case .string(let s) = v, let value = T(rawValue: s) else {
+        let names = T.allCases.map(\.rawValue).joined(separator: ", ")
+        throw ConfigError(message: "\(key) must be one of \(names)")
+    }
+    return value
 }

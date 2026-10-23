@@ -139,7 +139,8 @@ enum RunCommand {
         _ = setpgid(0, 0)
         try? "\(getpid())".write(toFile: paths.pidFile, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(atPath: paths.pidFile) }
-        let runner = Runner(paths: paths, config: config, dryRun: a.has("--dry-run"))
+        let runner = Runner(paths: paths, config: config, dryRun: a.has("--dry-run") || config.dryRun)
+        runner.scheduled = a.has("--scheduled")
         return withExtendedLifetime(lock) { runner.execute(repos: repos) }
     }
 }
@@ -187,7 +188,7 @@ enum ReviewCommand {
         _ = setpgid(0, 0)
         try? "\(getpid())".write(toFile: paths.pidFile, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(atPath: paths.pidFile) }
-        let runner = Runner(paths: paths, config: config, dryRun: switches.contains("--dry-run"))
+        let runner = Runner(paths: paths, config: config, dryRun: switches.contains("--dry-run") || config.dryRun)
         runner.onlyPR = (repo.slug, n)
         runner.again = switches.contains("--again")
         return withExtendedLifetime(lock) { runner.execute(repos: [repo]) }
@@ -237,6 +238,8 @@ final class Runner {
     /// Set by `glidepath review`: the one PR to consider, and whether an already reviewed head is reviewed again.
     var onlyPR: (slug: String, n: Int)?
     var again = false
+    /// A scheduled sweep (launchd's `run --scheduled`). Only these stop at the monthly token budget.
+    var scheduled = false
     private var collaboratorCache: [String: Bool] = [:]
     private var me = ""
 
@@ -288,6 +291,11 @@ final class Runner {
         pruneScratch(now: now)
         ReviewText.prune(root: paths.stateDir, now: now)
         print("run \(id)\(dryRun ? " (dry run)" : "")")
+        if scheduled, TokenBudget.blocks(config, used: TokenBudget.used(store.loadAll(), now: now)) {
+            try? store.mutate(id) { $0.finish(at: Date(), error: "Monthly token budget reached") }
+            print("Monthly token budget reached; scheduled sweep skipped")
+            return 1
+        }
 
         var failed = false
         var totalTokens = 0
@@ -341,7 +349,8 @@ final class Runner {
             let again = self.again && self.onlyPR?.n == pr.n
             let heldHeads = Set(drafts.filter { $0.draft.slug == repo.slug && $0.draft.n == pr.n }.map(\.draft.head))
             let decision = PRFilter.evaluate(
-                pr, me: me, includeOwn: repo.includeOwn, authors: repo.authors,
+                pr, me: me, includeOwn: repo.includeOwn, reviewDrafts: repo.reviewDrafts ?? config.reviewDrafts,
+                includeBots: config.includeBots, authors: repo.authors,
                 limits: Runner.limits(config.limits, for: pr.n, reviewing: onlyPR?.n),
                 draftHeads: again ? [] : heldHeads,
                 isCollaborator: { self.isCollaborator(repo, login: pr.author) },
@@ -437,18 +446,20 @@ final class Runner {
             "rules=\(repo.rules == nil ? "none" : "included")", "rules_mode=\(repo.rulesMode.rawValue)",
             "split_over=\(config.limits.splitOverLines)",
             "dry_run=\(dryRun)",
-        ].joined(separator: " ")
+        ].joined(separator: " ") + (config.strictness.promptLine.isEmpty ? "" : " " + config.strictness.promptLine)
         let binding = RunBinding(runId: id, repo: repo.slug, scratch: scratch, clone: repo.clone, dryRun: dryRun)
         let args = Claude.arguments(
             prompt: prompt, systemPrompt: skill, sessionId: session, scratch: scratch, mcpConfig: mcpPath,
             agents: Claude.agentsJSON(),
             settings: Claude.hookSettingsJSON(binary: InitCommand.binaryPath()),
-            allowlist: allowlist)
+            allowlist: allowlist, model: config.model.rawValue)
         var childEnv = Claude.childEnvironment(parent: env, binding: binding.environment)
         childEnv["PATH"] = Claude.pathPrepending(InitCommand.runningBinaryDirectory(), to: childEnv["PATH"])
         childEnv["GLIDEPATH_STATE_DIR"] = paths.stateDir
         childEnv["GLIDEPATH_CONFIG_FILE"] = paths.configFile
 
+        // The session id goes in the run file, so the app can read this session's transcript while it runs.
+        try? update { $0.sessionId = session }
         print("\(repo.slug): reviewing \(numbers.map { "#\($0)" }.joined(separator: " "))")
         print("allowlist: " + allowlist.joined(separator: ","))
         print("disallowed: " + Claude.disallowed.joined(separator: ","))

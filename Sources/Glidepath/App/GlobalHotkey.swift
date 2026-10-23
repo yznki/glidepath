@@ -8,6 +8,8 @@ final class GlobalHotkey {
     static let shared = GlobalHotkey()
     private var ref: EventHotKeyRef?
     private var handler: EventHandlerRef?
+    /// The shortcut `ref` holds, so a different one can replace it.
+    private var shortcut: HotkeySpec?
     /// Called on the main actor when the shortcut is pressed.
     var onFire: (() -> Void)?
     /// Whether ⌥⌘G is registered right now. Settings reads it to say why the shortcut is not working.
@@ -18,18 +20,20 @@ final class GlobalHotkey {
     /// Registers the shortcut when the config says so. A config that does not parse counts as the default: on.
     func applyConfig(_ paths: Paths) {
         onFire = { PopoverToggle.toggle() }
-        apply(on: (try? Config.load(paths))?.hotkey ?? true)
+        apply((try? Config.load(paths))?.hotkey ?? .on)
     }
 
-    /// Makes the registration match `on`. Called at launch and on every config reload; registering again is a no-op.
-    func apply(on: Bool) {
-        if on { _ = register() } else { unregister() }
+    /// Makes the registration match `setting`. Called at launch and on every config reload; registering the same
+    /// shortcut again is a no-op.
+    func apply(_ setting: HotkeySetting) {
+        guard let spec = HotkeySpec.from(setting) else { unregister(); return }
+        _ = register(spec)
     }
 
-    /// Registers ⌥⌘G. False when the system refuses it, usually because another app already uses it.
+    /// Registers `spec` (⌥⌘G by default). False when the system refuses it, usually because another app already uses it.
     @discardableResult
-    func register() -> Bool {
-        if ref != nil { registered = true; return true }
+    func register(_ spec: HotkeySpec = .optionCommandG) -> Bool {
+        if ref != nil, spec == shortcut { registered = true; return true }
         if handler == nil {
             var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
             let userData = Unmanaged.passUnretained(self).toOpaque()
@@ -37,13 +41,15 @@ final class GlobalHotkey {
         }
         let id = EventHotKeyID(signature: GlobalHotkey.signature, id: 1)
         var newRef: EventHotKeyRef?
-        let status = RegisterEventHotKey(UInt32(kVK_ANSI_G), UInt32(cmdKey | optionKey), id,
-                                         GetApplicationEventTarget(), 0, &newRef)
+        let status = RegisterEventHotKey(spec.keyCode, spec.modifiers, id, GetApplicationEventTarget(), 0, &newRef)
+        // The old shortcut stays registered until the new one succeeds, so a refused shortcut leaves the old one working.
         guard status == noErr, let newRef else {
-            registered = false
+            registered = ref != nil
             return false
         }
+        if let ref { UnregisterEventHotKey(ref) }
         ref = newRef
+        shortcut = spec
         registered = true
         return true
     }
@@ -51,6 +57,7 @@ final class GlobalHotkey {
     func unregister() {
         if let ref { UnregisterEventHotKey(ref) }
         ref = nil
+        shortcut = nil
         registered = false
     }
 

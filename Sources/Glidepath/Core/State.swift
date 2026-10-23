@@ -56,6 +56,9 @@ struct RunState: Codable, Equatable {
     /// What the runner is doing before any PR is recorded, such as "listing PRs in owner/name" or
     /// "indexing owner/name". Cleared once the repo's PRs are recorded. Optional so older run files decode.
     var phase: String? = nil
+    /// The id of the review session the runner started last. The app reads its transcript for live token totals.
+    /// Optional so older run files decode.
+    var sessionId: String? = nil
 
     static func new(id: String, now: Date, kind: String? = nil) -> RunState {
         RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil, kind: kind)
@@ -375,5 +378,18 @@ struct WeekStats: Equatable {
         var cal = calendar
         cal.firstWeekday = 2
         return cal.dateInterval(of: .weekOfYear, for: date)?.start
+    }
+}
+
+/// The monthly token budget. Scheduled sweeps stop at it; a manual run ignores it.
+enum TokenBudget {
+    /// Tokens used by the runs that started in the calendar month of `now`.
+    static func used(_ runs: [RunState], now: Date, calendar: Calendar = .current) -> Int {
+        runs.filter { calendar.isDate($0.started, equalTo: now, toGranularity: .month) }.reduce(0) { $0 + $1.tokens }
+    }
+
+    /// True when a scheduled sweep must not start: a budget is set, pausing at it is on, and it is spent.
+    static func blocks(_ config: Config, used: Int) -> Bool {
+        config.monthlyTokens > 0 && config.pauseAtBudget && used >= config.monthlyTokens
     }
 }

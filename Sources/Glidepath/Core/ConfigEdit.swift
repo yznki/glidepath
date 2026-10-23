@@ -127,10 +127,79 @@ enum ConfigEditor {
         return out
     }
 
-    /// The "Open Glidepath with ⌥⌘G" switch: `hotkey` at the top level of the config.
-    static func setHotkey(_ config: Config, _ on: Bool) -> Config {
+    /// The "Open Glidepath with ⌥⌘G" control: `hotkey` at the top level of the config. A custom shortcut must already
+    /// pass `HotkeySpec.parse`; `save` parses the file back, so a bad one is refused there.
+    static func setHotkey(_ config: Config, _ setting: HotkeySetting) -> Config {
         var out = config
-        out.hotkey = on
+        out.hotkey = setting
+        return out
+    }
+
+    /// The "Review draft PRs" switch: `review_drafts` at the top level of the config.
+    static func setReviewDrafts(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.reviewDrafts = on
+        return out
+    }
+
+    /// A repo's draft setting. nil inherits the top-level value.
+    static func setRepoReviewDrafts(_ config: Config, slug: String, _ on: Bool?) throws -> Config {
+        try edit(config, slug) { $0.reviewDrafts = on }
+    }
+
+    static func setIncludeBots(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.includeBots = on
+        return out
+    }
+
+    static func setModel(_ config: Config, _ model: ReviewModel) -> Config {
+        var out = config
+        out.model = model
+        return out
+    }
+
+    static func setStrictness(_ config: Config, _ strictness: Strictness) -> Config {
+        var out = config
+        out.strictness = strictness
+        return out
+    }
+
+    static func setNotifyChangesOnly(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.notifyChangesOnly = on
+        return out
+    }
+
+    static func setNotifySound(_ config: Config, _ sound: NotifySound) -> Config {
+        var out = config
+        out.notifySound = sound
+        return out
+    }
+
+    static func setRespectFocus(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.respectFocus = on
+        return out
+    }
+
+    /// The monthly token budget. 0 turns the budget off; a negative number is refused.
+    static func setMonthlyTokens(_ config: Config, _ tokens: Int) throws -> Config {
+        guard tokens >= 0 else { throw ConfigError(message: "The monthly budget must be 0 or more.") }
+        var out = config
+        out.monthlyTokens = tokens
+        return out
+    }
+
+    static func setPauseAtBudget(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.pauseAtBudget = on
+        return out
+    }
+
+    static func setDryRun(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.dryRun = on
         return out
     }
 

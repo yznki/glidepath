@@ -164,9 +164,9 @@ final class ConfigTests: XCTestCase {
     }
 
     func testHotkeyDefaultsOnAndRoundTrips() throws {
-        XCTAssertTrue(try Config.parse("", home: home).hotkey)
+        XCTAssertEqual(try Config.parse("", home: home).hotkey, .on)
         let off = try Config.parse("hotkey = false\n", home: home)
-        XCTAssertFalse(off.hotkey)
+        XCTAssertEqual(off.hotkey, .off)
         XCTAssertEqual(try Config.parse(off.render(), home: home), off)
         XCTAssertThrowsError(try Config.parse("hotkey = \"yes\"\n", home: home))
         // The default is left out, so an older binary that rejects unknown keys still reads the file.
@@ -183,6 +183,90 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(back.repos[0].clone, repo.clone)
         XCTAssertEqual(back.repos[0].flagPaths, repo.flagPaths)
         XCTAssertEqual(back.repos[0].flagNote, repo.flagNote)
+    }
+
+    func testHotkeyAcceptsAShortcutString() throws {
+        let custom = try Config.parse("hotkey = \"⌃⌥G\"\n", home: home)
+        XCTAssertEqual(custom.hotkey, .custom("⌃⌥G"))
+        XCTAssertEqual(try Config.parse(custom.render(), home: home), custom)
+        XCTAssertThrowsError(try Config.parse("hotkey = \"G\"\n", home: home), "a key needs a modifier")
+        XCTAssertThrowsError(try Config.parse("hotkey = 3\n", home: home))
+    }
+
+    func testReviewOptionsParseAndDefault() throws {
+        let c = try Config.parse("", home: home)
+        XCTAssertFalse(c.reviewDrafts)
+        XCTAssertFalse(c.includeBots)
+        XCTAssertEqual(c.model, .opus)
+        XCTAssertEqual(c.strictness, .balanced)
+        XCTAssertEqual(c.notifySound, .glass)
+        XCTAssertTrue(c.respectFocus)
+        XCTAssertTrue(c.pauseAtBudget)
+        XCTAssertEqual(c.monthlyTokens, 0)
+        XCTAssertFalse(c.dryRun)
+        XCTAssertFalse(c.notifyChangesOnly)
+
+        let set = try Config.parse("""
+        review_drafts = true
+        include_bots = true
+        model = "haiku"
+        strictness = "ruthless"
+        notify_changes_only = true
+        notify_sound = "none"
+        respect_focus = false
+        monthly_tokens = 5000000
+        pause_at_budget = false
+        dry_run = true
+        """, home: home)
+        XCTAssertTrue(set.reviewDrafts)
+        XCTAssertTrue(set.includeBots)
+        XCTAssertEqual(set.model, .haiku)
+        XCTAssertEqual(set.strictness, .ruthless)
+        XCTAssertTrue(set.notifyChangesOnly)
+        XCTAssertEqual(set.notifySound, .none)
+        XCTAssertFalse(set.respectFocus)
+        XCTAssertEqual(set.monthlyTokens, 5_000_000)
+        XCTAssertFalse(set.pauseAtBudget)
+        XCTAssertTrue(set.dryRun)
+        XCTAssertEqual(try Config.parse(set.render(), home: home), set)
+    }
+
+    func testReviewOptionsRejectBadValues() {
+        let bad = [
+            "model = \"gpt\"", "model = 4", "strictness = \"strict\"", "notify_sound = \"boom\"",
+            "review_drafts = \"yes\"", "include_bots = 1", "monthly_tokens = -1", "monthly_tokens = \"5\"",
+            "respect_focus = \"no\"", "dry_run = 0", "pause_at_budget = \"x\"", "notify_changes_only = 2",
+        ]
+        for line in bad {
+            XCTAssertThrowsError(try Config.parse(line + "\n", home: home), line)
+        }
+    }
+
+    func testDefaultReviewOptionsAreLeftOutOfTheFile() {
+        let text = (try? Config.parse("", home: home).render()) ?? ""
+        for key in ["review_drafts", "include_bots", "model", "strictness", "notify_sound", "monthly_tokens", "dry_run"] {
+            XCTAssertFalse(text.contains(key), key)
+        }
+    }
+
+    func testRepoReviewDraftsInheritsWhenAbsent() throws {
+        let inherit = try Config.parse("[[repo]]\nslug = \"c/d\"\n", home: home).repos[0]
+        XCTAssertNil(inherit.reviewDrafts)
+        let on = try Config.parse("[[repo]]\nslug = \"a/b\"\nreview_drafts = true\n", home: home).repos[0]
+        XCTAssertEqual(on.reviewDrafts, true)
+        let off = try Config.parse("[[repo]]\nslug = \"a/b\"\nreview_drafts = false\n", home: home).repos[0]
+        XCTAssertEqual(off.reviewDrafts, false)
+        let c = Config(schedule: Config.defaultSchedule.compactMap(ScheduleTime.init), limits: Limits(), repos: [off, inherit])
+        XCTAssertEqual(try Config.parse(c.render(), home: home), c)
+        XCTAssertThrowsError(try Config.parse("[[repo]]\nslug = \"a/b\"\nreview_drafts = 1\n", home: home))
+    }
+
+    func testStrictnessLinesAreTheSpecifiedSentences() {
+        XCTAssertEqual(Strictness.balanced.promptLine, "")
+        XCTAssertEqual(Strictness.relaxed.promptLine, "Let style and small things go; flag only real bugs.")
+        XCTAssertEqual(Strictness.easygoing.promptLine, "Flag only what could break.")
+        XCTAssertEqual(Strictness.exacting.promptLine, "Also flag naming, missing tests and unhandled edge cases.")
+        XCTAssertEqual(Strictness.ruthless.promptLine, "Flag every issue you find, including nits.")
     }
 
     func testSlugRejectsDotSegments() {

@@ -100,7 +100,8 @@ final class SecurityTests: XCTestCase {
     func testArgumentsCarrySkillAsSystemPromptAndNoSlashCommand() {
         let args = Claude.arguments(prompt: "Review run. repo=a/b", systemPrompt: "SKILL TEXT", sessionId: "s",
                                     scratch: scratch, mcpConfig: "/m.json", agents: "{}", settings: "{}",
-                                    allowlist: list())
+                                    allowlist: list(), model: "haiku")
+        XCTAssertEqual(args[args.firstIndex(of: "--model")! + 1], "haiku")
         XCTAssertEqual(args[args.firstIndex(of: "-p")! + 1], "Review run. repo=a/b")
         XCTAssertFalse(args[args.firstIndex(of: "-p")! + 1].hasPrefix("/"))
         XCTAssertEqual(args[args.firstIndex(of: "--append-system-prompt")! + 1], "SKILL TEXT")

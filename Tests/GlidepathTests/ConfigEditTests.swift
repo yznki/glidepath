@@ -176,10 +176,43 @@ final class ConfigEditTests: XCTestCase {
     }
 
     func testHotkeySwitchRoundTrips() throws {
-        let off = ConfigEditor.setHotkey(try base(), false)
-        XCTAssertFalse(off.hotkey)
+        let off = ConfigEditor.setHotkey(try base(), .off)
+        XCTAssertEqual(off.hotkey, .off)
         try assertRoundTrips(off)
-        XCTAssertTrue(ConfigEditor.setHotkey(off, true).hotkey)
+        XCTAssertEqual(ConfigEditor.setHotkey(off, .on).hotkey, .on)
+        let custom = ConfigEditor.setHotkey(try base(), .custom("⌃⌥G"))
+        try assertRoundTrips(custom)
+    }
+
+    func testReviewOptionSettersRoundTrip() throws {
+        var c = ConfigEditor.setReviewDrafts(try base(), true)
+        c = ConfigEditor.setIncludeBots(c, true)
+        c = ConfigEditor.setModel(c, .sonnet)
+        c = ConfigEditor.setStrictness(c, .exacting)
+        c = ConfigEditor.setNotifyChangesOnly(c, true)
+        c = ConfigEditor.setNotifySound(c, .tink)
+        c = ConfigEditor.setRespectFocus(c, false)
+        c = try ConfigEditor.setMonthlyTokens(c, 1_000_000)
+        c = ConfigEditor.setPauseAtBudget(c, false)
+        c = ConfigEditor.setDryRun(c, true)
+        c = try ConfigEditor.setRepoReviewDrafts(c, slug: "lumen/api", true)
+        XCTAssertEqual(c.model, .sonnet)
+        XCTAssertEqual(c.monthlyTokens, 1_000_000)
+        XCTAssertEqual(c.repos[0].reviewDrafts, true)
+        XCTAssertNil(c.repos[1].reviewDrafts)
+        try assertRoundTrips(c)
+    }
+
+    func testRepoDraftsCanInheritAgain() throws {
+        let c = try ConfigEditor.setRepoReviewDrafts(try ConfigEditor.setRepoReviewDrafts(base(), slug: "lumen/api", true),
+                                                     slug: "lumen/api", nil)
+        XCTAssertNil(c.repos[0].reviewDrafts)
+        XCTAssertThrowsError(try ConfigEditor.setRepoReviewDrafts(base(), slug: "nope/none", true))
+    }
+
+    func testMonthlyBudgetRefusesNegative() throws {
+        XCTAssertThrowsError(try ConfigEditor.setMonthlyTokens(base(), -1))
+        XCTAssertEqual(try ConfigEditor.setMonthlyTokens(base(), 0).monthlyTokens, 0)
     }
 
     func testUnknownRepoRejected() throws {
