@@ -62,6 +62,10 @@ updates). No analytics, no server. Set `check_updates = false` to turn the updat
 **Does it post as me?** Yes, through your `gh` login. New repos hold every review for you to post. Existing configs keep the posting mode they already have. `posting =
 "comment"` or `"review"` posts automatically.
 
+**Does it use my Claude setup?** Yes. Reviews run with your user-level Claude Code settings, hooks and global `CLAUDE.md`, so they follow your style and tools. A repo's own `.claude` settings are never loaded, so a PR can't change how it is reviewed.
+
+**Does it touch my working copy?** No. Each repo gets its own clone under `~/glidepath/clones/`, and Glidepath refuses to run in a folder it didn't create.
+
 **Private repos?** Yes, anything your `gh` login can read.
 
 **How much does it use?** See [What it costs](#what-it-costs). New setups start on Sonnet with five PRs a sweep.
