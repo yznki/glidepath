@@ -114,7 +114,7 @@ enum DashboardPage {
                 if pr.flagged == true { meta += " <span class=\"flag\">Flagged</span>" }
                 if pr.draft == true { meta += " <span class=\"flag\">Draft to post</span>" }
                 out += "<div class=\"meta\">\(meta)</div>\n"
-                if let reason = pr.reason, !reason.isEmpty {
+                if let reason = PRFilter.displayReason(pr.reason), !reason.isEmpty {
                     out += "<div class=\"reason\">\(esc(reason))</div>\n"
                 }
                 out += "</li>\n"

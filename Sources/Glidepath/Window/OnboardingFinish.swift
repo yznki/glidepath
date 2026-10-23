@@ -384,7 +384,7 @@ enum OnboardingSummary {
         if strip.skipReason == "size" || reason.hasPrefix("too large") { return "too large" }
         if reason.hasPrefix("already reviewed") { return "already reviewed" }
         if reason == "bot author" { return "bots" }
-        if reason.hasPrefix("over max_prs_per_run") { return "past the limit" }
+        if reason.hasPrefix("next sweep") || reason.hasPrefix("over max_prs_per_run") { return "past the limit" }
         return "other"
     }
 

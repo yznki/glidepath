@@ -22,6 +22,14 @@ enum PRFilter {
     /// The reason a PR over `max_changed_lines` is skipped. The runner keys the Review action on this prefix.
     static let tooLargeReason = "too large"
 
+    /// The reason a PR past `max_prs_per_run` waits for the next sweep.
+    static func heldForNextSweep(cap: Int) -> String { "next sweep · \(cap) per sweep" }
+
+    /// The reason as users read it. Runs stored before the wording change hold the config key, which shows as "next sweep".
+    static func displayReason(_ stored: String?) -> String? {
+        stored == "over max_prs_per_run" ? "next sweep" : stored
+    }
+
     /// Rules from SPEC "Run flow" step 2. Cheap checks run first; the collaborator and reviews
     /// lookups are API calls and only happen for PRs that get that far. A lookup that fails skips
     /// the PR with a reason instead of failing the repo.
