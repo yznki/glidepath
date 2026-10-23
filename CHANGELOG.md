@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.3
+
+- New setups hold each review for you to post, and start on Sonnet with five PRs a sweep. Existing configs are unchanged.
+- Schedule's monthly token estimate comes from your real sweeps; it shows "—" until three have finished.
+- Issue templates, a security policy and a contributing guide.
+- Launch site.
+
 ## 1.3.2
 
 - Popover: at most six cards, the rest behind a "+N more" strip that opens Reviews; the open card grows to fit; full header labels; solid dark frame.
