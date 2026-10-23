@@ -6,19 +6,38 @@
 </p>
 
 <p align="center"><strong>PRs reviewed before you're back.</strong><br>
-Glidepath runs Claude Code reviews of your GitHub pull requests on a schedule
-and shows them landing in your Mac's menu bar.</p>
+A free, open-source Mac menu bar app that runs Claude Code reviews of your team's pull requests on a schedule,
+checks every finding against the code, and lands one review per PR.</p>
+
+<p align="center">
+  <a href="https://github.com/yznki/glidepath/actions/workflows/ci.yml"><img src="https://github.com/yznki/glidepath/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/yznki/glidepath/releases/latest"><img src="https://img.shields.io/github/v/release/yznki/glidepath" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-black" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/macOS-14%2B-black" alt="macOS 14 or later">
+</p>
 
 ```sh
 brew install yznki/tap/glidepath
 glidepath init
 ```
 
-`init` checks your tools, asks which repos to watch, and does a dry run before anything is posted.
+Homebrew builds it from source on your Mac (a few minutes, needs Xcode's Command Line Tools), so there is no
+Gatekeeper prompt. `init` checks your tools, asks which repos to watch, and does a dry run. On a new setup, nothing is posted until
+you hold to post.
 
 <p align="center">
-  <img src="docs/media/hero.gif" alt="The Glidepath popover during a review run: pull requests move down the glide slope through gather, review and check, then land on the runway as approved or needing changes." width="400">
+  <img src="docs/media/hero.gif" alt="The Glidepath popover: a stack of glass cards, one per pull request, each showing the author and the verdict." width="400">
 </p>
+
+- **Gist at a glance.** Approved, changes or skipped, and who the PR is from. Click a card for the reason.
+- **Checked, not guessed.** A second pass re-opens every quoted line and drops findings that don't match the code.
+- **You stay in control.** New repos hold each review until you press and hold to post. Swipe to discard.
+- **Runs on your schedule.** A 24-hour dial, weekdays or any days you pick, pause for an hour or until tomorrow.
+- **Your rules.** A Markdown file per repo with what your team cares about.
+- **Your plan, your Mac.** Uses the Claude Code you already have. No account, no server, no telemetry.
+
+Glidepath is for Claude Code. OpenAI Codex support is tracked in [#1](https://github.com/yznki/glidepath/issues/1);
+add a 👍 if you want it.
 
 ## Safe on public repos
 
@@ -31,8 +50,27 @@ glidepath init
 Tested against one adversarial PR; see the transcript in [docs/security-test.md](docs/security-test.md). The full
 design is in [docs/security.md](docs/security.md).
 
+## Questions
+
+**Do I need an API key?** No. Glidepath runs the `claude` CLI you already use, on your Claude plan. An
+`ANTHROPIC_API_KEY` in your environment is passed through if you prefer API billing.
+
+**What leaves my Mac?** Only what Claude Code and `gh` already send: the PR diffs and code Claude reads go to
+Anthropic, and the reviews you post go to GitHub. Glidepath itself talks only to github.com (and its API, to check for
+updates). No analytics, no server. Set `check_updates = false` to turn the update check off.
+
+**Does it post as me?** Yes, through your `gh` login. New repos hold every review for you to post. Existing configs keep the posting mode they already have. `posting =
+"comment"` or `"review"` posts automatically.
+
+**Private repos?** Yes, anything your `gh` login can read.
+
+**How much does it use?** See [What it costs](#what-it-costs). New setups start on Sonnet with five PRs a sweep.
+
+**Linux or Windows?** No, it's a native Mac app. The `glidepath` CLI is macOS-only too (it uses launchd).
+
 ## Contents
 
+- [Questions](#questions)
 - [How a run works](#how-a-run-works)
 - [What it costs](#what-it-costs)
 - [The menu bar app](#the-menu-bar-app)
@@ -73,25 +111,27 @@ Results land in `~/.local/state/glidepath/runs/`. The menu bar app watches that 
 
 ## What it costs
 
-A sandbox run on 2026-10-21 reviewed 2 PRs and used 106,804 tokens in 3 minutes 49 seconds. The PRs were +8 −1 in one
-file (#1) and +10 −0 in one file (#2).
+Measured on a real team repo: 60 PRs reviewed across 16 sweeps (October 2026, with Opus running the main session). Tokens are input, output and cache
+writes; cache reads are not counted.
+
+| PR size (changed lines) | Median tokens per PR |
+|---|---|
+| under 300 | ~150k |
+| 300 to 1,500 | ~240k |
+| over 1,500 | ~500k |
+
+The median over all PRs was ~340k, and a sweep took about 16 minutes. On a Pro plan that is a handful of PRs per
+usage window, so start small: new setups review at most five PRs a sweep on Sonnet.
 
 Glidepath uses three models, one per job:
 
-- **Opus** runs the main session. It orchestrates the run and starts each step.
+- **The main session** (Sonnet for new setups, set with `model`) orchestrates the run and starts each step.
 - **Haiku** gathers each PR: the diff, the existing comments, and the callers of changed code.
 - **Sonnet** reviews each PR, and a second Sonnet pass checks each finding against the code.
 
-Each PR is one or more Claude sessions: a gather step, a review per PR (more for large PRs, split by area), and a
-checker. Costs grow with diff size and with how much of the repo the reviewer reads.
-
-- The caps are the cost controls: `max_prs_per_run`, `max_changed_lines`, and the schedule itself. Lower them to
-  bound a run.
-- Each run records its total tokens, and each PR records the tokens of its own subagents. The menu bar app shows both.
-  Tokens are input, output and cache writes; cache reads are not counted.
-- Typical token use is not measured yet. Run the dry run on a repo you know, read the totals in the app, and set the
-  caps from that.
-
+The cost controls are `max_prs_per_run`, `max_changed_lines`, the schedule, and `monthly_tokens`, an optional monthly budget (off by default)
+that pauses scheduled sweeps when reached; manual runs ignore it. Each run records its total tokens and each PR its own; the app shows
+both live.
 
 ## The menu bar app
 
@@ -105,10 +145,10 @@ PR is a dot on the slope at the stage it is in.
 
 | Running | Idle, with changes |
 | --- | --- |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/shots/running-dark.png"><img src="docs/shots/running-light.png" alt="Running: three PRs on the slope, two landed as changes and one approved" width="300"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/shots/idle-changes-dark.png"><img src="docs/shots/idle-changes-light.png" alt="Idle with changes: two PRs need changes" width="300"></picture> |
+| <img src="docs/shots/running-dark.png" alt="Running: three PRs on the slope, two landed as changes and one approved" width="300"> | <img src="docs/shots/idle-changes-dark.png" alt="Idle with changes: two PRs need changes" width="300"> |
 | The sweep is in progress. Dots move down the slope; each row shows its stage and a four-dash meter. | The last sweep is done. Changes are listed first, with the review's reason. |
 | **Paused** | **Failed** |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/shots/paused-dark.png"><img src="docs/shots/paused-light.png" alt="Paused: rows dimmed, Resume button" width="300"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/shots/failed-dark.png"><img src="docs/shots/failed-light.png" alt="Failed: red headline, a cross at the touchdown point, rows carried over from the earlier sweep" width="300"></picture> |
+| <img src="docs/shots/paused-dark.png" alt="Paused: rows dimmed, Resume button" width="300"> | <img src="docs/shots/failed-dark.png" alt="Failed: red headline, a cross at the touchdown point, rows carried over from the earlier sweep" width="300"> |
 | Scheduled sweeps are skipped until you resume. Rows and marks are dimmed. | The last sweep did not finish. Rows carried over from an earlier sweep show when they were decided. |
 
 - Header: the headline counts the sweep ("3 in flight, 4 landed"), the second line says what needs you ("2 need changes"),
@@ -140,12 +180,11 @@ also shows a Dock icon, with a Dock menu and a badge for reviews waiting for you
 The menu bar popover is the quick glance. The window (Overview, Reviews, Repos, Schedule, Settings) is for setup,
 settings and the review history, and opens from the popover's "Open Glidepath". With no config file, it opens on
 onboarding. The window sections are Now (the live sweep, with stages, tokens and hold to stop), Reviews, Repos,
-Schedule (a 24-hour dial with presets) and Settings (with search and a live view of `config.toml`). Light and dark:
+Schedule (a 24-hour dial with presets) and Settings (with search and a live view of `config.toml`).
 
 | Now | Reviews |
 | --- | --- |
-| ![Now, light](docs/shots/app/now-light.png) | ![Reviews, light](docs/shots/app/reviews-light.png) |
-| ![Now, dark](docs/shots/app/now-dark.png) | ![Reviews, dark](docs/shots/app/reviews-dark.png) |
+| ![Now](docs/shots/app/now-dark.png) | ![Reviews](docs/shots/app/reviews-dark.png) |
 
 ## Drafts
 
