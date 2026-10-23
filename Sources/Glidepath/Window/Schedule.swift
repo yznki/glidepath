@@ -215,20 +215,21 @@ struct ScheduleView: View {
         .modifier(ShakeEffect(animatableData: model.shake))
     }
 
-    /// Sweeps a day, a week, and the month's tokens estimate. Over the budget (when one is set) the last one turns
-    /// into the signal colour.
+    /// Sweeps a day, a week, and the month's tokens estimate. No estimate until three sweeps have finished ("—").
+    /// Over the budget (when one is set) the last one turns into the signal colour.
     private var stats: some View {
         let perDay = model.times.count
         let perWeek = perDay * model.days.count
-        let maxPRs = store.snap.config?.limits.maxPRsPerRun ?? Limits().maxPRsPerRun
-        let measured = model.sweepTokens != nil
-        let perSweep = model.sweepTokens ?? DialStats.perSweepGuess(maxPRs: maxPRs)
-        let tokens = DialStats.tokensPerMonth(perWeek: perWeek, perSweep: perSweep)
-        let over = DialStats.overBudget(tokens: tokens, budget: store.snap.config?.monthlyTokens ?? 0)
+        let tokens = model.sweepTokens.map { DialStats.tokensPerMonth(perWeek: perWeek, perSweep: $0) }
+        let over = tokens.map { DialStats.overBudget(tokens: $0, budget: store.snap.config?.monthlyTokens ?? 0) } ?? false
         return HStack(alignment: .top, spacing: 26) {
             stat("\(perDay)", "Sweeps a day", warn: false)
             stat("\(perWeek)", "A week", warn: false)
-            stat((measured ? "~" : "≤") + DialFormat.compact(tokens), over ? "Over budget" : "Tokens a month", warn: over)
+            if let tokens {
+                stat("~" + DialFormat.compact(tokens), over ? "Over budget" : "Tokens a month", warn: over)
+            } else {
+                stat("—", "Tokens a month · after 3 sweeps", warn: false)
+            }
         }
     }
 

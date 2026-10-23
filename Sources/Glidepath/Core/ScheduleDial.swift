@@ -111,10 +111,8 @@ enum DialFormat {
     }
 }
 
-/// The numbers under the dial. Tokens per sweep come from finished sweeps when there are enough, else a guess.
+/// The numbers under the dial. Tokens per sweep come from finished sweeps only; no estimate until there are enough.
 enum DialStats {
-    /// Median tokens per reviewed PR measured on real use (about 340k). Guess until history exists.
-    static let tokensPerPRGuess = 340_000
     static let weeksPerMonth = 4.3
     static let minSweepsForHistory = 3
 
@@ -124,11 +122,6 @@ enum DialStats {
         let recent = runs.filter { $0.kind == nil && $0.finished != nil && $0.started >= since }
         guard recent.count >= minSweepsForHistory else { return nil }
         return recent.reduce(0) { $0 + $1.tokens } / recent.count
-    }
-
-    /// The guess for one sweep: every PR in it uses the measured per-PR tokens.
-    static func perSweepGuess(maxPRs: Int) -> Int {
-        tokensPerPRGuess * maxPRs
     }
 
     static func tokensPerMonth(perWeek: Int, perSweep: Int) -> Int {

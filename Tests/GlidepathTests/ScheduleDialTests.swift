@@ -60,16 +60,16 @@ final class ScheduleDialTests: XCTestCase {
         XCTAssertEqual(DialFormat.compact(48_000), "48k")
     }
 
-    func testUnmeasuredSweepsFallBackToPerPRGuessTimesMaxPRs() {
+    func testNoTokenEstimateUntilThreeFinishedSweeps() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
-        let runs = (0..<2).map { i in
-            RunState(id: "r\(i)", started: now.addingTimeInterval(-3600), finished: now, repos: [], tokens: 900_000,
-                     error: nil, kind: nil)
+        func runs(_ n: Int) -> [RunState] {
+            (0..<n).map { i in
+                RunState(id: "r\(i)", started: now.addingTimeInterval(-3600), finished: now, repos: [], tokens: 900_000,
+                         error: nil, kind: nil)
+            }
         }
-        XCTAssertNil(DialStats.sweepTokens(runs, now: now), "fewer than three finished sweeps is not history")
-        let perSweep = DialStats.perSweepGuess(maxPRs: 5)
-        XCTAssertEqual(perSweep, 1_700_000)
-        XCTAssertEqual(DialStats.tokensPerMonth(perWeek: 10, perSweep: perSweep), 73_100_000)
+        XCTAssertNil(DialStats.sweepTokens(runs(2), now: now), "fewer than three finished sweeps is not history")
+        XCTAssertEqual(DialStats.sweepTokens(runs(3), now: now), 900_000)
     }
 
     func testUpcomingSkipsOffDays() throws {
