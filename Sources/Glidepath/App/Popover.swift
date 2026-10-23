@@ -40,8 +40,11 @@ enum StackGeometry {
     /// Overlap between closed cards: 56 pt at most, less when the stack is tall.
     static func step(_ n: Int) -> CGFloat { n > 1 ? min(56, (420 - closed) / CGFloat(n - 1)) : 0 }
 
+    /// The "All clear" block when no card shows: glider and label, compact.
+    static let emptyHeight: CGFloat = 96
+
     static func height(_ n: Int, head: CGFloat, opened: Bool) -> CGFloat {
-        let closedHeight = head + (n > 0 ? CGFloat(n - 1) * step(n) + closed : 150) + pad
+        let closedHeight = head + (n > 0 ? CGFloat(n - 1) * step(n) + closed : emptyHeight) + pad
         guard opened, n > 0 else { return closedHeight }
         let openHeight = head + open + 14 + CGFloat(min(n - 1, 5)) * 7 + 30 + pad
         return max(closedHeight, openHeight)
@@ -176,7 +179,10 @@ struct PopoverView: View {
             footer
         }
         .frame(width: StackGeometry.width)
-        .background(offscreen ? Gotham.void : Gotham.mat)
+        // No square fill at the window's edge: the system's dark frame and rounded corners show through.
+        .background(WindowConfigurator { $0.appearance = NSAppearance(named: .darkAqua) })
+        .background(Gotham.void.opacity(offscreen ? 1 : 0.55).ignoresSafeArea())
+        .preferredColorScheme(.dark)
         .focusable()
         .focusEffectDisabled()
         .focused($rootFocused)
@@ -450,7 +456,7 @@ struct PopoverView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Gotham.mute)
         }
-        .frame(width: StackGeometry.width, height: 150)
+        .frame(width: StackGeometry.width, height: StackGeometry.emptyHeight)
     }
 
     // MARK: Update

@@ -14,7 +14,7 @@ struct MainWindowView: View {
 
     var body: some View {
         WindowScreen(store: store, router: router)
-            .background(WindowAccessor())
+            .background(WindowConfigurator.mainWindow)
             .sheet(isPresented: $router.showShortcuts) { ShortcutsSheet() }
             .onAppear { MainWindowLifecycle.shared.windowAppeared() }
     }
@@ -43,7 +43,7 @@ struct WindowScreen: View {
             }
         }
         .frame(minWidth: WinMetrics.minWidth, minHeight: WinMetrics.minHeight)
-        .background { if router.showOnboarding { WinTheme.ground } else { GlassBackdrop() } }
+        .background((router.showOnboarding ? WinTheme.ground : Gotham.void).ignoresSafeArea())
     }
 
     private var canvas: some View {
@@ -67,48 +67,39 @@ struct WindowScreen: View {
     }
 }
 
-/// The dark glass behind the sections: the window's own blur from behind it, under the black glass tint from the
-/// prototype's `--mat`. Onboarding keeps its solid ground.
-struct GlassBackdrop: View {
-    @Environment(\.offscreenRender) private var offscreen
+/// Runs `configure` on the hosting window as soon as the view attaches to it. Used to set window chrome.
+struct WindowConfigurator: NSViewRepresentable {
+    let configure: (NSWindow) -> Void
 
-    var body: some View {
-        ZStack {
-            // Snapshot renders draw an NSVisualEffectView as a prohibition sign, so they keep only the tint.
-            if !offscreen { VisualBlur() }
-            Gotham.mat
+    final class Probe: NSView {
+        var configure: ((NSWindow) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { configure?(window) }
         }
     }
-}
 
-/// An `NSVisualEffectView` that blurs what is behind the window.
-struct VisualBlur: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
+    func makeNSView(context: Context) -> Probe {
+        let probe = Probe()
+        probe.configure = configure
+        return probe
     }
 
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+    func updateNSView(_ nsView: Probe, context: Context) {}
 }
 
-/// Gives the main window a frame autosave name, so it remembers its size and place.
-private struct WindowAccessor: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            guard let window = view.window else { return }
+/// Opaque main window: void background behind the title bar, dark chrome, and the autosaved frame.
+private extension WindowConfigurator {
+    static var mainWindow: WindowConfigurator {
+        WindowConfigurator { window in
             window.setFrameAutosaveName("GlidepathMain")
-            // Clear, so the glass behind the window shows through.
-            window.isOpaque = false
-            window.backgroundColor = .clear
+            window.isOpaque = true
+            window.backgroundColor = NSColor(Gotham.void)
+            window.titlebarAppearsTransparent = true
+            window.appearance = NSAppearance(named: .darkAqua)
         }
-        return view
     }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 /// Switches the app between a menu bar app (accessory) and a regular app while the main window is open.
