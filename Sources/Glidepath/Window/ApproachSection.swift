@@ -375,6 +375,8 @@ struct TendNeedRow: View {
     private var signal: Color { Gotham.signal(signalKey) }
     private var held: Bool { item.kind == "held" }
     private var call: Bool { item.kind == "call" }
+    /// A tend command for this item is running: its buttons wait for it.
+    private var busy: Bool { store.tendBusy.contains(item.id) }
 
     /// The detail split at its first " · ": the state, and the rest.
     private var lead: String {
@@ -435,18 +437,20 @@ struct TendNeedRow: View {
                     .foregroundStyle(Gotham.mute)
                     .padding(.horizontal, 10)
                     .frame(height: 28)
+                    .disabled(busy)
                 HoldButton(title: "Hold to push", doneTitle: "Pushing…", tint: signal, compact: true) {
                     store.tendCommand(["push", item.slug, "\(item.n)"], item: item.id)
                 }
                 // A failed push gives the button a new identity, so the hold starts again.
                 .id("\(item.id)#\(store.tendFailures[item.id] ?? 0)")
+                .disabled(busy)
             }
         } else {
             HStack(spacing: 8) {
                 SettingButton(title: "Open PR") {
                     if let link = URL(string: url) { NSWorkspace.shared.open(link) }
                 }
-                SettingButton(title: "Try again", prominent: true) {
+                SettingButton(title: "Try again", prominent: true, enabled: !busy) {
                     store.tendCommand(["retry", item.slug, "\(item.n)"], item: item.id)
                 }
             }
@@ -463,9 +467,10 @@ struct TendNeedRow: View {
                 .foregroundStyle(Gotham.mute)
                 .padding(.horizontal, 10)
                 .frame(height: 28)
+                .disabled(busy)
             SettingButton(title: "Edit") { onEdit() }
             if draft {
-                SettingButton(title: "Post reply", prominent: true) {
+                SettingButton(title: "Post reply", prominent: true, enabled: !busy) {
                     store.tendCommand(["reply", item.slug, "\(item.n)", item.callID], item: item.id)
                 }
             }
@@ -825,7 +830,7 @@ final class CallEditModel: ObservableObject {
 
     /// Posts the text through `tend reply`. The sheet closes when the post works; a refusal keeps it open with the error.
     func post(store: Store) {
-        guard let item, !posting else { return }
+        guard let item, !posting, !store.tendBusy.contains(item.id) else { return }
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
         posting = true
@@ -862,6 +867,7 @@ struct CallEditCard: View {
         let call = store.snap.calls[item.id]
         let error = store.tendErrors[item.id]
         let empty = model.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let busy = store.tendBusy.contains(item.id)
         return VStack(alignment: .leading, spacing: 0) {
             capLabel("Your call", signal)
                 .padding(.bottom, 8)
@@ -897,7 +903,7 @@ struct CallEditCard: View {
                 Spacer(minLength: 0)
                 SettingButton(title: "Cancel") { model.close() }
                 SettingButton(title: model.posting ? "Posting…" : "Post reply", prominent: true,
-                              enabled: !model.posting && !empty) {
+                              enabled: !model.posting && !empty && !busy) {
                     model.post(store: store)
                 }
             }
