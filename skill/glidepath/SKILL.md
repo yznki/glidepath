@@ -142,6 +142,13 @@ Run `glidepath post --repo <slug> --pr <n>`. The wrapper:
 
 If the wrapper refuses, report its message for that PR. Do not work around it.
 
+## Notes per PR
+
+After a PR is posted, held or skipped, write `<scratch>/<n>/notes.md` with 1 to 5 short lines, each starting `- `.
+They are for the owner, about this PR only: gaps, what the session could not check, and why it stopped, if it did.
+Copy no PR text into them. Write them with Edit or Write, inside `scratch=` only. The per-PR line in the final
+message stays as it is.
+
 ## Voice
 
 Write like a teammate in a chat. Short sentences, specific nouns, no headings, no "LGTM", no emojis, no severity

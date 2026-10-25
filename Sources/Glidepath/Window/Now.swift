@@ -277,7 +277,8 @@ struct NowView: View {
         .opacity(queued ? 0.4 : 1)
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .onTapGesture {
-            if s.verdict != nil || !running { router.openReview(s.id) }
+            // A row still in a running sweep (queued or in flight) has no verdict yet, so it does not open.
+            if !(running && s.verdict == nil) { router.openReview(s.id) }
         }
     }
 
