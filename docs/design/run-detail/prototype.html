@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Glidepath · flight recorder prototype</title>
+<style>
+:root{
+  --void:#030304; --mat:#0b0b0e; --edge:rgba(255,255,255,.07); --fg:#ececef; --mute:rgba(236,236,242,.42);
+  --faint:rgba(236,236,242,.22); --row:rgba(255,255,255,.045); --hi:rgba(255,255,255,.15);
+  --approve:#f1f1f3; --changes:#d29b45; --skipped:#4d4e56; --sig:var(--changes);
+  --sys:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --ease:cubic-bezier(.2,.7,.1,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{color:var(--fg);font-family:var(--sys);-webkit-font-smoothing:antialiased}
+body{display:flex;flex-direction:column;align-items:center;padding:16px;
+  background:radial-gradient(900px 500px at 50% -10%,#15151b 0,#000 70%);border-radius:14px}
+.switch{display:flex;gap:6px;margin-bottom:18px;padding:4px;border-radius:99px;background:var(--row);border:1px solid var(--edge)}
+.switch button{all:unset;cursor:pointer;font-size:12px;font-weight:600;padding:7px 14px;border-radius:99px;color:var(--mute);transition:background .25s var(--ease),color .25s}
+.switch button[aria-pressed=true]{background:var(--hi);color:var(--fg)}
+.switch button:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+
+.sheet{width:min(860px,100%);background:var(--mat);border:1px solid var(--edge);border-radius:18px;overflow:hidden;
+  box-shadow:0 40px 120px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.06)}
+.bar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px 0}
+.lights{display:flex;gap:8px}.lights i{width:12px;height:12px;border-radius:50%;background:#2a2a30}
+.done{all:unset;cursor:pointer;font-size:13px;font-weight:600;padding:0 14px;height:30px;line-height:30px;border-radius:99px;background:var(--row)}
+.done:hover{background:var(--hi)}
+.inner{padding:22px 40px 0}
+
+.crumb{font-size:12px;color:var(--mute);display:flex;align-items:center;gap:8px}
+.ava{width:18px;height:18px;border-radius:50%;background:linear-gradient(135deg,#3a3a44,#1a1a20);border:1px solid var(--edge)}
+h1{font-size:26px;font-weight:700;letter-spacing:-.5px;line-height:1.15;margin-top:8px;max-width:680px}
+.meta{display:flex;flex-wrap:wrap;gap:18px;margin-top:10px;font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+.meta b{color:var(--fg);font-weight:500}
+
+/* approach profile */
+.approach{position:relative;margin:26px -8px 0;height:206px}
+.approach svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.slope{fill:none;stroke:var(--fg);stroke-width:1.5;stroke-linecap:round}
+.guide{fill:none;stroke:var(--edge);stroke-width:1;stroke-dasharray:2 5}
+.goaround{fill:none;stroke:var(--sig);stroke-width:1.5;stroke-dasharray:4 5;stroke-linecap:round}
+.runway{stroke:var(--fg);stroke-width:5;stroke-linecap:round;opacity:.9}
+.rabbit circle{fill:var(--fg);opacity:.08}
+.wp{cursor:pointer}
+.wp .ring{fill:var(--mat);stroke:var(--faint);stroke-width:1.5;transition:stroke .3s,fill .3s,r .3s var(--ease)}
+.wp.reached .ring{stroke:var(--fg);fill:var(--fg)}
+.wp.landed .ring{stroke:var(--sig);fill:var(--sig)}
+.wp.stopped .ring{stroke:var(--sig);fill:var(--mat)}
+.wp:hover .ring,.wp.on .ring{r:7}
+.halo{fill:none;stroke:var(--sig);stroke-width:1;opacity:0}
+.cols{position:absolute;inset:0;pointer-events:none}
+.col{position:absolute;inset:0}
+.col .lab{font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);transition:color .25s}
+.col .fig{position:absolute;left:0;font-size:12px;line-height:1.45;color:var(--mute);font-variant-numeric:tabular-nums;max-width:180px}
+.col .fig b{display:block;color:var(--fg);font-weight:600;font-size:13px;white-space:nowrap}
+.col .end{left:auto!important;right:0;text-align:right}
+.col.on .lab,.col.on .fig{color:var(--fg)}
+.col.dim{opacity:.38}
+
+/* verdict */
+.verdict{display:flex;align-items:center;gap:12px;height:56px;margin-top:6px;padding:0 12px 0 16px;border-radius:12px;background:rgba(210,155,69,.12)}
+.verdict .w{font-size:13px;font-weight:700;color:var(--sig);white-space:nowrap}
+.verdict .s{font-size:13px;color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.verdict .sp{flex:1}
+.btn{all:unset;cursor:pointer;font-size:12px;font-weight:600;height:30px;line-height:30px;padding:0 14px;border-radius:99px;border:1px solid var(--hi);transition:transform .2s var(--ease),background .2s}
+.btn.pri{background:var(--fg);color:#08080a;border-color:var(--fg)}
+.btn:hover{transform:translateY(1px);background:var(--hi)}.btn.pri:hover{background:#fff}
+.btn:active{transform:translateY(2px) scale(.98)}
+.btn:focus-visible,.link:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+
+/* readouts */
+.readouts{margin-top:30px;padding-bottom:10px}
+.ro{display:grid;grid-template-columns:132px 1fr;gap:24px;padding:22px 0;border-top:1px solid var(--edge);transition:background .3s}
+.ro.flash{background:linear-gradient(90deg,rgba(255,255,255,.03),transparent 70%)}
+.ro h2{font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);padding-top:3px}
+.ro h2 small{display:block;margin-top:6px;letter-spacing:0;text-transform:none;font-weight:400;font-size:11px;color:var(--faint)}
+.ro p{font-size:13px;line-height:1.6;color:var(--mute);max-width:600px}
+.ro p+p{margin-top:9px}
+.ro p strong{color:var(--fg);font-weight:500}
+.card{margin-top:12px;padding:12px 16px;border-radius:12px;background:var(--row);max-width:600px}
+.loc{font:12px var(--mono);color:#8fb0ff}
+.card p{color:var(--fg);margin-top:4px}
+.tally{display:flex;gap:22px;margin-bottom:12px}
+.tally span{font-size:12px;color:var(--mute)}.tally b{font-size:22px;font-weight:300;color:var(--fg);margin-right:6px;font-variant-numeric:tabular-nums;letter-spacing:-.4px}
+.tally .add b{color:var(--sig)}
+.ck{display:grid;grid-template-columns:64px 1fr;gap:12px;padding:9px 0;border-top:1px solid var(--edge);max-width:600px}
+.ck:first-of-type{border-top:0}
+.tag{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);padding-top:2px}
+.tag.add{color:var(--sig)}.tag.drop{color:var(--faint)}
+.ck .t{font-size:12.5px;line-height:1.5;color:var(--mute)}
+.ck .t .loc{display:block;margin-bottom:2px}
+.ck.dropped .t{text-decoration:line-through;text-decoration-color:var(--faint)}
+.chip{display:inline-block;font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;border:1px solid var(--hi);color:var(--fg);margin-bottom:10px}
+.chip.warn{border-color:rgba(210,155,69,.5);color:var(--sig)}
+ul.b{list-style:none;max-width:600px}
+ul.b li{position:relative;padding-left:16px;font-size:13px;line-height:1.6;color:var(--mute)}
+ul.b li+li{margin-top:6px}
+ul.b li::before{content:"";position:absolute;left:2px;top:.72em;width:5px;height:1px;background:var(--faint)}
+ul.b code,.ro p code{font:12px var(--mono);color:var(--fg)}
+.empty{font-size:13px;color:var(--faint)}
+
+.foot{display:flex;align-items:center;gap:18px;padding:16px 40px 22px;border-top:1px solid var(--edge);font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+.foot .sp{flex:1}
+.link{all:unset;cursor:pointer;color:var(--fg);font-weight:500;background:linear-gradient(currentColor,currentColor) 0 100%/0 1px no-repeat;transition:background-size .3s var(--ease)}
+.link:hover{background-size:100% 1px}
+.note{max-width:860px;margin-top:22px;font-size:12px;line-height:1.6;color:var(--faint)}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+@media (max-width:640px){.inner{padding:18px 20px 0}.ro{grid-template-columns:1fr;gap:10px}.foot{padding:14px 20px 18px;flex-wrap:wrap}.col .fig{font-size:11px}}
+</style>
+</head>
+<body>
+<div class="switch" role="group" aria-label="Example run">
+  <button aria-pressed="true" data-case="landed">#1258 · landed</button>
+  <button aria-pressed="false" data-case="goaround">#808 · no result</button>
+</div>
+
+<main class="sheet" aria-live="polite">
+  <div class="bar"><div class="lights"><i></i><i></i><i></i></div><button class="done">Done</button></div>
+  <div class="inner">
+    <div class="crumb"><span class="ava"></span><span id="crumb"></span></div>
+    <h1 id="title"></h1>
+    <div class="meta" id="meta"></div>
+
+    <div class="approach" id="approach">
+      <svg viewBox="0 0 800 206" preserveAspectRatio="none" aria-hidden="true">
+        <line class="guide" x1="8" y1="40" x2="792" y2="136"/>
+        <g class="rabbit" id="rabbit"></g>
+        <line class="runway" x1="742" y1="150" x2="792" y2="150"/>
+        <path id="slope" class="slope"/>
+        <path id="ga" class="goaround"/>
+        <circle id="halo" class="halo" r="6"/>
+        <g id="wps"></g>
+      </svg>
+      <div class="cols" id="cols"></div>
+    </div>
+
+    <div class="verdict" id="verdict"></div>
+    <div class="readouts" id="readouts"></div>
+  </div>
+  <div class="foot" id="foot"></div>
+</main>
+<p class="note">Prototype of the review detail sheet (opened from a Now row or a Reviews card). Real data from two of your Sager runs. Hover a waypoint to jump to its readout. The approach line draws in on open; approach lights pulse toward the runway at rest; under reduced motion everything is static.</p>
+
+<script>
+const X=[56,262,468,674], Y=[44,72,100,128];
+const STAGES=['Gather','Review','Check','Land'];
+const RUNS={
+ landed:{
+  sig:'#d29b45', crumb:'SagerDrone/Sager · #1258 · waelananzeh98',
+  title:"ENG-710 M3.4 (2 of 2): fetch an alarm's preview under bounds, spool it, upload it",
+  meta:[['9c86e39','head'],['+3,460 −6',''],['13','files'],['427k','tokens'],['31 min','']],
+  reached:4,
+  figs:[
+   ['13 files · 102 comments','Diff split into 13 parts. Callers from grep, partial.'],
+   ['Changes · 4 findings','Sonnet reviewer, first pass'],
+   ['4 kept · 1 added','Every quoted line re-opened'],
+   ['Held as draft','Waiting for you to post']],
+  verdict:{w:'Changes requested',s:'Spool disk cap, single-address pin, shared DNS slots',actions:['Discard','Post review']},
+  readouts:[
+   ['Review','Final text',`<p>Went through this at <code>9c86e39</code>, skipping what's already open in the threads or fixed by the author. Wiring is real now: the runner only passes the shared fetcher and spool to adapters that set <code>accepts_evidence</code>, so the other adapters keep their no-arg constructors.</p>
+    <p>Five things inline: no byte cap on the spool, the pin only tries the first approved address, previews share the four process-wide DNS slots with the device paths, the age cap trusts a wall clock that can jump, and the Host header is malformed for IPv6 literals.</p>
+    <div class="card"><div class="loc">evidence.py:482</div><p><code>MAX_ITEMS = 64</code> is the only bound on the spool, and each item can be up to 8 MB, so the worst case is about 512 MB on a disk the docstring calls small and shared.</p></div>
+    <div class="card"><div class="loc">evidence.py:321</div><p><code>address = approved[0]</code> pins the whole fetch to the first resolved address, so a dual-stack name whose first answer is unreachable never falls back.</p></div>`],
+   ['Checker','Draft to final',`<div class="tally"><span><b>4</b>kept</span><span class="add"><b>1</b>added</span><span><b>0</b>dropped</span></div>
+    <div class="ck"><span class="tag add">Added</span><div class="t"><span class="loc">evidence.py:326</span><code>parsed.hostname</code> strips the brackets from an IPv6 literal, so the Host header goes out as <code>fd00::1:8080</code>.</div></div>
+    <div class="ck"><span class="tag">Kept</span><div class="t"><span class="loc">evidence.py:482</span>No byte cap on the spool.</div></div>
+    <div class="ck"><span class="tag">Kept</span><div class="t"><span class="loc">evidence.py:321</span>Fetch pinned to the first approved address.</div></div>
+    <div class="ck"><span class="tag">Kept</span><div class="t"><span class="loc">evidence.py:282</span>Previews share the 4 resolver slots with device paths.</div></div>
+    <div class="ck"><span class="tag">Kept</span><div class="t"><span class="loc">evidence_upload.py:265</span>Age cap trusts a wall clock that can jump.</div></div>
+    <p style="margin-top:10px">Body tightened: the draft's paragraph on the bus comment was cut as already settled in the threads.</p>`],
+   ['Blast radius','What else it touches',`<span class="chip warn">grep only · partial</span>
+    <ul class="b"><li><code>net.py</code> is shared network policy. Device paths that call <code>assert_endpoint_allowed</code> may be affected.</li>
+    <li><code>reconciler.py</code> changed (+22 −2). Callers in <code>soak.py</code> and tests still construct it with defaults.</li>
+    <li>Stacked on #1257. Routes it calls live there, not on main.</li></ul>`],
+   ['Session notes','From the run',`<ul class="b"><li>Feature freeze runs to 2026-11-15; flagged once for whoever merges. Not a blocker.</li><li>Couldn't check the <code>/pulse/gateway/event-artifacts</code> routes: they live in #1257.</li></ul>`]],
+  foot:['31 min','427k tokens','GitNexus off']
+ },
+ goaround:{
+  sig:'#d29b45', crumb:'SagerDrone/Sager · #808 · abdeen-1',
+  title:'ENG-424', meta:[['bb8113d','head'],['+38,697 −7,568',''],['300+','files'],['58k','tokens'],['2 min','']],
+  reached:1, stoppedAt:1,
+  figs:[
+   ['Diff refused','GitHub: over 300 files'],
+   ['Not reached',''],['Not reached',''],['No result','Nothing posted']],
+  verdict:{w:'No result',s:"The diff is over GitHub's 300-file limit, so nothing was reviewed",actions:['Review again']},
+  readouts:[
+   ['Session notes','Why it stopped',`<ul class="b"><li><code>glidepath pr diff</code> got HTTP 406: "diff exceeded the maximum number of files (300)". <code>--path</code> failed the same way.</li>
+    <li>No review was posted: a verdict with no diff would be a guess.</li>
+    <li>The PR is 46k changed lines. It likely needs splitting before anyone can review it well.</li></ul>
+    <p style="margin-top:12px"><strong>Fixed in 1.3.7:</strong> the diff now comes from your local clone when GitHub refuses it. Review again to try.</p>`],
+   ['Gathered','Before it stopped',`<ul class="b"><li>PR info at head <code>bb8113d</code>, 300+ files.</li><li>Threads: 19 reviews, 36 review comments, 3 comments.</li></ul>`],
+   ['Blast radius','What else it touches',`<span class="chip warn">not run</span><p>No changed symbols to search for without a diff. An empty list here means nothing was searched, not that nothing calls it.</p>`],
+   ['Review','',`<p class="empty">Nothing reviewed. The session stopped after gathering.</p>`]],
+  foot:['2 min','58k tokens','GitNexus off']
+ }
+};
+
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $=id=>document.getElementById(id);
+let rabbitT;
+
+function render(key){
+  const r=RUNS[key]; document.documentElement.style.setProperty('--sig',r.sig);
+  $('crumb').textContent=r.crumb; $('title').textContent=r.title;
+  $('meta').innerHTML=r.meta.map(([a,b])=>`<span><b>${a}</b>${b?' '+b:''}</span>`).join('');
+
+  // slope: through every reached waypoint, with a flare onto the runway when landed
+  const n=r.reached, landed=!r.stoppedAt;
+  let d=`M${X[0]},${Y[0]}`;
+  for(let i=1;i<n;i++) d+= (i===3&&landed)?` L${X[3]-30},${Y[3]+4} Q${X[3]},${Y[3]+20} ${X[3]+60},150 L792,150`:` L${X[i]},${Y[i]}`;
+  if(n===1) d+=` L${X[0]+0.1},${Y[0]}`;
+  const slope=$('slope'); slope.setAttribute('d',d);
+  const ga=$('ga');
+  if(r.stoppedAt){
+    const x=X[0],y=Y[0];
+    ga.setAttribute('d',`M${x},${y} L${x+70},${y+9} C${x+120},${y+15} ${x+150},${y+2} ${x+190},${y-30}`);
+  } else ga.setAttribute('d','');
+
+  $('wps').innerHTML=STAGES.map((s,i)=>{
+    const cls=i<n? (i===n-1 ? (landed?'landed':'stopped') : 'reached') : '';
+    const cy= (i===3&&landed)?150:Y[i], cx=(i===3&&landed)?X[3]+60:X[i];
+    return `<g class="wp ${cls}" data-i="${i}"><circle class="ring" cx="${cx}" cy="${cy}" r="5"/></g>`;
+  }).join('');
+  $('cols').innerHTML=STAGES.map((s,i)=>{
+    const [b,sub]=r.figs[i]; const dim=i>=n && !(i===3);
+    const top=((i===3&&landed)?150:Y[i])+14, lab=((i===3&&landed)?150:Y[i])-26;
+    const x=((i===3&&landed)?X[3]+60:X[i])/800*100;
+    return `<div class="col ${dim?'dim':''}" data-i="${i}"><div class="lab ${i===3&&landed?'end':''}" style="position:absolute;top:${lab}px;left:calc(${x}% - 6px)">${s}</div><div class="fig ${i===3&&landed?'end':''}" style="top:${top}px;left:calc(${x}% - 6px)"><b>${b}</b>${sub}</div></div>`;
+  }).join('');
+
+  const v=r.verdict;
+  $('verdict').innerHTML=`<span class="w">${v.w}</span><span class="s">${v.s}</span><span class="sp"></span>`+
+    v.actions.map((a,i)=>`<button class="btn ${i===v.actions.length-1?'pri':''}">${a}</button>`).join('');
+  $('readouts').innerHTML=r.readouts.map(([h,sm,body],i)=>`<section class="ro" id="ro${i}"><h2>${h}${sm?`<small>${sm}</small>`:''}</h2><div>${body}</div></section>`).join('');
+  $('foot').innerHTML=r.foot.map(t=>`<span>${t}</span>`).join('')+`<span class="sp"></span><button class="link">Show files in Finder</button><button class="link">Open on GitHub</button>`;
+
+  // approach lights: dots along the guide line ahead of the runway
+  const g=$('rabbit'); g.innerHTML='';
+  for(let k=0;k<7;k++){const t=k/7, x=560+t*175, y=40+(x-8)/784*96; g.innerHTML+=`<circle cx="${x}" cy="${y}" r="1.6"/>`}
+
+  // draw-in: the slope descends, waypoints light as the line passes, touchdown settles
+  if(!reduce){
+    const len=slope.getTotalLength();
+    slope.style.transition='none'; slope.style.strokeDasharray=len; slope.style.strokeDashoffset=len;
+    ga.style.opacity=0;
+    document.querySelectorAll('.wp').forEach(w=>{w.style.opacity=0});
+    document.querySelectorAll('.col').forEach(c=>{c.style.opacity=0;c.style.transform='translateY(-6px)'});
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      const dur=r.stoppedAt?500:1150;
+      slope.style.transition=`stroke-dashoffset ${dur}ms var(--ease)`; slope.style.strokeDashoffset=0;
+      document.querySelectorAll('.wp').forEach((w,i)=>{setTimeout(()=>{w.style.transition='opacity .35s';w.style.opacity=1},Math.min(i,n-1)*dur/Math.max(n,2)+80)});
+      document.querySelectorAll('.col').forEach((c,i)=>{setTimeout(()=>{c.style.transition='opacity .5s var(--ease),transform .6s var(--ease)';c.style.opacity='';c.style.transform=''},120+i*60)});
+      setTimeout(()=>{ga.style.transition='opacity .5s';ga.style.opacity=1;touchdown(r,landed)},dur);
+    }));
+  } else touchdown(r,landed,true);
+
+  clearInterval(rabbitT);
+  if(!reduce){let k=0;const dots=[...g.children];rabbitT=setInterval(()=>{dots.forEach((c,j)=>c.style.opacity=j===k?.55:.08);k=(k+1)%(dots.length+3)},140)}
+  wire();
+}
+
+function touchdown(r,landed,still){
+  const h=$('halo'); const last=document.querySelector(`.wp[data-i="${r.reached-1}"] .ring`);
+  h.setAttribute('cx',last.getAttribute('cx')); h.setAttribute('cy',last.getAttribute('cy'));
+  if(still) return;
+  h.animate([{r:6,opacity:.9},{r:22,opacity:0}],{duration:900,easing:'cubic-bezier(.2,.7,.1,1)'});
+}
+
+function wire(){
+  const map={0:1,1:0,2:1,3:0};
+  document.querySelectorAll('.wp').forEach(w=>{
+    const i=+w.dataset.i;
+    w.onmouseenter=()=>{document.querySelectorAll('.col').forEach(c=>c.classList.toggle('on',+c.dataset.i===i));w.classList.add('on')};
+    w.onmouseleave=()=>{document.querySelectorAll('.col').forEach(c=>c.classList.remove('on'));w.classList.remove('on')};
+    w.onclick=()=>{const key=document.querySelector('.switch [aria-pressed=true]').dataset.case;
+      const order=key==='landed'?{0:2,1:0,2:1,3:0}:{0:1,1:3,2:3,3:0};
+      const el=$('ro'+order[i]); el.scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'});
+      el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),900)};
+  });
+}
+
+document.querySelectorAll('.switch button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.switch button').forEach(x=>x.setAttribute('aria-pressed',x===b));render(b.dataset.case)});
+render('landed');
+</script>
+</body>
+</html>
