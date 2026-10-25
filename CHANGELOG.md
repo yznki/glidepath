@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.6
 
 - `glidepath review` and the Review sheet take several PRs at once (`owner/name 12 15`, several PR links, or PRs from several repos), run as one review.
 
