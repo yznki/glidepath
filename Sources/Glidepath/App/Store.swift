@@ -103,10 +103,17 @@ struct Snapshot {
     var approach: ApproachSnapshot?
     /// The newest 30 tower lines, newest first.
     var tower: [TowerLine] = []
+    /// The user's calls by `NeedsItem.id`, read from each PR's tend state: who asked, and the draft reply if any.
+    var calls: [String: YourCall] = [:]
     /// Tend rounds started today, from the run files.
     var tendRounds: [RunState] = []
     /// Snapshot rendering only: the playbooks by repo, in place of reading them.
     var playbooks: [String: Playbook] = [:]
+}
+
+extension NeedsItem {
+    /// The call's id: the part of `id` after "<slug>#<n>/". Tend's commands take it.
+    var callID: String { String(id.dropFirst("\(slug)#\(n)/".count)) }
 }
 
 /// Watches the state folders with DispatchSource, so the popover updates on each write without polling.
@@ -360,6 +367,11 @@ final class Store: ObservableObject {
         s.tendOn = config?.tend.enabled ?? false
         s.approach = tend.loadApproach()
         s.tower = tend.tower(limit: 30)
+        for need in s.approach?.needs ?? [] where need.kind == "call" {
+            if let call = tend.load(need.slug, need.n)?.calls.first(where: { $0.id == need.callID }) {
+                s.calls[need.id] = call
+            }
+        }
         if s.tendOn {
             let today = Date()
             s.tendRounds = RunStore(paths: paths).loadAll(prefix: Runner.dayPrefix(today))
@@ -675,9 +687,11 @@ final class Store: ObservableObject {
     /// Runs `glidepath tend <args>` (push, discard, retry) with the job's environment, off the main thread. A failure
     /// shows its last output line; either way the state is read again after.
     /// Runs `glidepath tend <args>`. `item` is the Needs row it came from, whose failure count and error it updates.
-    func tendCommand(_ args: [String], item: String? = nil) {
+    /// `onDone` gets whether the command succeeded, once the state is read again. A sheet uses it to stay open on failure.
+    func tendCommand(_ args: [String], item: String? = nil, onDone: ((Bool) -> Void)? = nil) {
         guard let binary = Bundle.main.executablePath else {
             actionError = "cannot find the glidepath binary"
+            onDone?(false)
             return
         }
         let env = Runner.environment(paths)
@@ -697,6 +711,7 @@ final class Store: ObservableObject {
                 }
             }
             reload()
+            onDone?(result.ok)
         }
     }
 

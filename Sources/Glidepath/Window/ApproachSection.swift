@@ -9,13 +9,17 @@ private let approachFaint = Color.white.opacity(0.22)
 struct ApproachSectionView: View {
     @ObservedObject var store: Store
     @StateObject private var model: ApproachModel
+    /// The Edit sheet for a call from Needs you.
+    @StateObject private var calls: CallEditModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("signalColour") private var signalKey = "amber"
 
-    /// `opened` is the plane whose drawer is open at first draw: snapshot rendering only.
-    init(store: Store, opened: String? = nil) {
+    /// `opened` is the plane whose drawer is open at first draw, and `editing` the call whose Edit sheet is open: snapshot
+    /// rendering only.
+    init(store: Store, opened: String? = nil, editing: String? = nil) {
         self.store = store
         _model = StateObject(wrappedValue: ApproachModel(opened: opened))
+        _calls = StateObject(wrappedValue: CallEditModel.preset(editing, store: store))
     }
 
     private var approach: ApproachSnapshot? { store.snap.approach }
@@ -49,9 +53,14 @@ struct ApproachSectionView: View {
                     .transition(.move(edge: .trailing))
                     .frame(maxHeight: .infinity, alignment: .top)
             }
+            if calls.item != nil {
+                CallEditCard(model: calls, store: store)
+                    .transition(.opacity)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .animation(Motion.reduced(reduceMotion) ? .easeOut(duration: 0.15) : Motion.standard, value: model.opened)
+        .animation(Motion.reduced(reduceMotion) ? .easeOut(duration: 0.15) : Motion.standard, value: calls.item?.id)
     }
 
     // MARK: Header
@@ -172,7 +181,9 @@ struct ApproachSectionView: View {
             } else {
                 VStack(spacing: 6) {
                     ForEach(items, id: \.id) { item in
-                        TendNeedRow(item: item, url: store.approachPlane(item.slug, item.n)?.url ?? "", store: store)
+                        TendNeedRow(item: item, url: store.approachPlane(item.slug, item.n)?.url ?? "", store: store) {
+                            calls.open(item, store: store)
+                        }
                     }
                 }
             }
@@ -298,22 +309,31 @@ struct ApproachPopoverBlock: View {
     }
 
     private func strip(_ item: NeedsItem) -> some View {
-        HStack(spacing: 8) {
+        let call = item.kind == "call"
+        // A call reads "#n needs your call" and names the reviewer whose draft waits; its Review button opens Approach.
+        let title = call ? "#\(String(item.n)) needs your call" : item.title
+        let line: String = {
+            guard call else { return "\(item.detail) · \(item.slug) #\(String(item.n))" }
+            let who = store.snap.calls[item.id]?.author ?? "a reviewer"
+            return "\(store.snap.calls[item.id]?.draft == nil ? "reply" : "draft reply") to \(who)"
+        }()
+        let action = call ? "Review" : "Open"
+        return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
+                Text(title)
                     .font(.system(size: 12.5, weight: .medium))
                     .foregroundStyle(Gotham.fg)
                     .lineLimit(1)
-                Text(verbatim: "\(item.detail) · \(item.slug) #\(String(item.n))")
+                Text(verbatim: line)
                     .font(.system(size: 11.5))
                     .foregroundStyle(Gotham.mute)
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
             if offscreen {
-                Text("Open").font(.system(size: 12, weight: .semibold)).foregroundStyle(Gotham.fg)
+                Text(action).font(.system(size: 12, weight: .semibold)).foregroundStyle(Gotham.fg)
             } else {
-                SettingButton(title: "Open") { WindowRouter.shared.open(.approach) }
+                SettingButton(title: action) { WindowRouter.shared.open(.approach) }
             }
         }
         .padding(.horizontal, 10)
@@ -348,10 +368,13 @@ struct TendNeedRow: View {
     let item: NeedsItem
     let url: String
     @ObservedObject var store: Store
+    /// Opens the Edit sheet for a call. Only call rows use it.
+    var onEdit: () -> Void = {}
     @AppStorage("signalColour") private var signalKey = "amber"
 
     private var signal: Color { Gotham.signal(signalKey) }
     private var held: Bool { item.kind == "held" }
+    private var call: Bool { item.kind == "call" }
 
     /// The detail split at its first " · ": the state, and the rest.
     private var lead: String {
@@ -365,7 +388,7 @@ struct TendNeedRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text("!")
+            Text(call ? "?" : "!")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(signal)
                 .frame(width: 26, height: 26)
@@ -402,7 +425,9 @@ struct TendNeedRow: View {
 
     @ViewBuilder
     private var actions: some View {
-        if held {
+        if call {
+            callActions
+        } else if held {
             HStack(spacing: 8) {
                 Button("Discard") { store.tendCommand(["discard", item.slug, "\(item.n)"], item: item.id) }
                     .buttonStyle(.plain)
@@ -423,6 +448,25 @@ struct TendNeedRow: View {
                 }
                 SettingButton(title: "Try again", prominent: true) {
                     store.tendCommand(["retry", item.slug, "\(item.n)"], item: item.id)
+                }
+            }
+        }
+    }
+
+    /// Discard drops the call; Edit opens its sheet; Post reply sends the draft as it is, when there is one.
+    private var callActions: some View {
+        let draft = store.snap.calls[item.id]?.draft != nil
+        return HStack(spacing: 8) {
+            Button("Discard") { store.tendCommand(["dismiss", item.slug, "\(item.n)", item.callID], item: item.id) }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Gotham.mute)
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+            SettingButton(title: "Edit") { onEdit() }
+            if draft {
+                SettingButton(title: "Post reply", prominent: true) {
+                    store.tendCommand(["reply", item.slug, "\(item.n)", item.callID], item: item.id)
                 }
             }
         }
@@ -550,12 +594,76 @@ struct ApproachDrawer: View {
                         .font(.system(size: 12.5))
                         .foregroundStyle(Gotham.mute)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let threads = run.tendThreads, !threads.isEmpty {
+                        threadLines(threads)
+                    }
                 }
                 .padding(12)
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
                 .padding(.bottom, 8)
+                ForEach(Array((run.council ?? []).enumerated()), id: \.offset) { _, record in
+                    councilCard(record, at: run.started)
+                        .padding(.bottom, 8)
+                }
             }
         }
+    }
+
+    /// One line per thread the round answered: ✓ agree, ✗ disagree, ? unclear, with the author and the quote, then the
+    /// reply, or "draft:" when it was not posted. An unposted line is amber, since it waits for the user.
+    private func threadLines(_ threads: [ThreadVerdict]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(threads.enumerated()), id: \.offset) { _, t in
+                let mark = t.verdict == "agree" ? "✓" : t.verdict == "disagree" ? "✗" : "?"
+                let tone = t.posted ? Gotham.mute : signal
+                let reply = t.reply.map { t.posted ? " · \($0)" : " · draft: \($0)" } ?? ""
+                (Text("\(mark) ").foregroundStyle(tone)
+                 + Text(t.author).fontWeight(.semibold).foregroundStyle(t.posted ? Gotham.fg : signal)
+                 + Text(" \u{201C}\(t.quote)\u{201D}\(reply)").foregroundStyle(tone))
+                    .font(.system(size: 12))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    /// The council sitting on a thread: its three seats, each with the lens, the vote and the reason, and the outcome line.
+    private func councilCard(_ record: CouncilRecord, at started: Date) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("Council · \(record.topic)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Gotham.fg)
+                Spacer(minLength: 8)
+                Text("\(HeaderCopy.clock(started)) · \(record.seats.count) judges")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Gotham.mute)
+            }
+            HStack(alignment: .top, spacing: 6) {
+                ForEach(Array(record.seats.enumerated()), id: \.offset) { _, seat in
+                    let hold = seat.vote != "act"
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(seat.lens.capitalized) · \(seat.vote)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(hold ? signal : Gotham.fg)
+                        Text(seat.reason)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Gotham.mute)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(hex: "0C0C10")))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
+                }
+            }
+            // The tally and the chair's call, as the tower words them. A stop has no chair and reads amber.
+            Text(Council.towerText(record))
+                .font(.system(size: 12))
+                .foregroundStyle(record.outcome == "stop" ? signal : Gotham.mute)
+        }
+        .padding(12)
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
     }
 
     /// What the round said about this PR: the reason the run recorded, else its error, else nothing.
@@ -680,6 +788,148 @@ private struct GateMark: View {
             case .none:
                 Circle().strokeBorder(approachFaint, lineWidth: 1.5).frame(width: 14, height: 14)
             }
+        }
+    }
+}
+
+/// The Edit sheet's state: the call being edited (nil when closed), the reply text, and whether a post is running.
+@MainActor
+final class CallEditModel: ObservableObject {
+    @Published var item: NeedsItem?
+    /// The reply text, starting from the draft.
+    @Published var text = ""
+    @Published var posting = false
+
+    init(item: NeedsItem? = nil, text: String = "") {
+        self.item = item
+        self.text = text
+    }
+
+    /// A model with its sheet already open on `id`, for snapshot rendering. Closed when `id` is nil or unknown.
+    static func preset(_ id: String?, store: Store) -> CallEditModel {
+        let model = CallEditModel()
+        if let id, let item = store.snap.approach?.needs.first(where: { $0.id == id }) { model.open(item, store: store) }
+        return model
+    }
+
+    /// Opens the sheet on a call, with its draft as the text.
+    func open(_ item: NeedsItem, store: Store) {
+        self.item = item
+        text = store.snap.calls[item.id]?.draft ?? ""
+        posting = false
+    }
+
+    func close() {
+        item = nil
+    }
+
+    /// Posts the text through `tend reply`. The sheet closes when the post works; a refusal keeps it open with the error.
+    func post(store: Store) {
+        guard let item, !posting else { return }
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty else { return }
+        posting = true
+        store.tendCommand(["reply", item.slug, "\(item.n)", item.callID, "--text", body], item: item.id) { [weak self] ok in
+            self?.posting = false
+            if ok { self?.close() }
+        }
+    }
+}
+
+/// The Edit sheet, over the section it opened from: a scrim, then a card with the reviewer's words and the reply text.
+/// Drawn in the window rather than as a system sheet, so snapshot rendering can draw it. Escape or Cancel closes it.
+struct CallEditCard: View {
+    @ObservedObject var model: CallEditModel
+    @ObservedObject var store: Store
+    @Environment(\.offscreenRender) private var offscreen
+    @AppStorage("signalColour") private var signalKey = "amber"
+    private var signal: Color { Gotham.signal(signalKey) }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.45)
+                .contentShape(Rectangle())
+                .onTapGesture { model.close() }
+            if let item = model.item {
+                card(item)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onExitCommand { model.close() }
+    }
+
+    private func card(_ item: NeedsItem) -> some View {
+        let call = store.snap.calls[item.id]
+        let error = store.tendErrors[item.id]
+        let empty = model.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return VStack(alignment: .leading, spacing: 0) {
+            capLabel("Your call", signal)
+                .padding(.bottom, 8)
+            Text(item.title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Gotham.fg)
+                .lineLimit(2)
+            Text(verbatim: "\(item.slug) #\(String(item.n))")
+                .font(.system(size: 12))
+                .foregroundStyle(Gotham.mute)
+                .padding(.top, 3)
+            // The reviewer's words, as tend quoted them.
+            Text(verbatim: "\(call?.author ?? "A reviewer"): \u{201C}\(call?.quote ?? item.detail)\u{201D}")
+                .font(.system(size: 12.5))
+                .foregroundStyle(Gotham.mute)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Gotham.row))
+                .padding(.top, 16)
+            capLabel("Reply")
+                .padding(.top, 18)
+                .padding(.bottom, 8)
+            replyField
+            if let error {
+                Text(error)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(signal)
+                    .lineLimit(2)
+                    .padding(.top, 8)
+            }
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                SettingButton(title: "Cancel") { model.close() }
+                SettingButton(title: model.posting ? "Posting…" : "Post reply", prominent: true,
+                              enabled: !model.posting && !empty) {
+                    model.post(store: store)
+                }
+            }
+            .padding(.top, 18)
+        }
+        .padding(22)
+        .frame(width: 520)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(hex: "0B0B0E")))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
+        .shadow(color: .black.opacity(0.6), radius: 40)
+    }
+
+    /// The reply text. Offscreen it is the text on a well, since TextEditor draws blank in an ImageRenderer.
+    @ViewBuilder private var replyField: some View {
+        let well = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        if offscreen {
+            Text(model.text)
+                .font(.system(size: 13))
+                .foregroundStyle(Gotham.fg)
+                .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+                .padding(12)
+                .background(well.fill(Color(hex: "0C0C10")))
+                .overlay(well.strokeBorder(Gotham.edge, lineWidth: 1))
+        } else {
+            TextEditor(text: $model.text)
+                .font(.system(size: 13))
+                .foregroundStyle(Gotham.fg)
+                .scrollContentBackground(.hidden)
+                .frame(height: 150)
+                .padding(8)
+                .background(well.fill(Color(hex: "0C0C10")))
+                .overlay(well.strokeBorder(Gotham.edge, lineWidth: 1))
         }
     }
 }
