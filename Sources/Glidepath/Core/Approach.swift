@@ -304,6 +304,7 @@ enum Approach {
     /// The self-review line for a PR: the finding count when the review asked for changes, else clean.
     static func selfReviewLine(_ review: SelfReview) -> String {
         let k = review.findings.count
+        if review.verdict == "failed" { return "Self-review: did not run" }
         if review.verdict == "changes" && k > 0 {
             return "Self-review: \(k) \(k == 1 ? "finding" : "findings")"
         }
