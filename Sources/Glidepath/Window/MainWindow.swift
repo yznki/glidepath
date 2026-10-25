@@ -30,6 +30,8 @@ struct WindowScreen: View {
     var approachOpen: String?
     /// Snapshot rendering only: the Settings search at first draw.
     var settingsQuery = ""
+    /// Snapshot rendering only: the call whose Edit sheet is open at first draw, by `NeedsItem.id`.
+    var callOpen: String?
 
     var body: some View {
         Group {
@@ -56,7 +58,7 @@ struct WindowScreen: View {
             case .now:
                 NowView(store: store)
             case .approach:
-                ApproachSectionView(store: store, opened: approachOpen)
+                ApproachSectionView(store: store, opened: approachOpen, editing: callOpen)
             case .reviews:
                 HistoryView(store: store)
             case .repos:

@@ -11,6 +11,8 @@ struct NowView: View {
     @StateObject private var reviewModel = ReviewSheetModel()
     /// The runs and their reviews, loaded off the main thread. Its sheet opens a PR from this section.
     @StateObject private var history = ReviewsModel()
+    /// The Edit sheet for a call from the needs list.
+    @StateObject private var calls = CallEditModel()
 
     private var snap: Snapshot { store.snap }
     private var running: Bool { snap.running }
@@ -70,6 +72,11 @@ struct NowView: View {
         }
         .sheet(isPresented: $reviewModel.open) {
             ReviewNowSheet(store: store, model: reviewModel)
+        }
+        .overlay {
+            if calls.item != nil {
+                CallEditCard(model: calls, store: store)
+            }
         }
         .onAppear { history.load(store) }
         .onChange(of: RunsKey(snap)) { _, _ in history.load(store) }
@@ -169,7 +176,9 @@ struct NowView: View {
                 ForEach(held) { strip in heldRow(strip) }
                 ForEach(tooLarge) { strip in tooLargeRow(strip) }
                 ForEach(tendNeeds, id: \.id) { item in
-                    TendNeedRow(item: item, url: store.approachPlane(item.slug, item.n)?.url ?? "", store: store)
+                    TendNeedRow(item: item, url: store.approachPlane(item.slug, item.n)?.url ?? "", store: store) {
+                        calls.open(item, store: store)
+                    }
                 }
             }
         }
