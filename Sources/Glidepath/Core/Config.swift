@@ -118,6 +118,37 @@ enum HotkeySetting: Equatable {
     var isOn: Bool { self != .off }
 }
 
+/// What a fix does once its PR is approved. `always` pushes it; `until_approved` (the default) holds it for the user.
+enum TendPush: String, CaseIterable, Equatable { case always, untilApproved = "until_approved" }
+
+/// The second-opinion model for stuck fixes. `off` (the default) leaves it out.
+enum TendAdvisor: String, CaseIterable, Equatable { case opus, off }
+
+/// The `[tend]` table: Glidepath fixing the user's own PRs. A config without the table keeps tending off.
+struct TendConfig: Equatable {
+    var enabled = false
+    var push: TendPush = .untilApproved
+    /// Fix rounds a day, across all PRs.
+    var roundsPerDay = 5
+    /// Fix attempts on one head before its PR is stuck.
+    var triesPerHead = 2
+    /// Changed lines one fix may touch. 0 means no cap.
+    var maxFixLines = 400
+    var autopilot = false
+    var advisor: TendAdvisor = .off
+    /// Dollars one fix session may spend. Whole dollars: the TOML reader has no floats.
+    var maxUsdPerSession = 2
+    /// Second-opinion reviews a day. 0 means none.
+    var councilPerDay = 10
+    /// Hosts a fix session may reach. A `*.` prefix is a wildcard.
+    var registries = ["registry.npmjs.org", "*.pypi.org", "files.pythonhosted.org"]
+    /// Percent of the Claude usage window kept back for the user. 0 to 90.
+    var usageReserve = 40
+    var quietHours = QuietHours.parse("22:00-07:00,sat,sun")!
+    /// Keys this version does not know, kept as they were read so a save does not drop them.
+    var extras: [String: TOMLValue] = [:]
+}
+
 struct RepoConfig: Equatable {
     var slug: String
     var clone: String
@@ -135,6 +166,8 @@ struct RepoConfig: Equatable {
     /// Path prefixes that need an extra approval. A PR touching one gets a note on its review.
     var flagPaths: [String] = []
     var flagNote = RepoConfig.defaultFlagNote
+    /// Glidepath fixes this repo's own PRs. Off unless the repo asks for it.
+    var tend = false
     /// Keys this version does not know, kept as they were read so a save does not drop them.
     var extras: [String: TOMLValue] = [:]
 
@@ -190,6 +223,9 @@ struct Config: Equatable {
     var pauseAtBudget = true
     /// Runs review but post nothing, as `glidepath run --dry-run` does.
     var dryRun = false
+    /// The Claude config folder the fix sessions sign in with. nil uses the user's own sign-in.
+    var claudeConfigDir: String?
+    var tend = TendConfig()
     /// Keys this version does not know, kept as they were read so a save does not drop them.
     var extras: [String: TOMLValue] = [:]
 
@@ -216,7 +252,8 @@ struct Config: Equatable {
         }
         let topLevelKeys: Set<String> = ["schedule", "days", "limits", "repo", "check_updates", "notify", "hotkey",
                                          "review_drafts", "include_bots", "model", "strictness", "notify_changes_only",
-                                         "notify_sound", "respect_focus", "monthly_tokens", "pause_at_budget", "dry_run"]
+                                         "notify_sound", "respect_focus", "monthly_tokens", "pause_at_budget", "dry_run",
+                                         "claude_config_dir", "tend"]
 
         let scheduleText = try strings(doc["schedule"], key: "schedule") ?? defaultSchedule
         guard !scheduleText.isEmpty else { throw ConfigError(message: "schedule must list at least one time") }
@@ -252,6 +289,11 @@ struct Config: Equatable {
         let notify = try bool(doc["notify"], key: "notify") ?? true
         let hotkey = try hotkeySetting(doc["hotkey"])
         let monthlyTokens = try nonNegativeInt(doc["monthly_tokens"], key: "monthly_tokens") ?? 0
+        var tend = TendConfig()
+        if let value = doc["tend"] {
+            guard case .table(let t) = value else { throw ConfigError(message: "[tend] must be a table") }
+            tend = try parseTend(t)
+        }
         return Config(schedule: schedule, limits: limits, repos: repos, checkUpdates: checkUpdates, notify: notify,
                       days: days, hotkey: hotkey,
                       reviewDrafts: try bool(doc["review_drafts"], key: "review_drafts") ?? false,
@@ -264,7 +306,50 @@ struct Config: Equatable {
                       monthlyTokens: monthlyTokens,
                       pauseAtBudget: try bool(doc["pause_at_budget"], key: "pause_at_budget") ?? true,
                       dryRun: try bool(doc["dry_run"], key: "dry_run") ?? false,
+                      claudeConfigDir: try claudeConfigDir(doc["claude_config_dir"], home: home),
+                      tend: tend,
                       extras: extraKeys(doc, allowed: topLevelKeys))
+    }
+
+    /// `claude_config_dir`: an absolute path, or one that starts with ~/.
+    private static func claudeConfigDir(_ v: TOMLValue?, home: String) throws -> String? {
+        guard let text = try string(v, key: "claude_config_dir") else { return nil }
+        let path = expand(text, home: home)
+        guard path.hasPrefix("/") else {
+            throw ConfigError(message: "claude_config_dir \"\(text)\" must be an absolute path or start with ~/")
+        }
+        return path
+    }
+
+    /// The `[tend]` table. Every key is optional; a missing one keeps its default.
+    private static func parseTend(_ t: [String: TOMLValue]) throws -> TendConfig {
+        var tend = TendConfig()
+        tend.enabled = try bool(t["enabled"], key: "enabled") ?? tend.enabled
+        tend.push = try choice(t["push"], key: "push") ?? tend.push
+        tend.roundsPerDay = try positiveInt(t["rounds_per_day"], key: "rounds_per_day") ?? tend.roundsPerDay
+        tend.triesPerHead = try positiveInt(t["tries_per_head"], key: "tries_per_head") ?? tend.triesPerHead
+        tend.maxFixLines = try nonNegativeInt(t["max_fix_lines"], key: "max_fix_lines") ?? tend.maxFixLines
+        tend.autopilot = try bool(t["autopilot"], key: "autopilot") ?? tend.autopilot
+        tend.advisor = try choice(t["advisor"], key: "advisor") ?? tend.advisor
+        tend.maxUsdPerSession = try positiveInt(t["max_usd_per_session"], key: "max_usd_per_session") ?? tend.maxUsdPerSession
+        tend.councilPerDay = try nonNegativeInt(t["council_per_day"], key: "council_per_day") ?? tend.councilPerDay
+        tend.registries = try strings(t["registries"], key: "registries") ?? tend.registries
+        if let value = t["usage_reserve"] {
+            guard case .int(let n) = value, (0...90).contains(n) else {
+                throw ConfigError(message: "usage_reserve must be a whole number from 0 to 90")
+            }
+            tend.usageReserve = n
+        }
+        if let text = try string(t["quiet_hours"], key: "quiet_hours") {
+            guard let quiet = QuietHours.parse(text) else {
+                throw ConfigError(message: "quiet_hours \"\(text)\" must look like 22:00-07:00,sat,sun")
+            }
+            tend.quietHours = quiet
+        }
+        tend.extras = extraKeys(t, allowed: ["enabled", "push", "rounds_per_day", "tries_per_head", "max_fix_lines",
+                                             "autopilot", "advisor", "max_usd_per_session", "council_per_day",
+                                             "registries", "usage_reserve", "quiet_hours"])
+        return tend
     }
 
     /// `hotkey`: true (⌥⌘G), false (off), or a shortcut string that `HotkeySpec` can read.
@@ -317,7 +402,8 @@ struct Config: Equatable {
         }
         var repo = RepoConfig(slug: slug, clone: expandedClone)
         repo.extras = extraKeys(t, allowed: ["slug", "clone", "posting", "authors", "rules", "rules_mode", "gitnexus",
-                                             "gitnexus_refresh", "include_own", "review_drafts", "flag_paths", "flag_note"])
+                                             "gitnexus_refresh", "include_own", "review_drafts", "flag_paths", "flag_note",
+                                             "tend"])
 
         if let p = try string(t["posting"], key: "posting") {
             guard let v = Posting(rawValue: p) else { throw ConfigError(message: "posting must be comment, review or draft") }
@@ -354,6 +440,7 @@ struct Config: Equatable {
             repo.flagPaths = paths
         }
         repo.flagNote = try string(t["flag_note"], key: "flag_note") ?? RepoConfig.defaultFlagNote
+        repo.tend = try bool(t["tend"], key: "tend") ?? false
         return repo
     }
 
@@ -379,6 +466,7 @@ struct Config: Equatable {
         if monthlyTokens != 0 { out += "monthly_tokens = \(monthlyTokens)\n" }
         if !pauseAtBudget { out += "pause_at_budget = false\n" }
         if dryRun { out += "dry_run = true\n" }
+        if let claudeConfigDir { out += "claude_config_dir = \(tomlQuoted(claudeConfigDir))\n" }
         // Unknown keys go back in their section: plain values after the known ones, tables and arrays of tables last.
         out += tomlLines(extras.filter { !isSection($0.value) })
         out += "\n[limits]\n"
@@ -386,6 +474,25 @@ struct Config: Equatable {
         out += "max_changed_lines = \(limits.maxChangedLines)\n"
         out += "split_over_lines = \(limits.splitOverLines)\n"
         out += tomlLines(limits.extras)
+        if tend != TendConfig() {
+            let d = TendConfig()
+            out += "\n[tend]\n"
+            if tend.enabled != d.enabled { out += "enabled = \(tend.enabled)\n" }
+            if tend.push != d.push { out += "push = \(tomlQuoted(tend.push.rawValue))\n" }
+            if tend.roundsPerDay != d.roundsPerDay { out += "rounds_per_day = \(tend.roundsPerDay)\n" }
+            if tend.triesPerHead != d.triesPerHead { out += "tries_per_head = \(tend.triesPerHead)\n" }
+            if tend.maxFixLines != d.maxFixLines { out += "max_fix_lines = \(tend.maxFixLines)\n" }
+            if tend.autopilot != d.autopilot { out += "autopilot = \(tend.autopilot)\n" }
+            if tend.advisor != d.advisor { out += "advisor = \(tomlQuoted(tend.advisor.rawValue))\n" }
+            if tend.maxUsdPerSession != d.maxUsdPerSession { out += "max_usd_per_session = \(tend.maxUsdPerSession)\n" }
+            if tend.councilPerDay != d.councilPerDay { out += "council_per_day = \(tend.councilPerDay)\n" }
+            if tend.registries != d.registries {
+                out += "registries = [" + tend.registries.map { tomlQuoted($0) }.joined(separator: ", ") + "]\n"
+            }
+            if tend.usageReserve != d.usageReserve { out += "usage_reserve = \(tend.usageReserve)\n" }
+            if tend.quietHours != d.quietHours { out += "quiet_hours = \(tomlQuoted(tend.quietHours.text))\n" }
+            out += tomlLines(tend.extras)
+        }
         for r in repos {
             out += "\n[[repo]]\n"
             out += "slug = \(tomlQuoted(r.slug))\n"
@@ -407,6 +514,7 @@ struct Config: Equatable {
             out += "gitnexus = \(tomlQuoted(r.gitnexus.rawValue))\n"
             out += "include_own = \(r.includeOwn)\n"
             if let drafts = r.reviewDrafts { out += "review_drafts = \(drafts)\n" }
+            if r.tend { out += "tend = true\n" }
             out += "gitnexus_refresh = \(r.gitnexusRefresh)\n"
             if !r.flagPaths.isEmpty {
                 out += "flag_paths = [" + r.flagPaths.map { tomlQuoted($0) }.joined(separator: ", ") + "]\n"

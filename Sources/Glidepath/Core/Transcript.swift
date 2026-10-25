@@ -100,7 +100,7 @@ enum Transcript {
         return text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
     }
 
-    private static func json(_ line: String) -> [String: Any]? {
+    static func json(_ line: String) -> [String: Any]? {
         guard let data = line.data(using: .utf8) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
     }
