@@ -1047,7 +1047,9 @@ final class Tender {
         // Checked before anything is committed: no markers left, nothing changed beside the conflicts, and the
         // resolution itself passes PushGuard (no size cap) and the flagged paths.
         let refusal: String? = try locked(repo.slug) { () throws -> String? in
-            let outside = Tender.outsideConflicts(status: git(["-C", wt, "status", "--porcelain"]).stdout, conflicts: conflicts)
+            let outside = Tender.outsideConflicts(unstaged: git(["-C", wt, "diff", "--name-only"]).stdout,
+                                                  untracked: git(["-C", wt, "ls-files", "--others", "--exclude-standard"]).stdout,
+                                                  conflicts: conflicts)
             _ = try gitOK(["-C", wt, "add", "-A"])
             let markers = git(["-C", wt, "diff", "--cached", "--check", "HEAD"])
             if Tender.hasLeftoverMarkers(markers.stdout + markers.stderr) { return "Conflict markers left in the files" }
@@ -1620,9 +1622,11 @@ final class Tender {
         diffCheck.contains("leftover conflict marker")
     }
 
-    /// The paths `git status --porcelain` lists that are not conflicted files: what a session changed beside them.
-    static func outsideConflicts(status: String, conflicts: [String]) -> [String] {
-        status.split(separator: "\n").map { String($0.dropFirst(3)) }.filter { !$0.isEmpty && !conflicts.contains($0) }
+    /// The paths the session changed beside the conflicts: unstaged edits (`git diff --name-only`) and untracked files
+    /// (`git ls-files --others --exclude-standard`), minus the conflicted files. Files the merge staged cleanly are not in either.
+    static func outsideConflicts(unstaged: String, untracked: String, conflicts: [String]) -> [String] {
+        (unstaged.split(separator: "\n") + untracked.split(separator: "\n"))
+            .map(String.init).filter { !$0.isEmpty && !conflicts.contains($0) }
     }
 
     /// The first gate a PR has not met for landing, in words. Only called for a PR that is not ready.

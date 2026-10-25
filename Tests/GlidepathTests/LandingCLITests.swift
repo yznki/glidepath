@@ -36,9 +36,11 @@ final class LandingCLITests: XCTestCase {
     }
 
     func testOutsideConflictsLeavesOnlyWhatTheSessionTouchedBeside() {
-        let status = "UU a.swift\n M b.swift\n?? new.txt\nM  c.swift\n"
-        XCTAssertEqual(Tender.outsideConflicts(status: status, conflicts: ["a.swift"]), ["b.swift", "new.txt", "c.swift"])
-        XCTAssertEqual(Tender.outsideConflicts(status: "UU a.swift\n", conflicts: ["a.swift"]), [])
+        // A file the merge staged cleanly (in neither list) is not reported; an unstaged edit and an untracked file are.
+        XCTAssertEqual(Tender.outsideConflicts(unstaged: "b.swift\na.swift\n", untracked: "new.txt\n",
+                                               conflicts: ["a.swift"]), ["b.swift", "new.txt"])
+        XCTAssertEqual(Tender.outsideConflicts(unstaged: "a.swift\n", untracked: "", conflicts: ["a.swift"]), [])
+        XCTAssertEqual(Tender.outsideConflicts(unstaged: "", untracked: "", conflicts: ["a.swift"]), [])
     }
 
     func testRunTitlesForLandingAndBreak() {
