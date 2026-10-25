@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.4
+
+- `glidepath review owner/name N` on your own PR says how to turn on `include_own`, once the run's summary is printed.
+- A review session reads the rubric from its scratch folder (with the repo's rules appended), so reviewers no longer fail to open it.
+- `glidepath code files` refuses any flag with a plain message; the gatherer prompt says so.
+- `glidepath init` suggests the repo of the current folder, asks again on a bad answer (three tries), and exits with the owner/name example.
+- A run that reviews nothing says so ("no open PRs to review" or "0 PRs reviewed") before the token count.
+- `glidepath init` ends by saying where reviews go for your posting mode.
+- The allowlist and disallowed lines print only when output is not a terminal, so the scheduled log keeps them.
+- Install notes for Xcode's license and version, in the README and the Homebrew caveats.
+- `glidepath init` and `doctor` tell you to run `claude update` when Claude Code is too old.
+
 ## 1.3.3
 
 - New setups hold each review for you to post, and start on Sonnet with five PRs a sweep. Existing configs are unchanged.
