@@ -12,7 +12,7 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | 1.6 | live check: scratch PR #1 broken add → tend fixed + pushed ff37538, CI green, 30k tokens; rerun idle; hands-off label → no round. Found: usage events nest under unifiedWindows (fixed) | done | |
 | 1.6 | H3 App: Approach section, chart, drawer, popover, settings — merged (cherry-picked, stub dropped), 433 pass, snapshots /tmp/gp-1.6 | done | 330cfdf..931f56d |
 | 1.6 | UI polish (compact hold, gates wording, round titles, settings rows) | in progress | |
-| 1.6 | real Actions live check (job logs + rerun) | in progress | |
+| 1.6 | real Actions live check: tend fixed mul on PR #1 (8f8691a, run green, 15k tokens); job-log fetch was empty (gh refuses escape sequences) → fixed with --allow-escape-sequences + ANSI strip, verified `##[error]` present; `gh run rerun --failed` works (attempt 2 started, cancelled); ~4 Actions minutes | done | |
 
 ## Decisions (Yazan should know)
 
@@ -31,7 +31,5 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 
 ## Open issues
 
-- none yet
-- gh token lacks `workflow` scope (re-auth needs a browser), so the scratch repo has no Actions workflow. Live CI
-  checks use a local fake CI (`/tmp/gp-fakeci.sh`: runs `npm test` per head, posts commit status "Unit tests").
-  Job-log fetching and `gh run rerun` stay unverified live; covered by unit tests only. Fix: `gh auth refresh -s workflow`.
+- (closed) gh token lacked `workflow` scope; Yazan added it. Scratch repo now runs a real Actions workflow ("Unit tests",
+  npm test). Fake CI retired.
