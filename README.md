@@ -205,6 +205,10 @@ Off by default. Settings → Tending → "Tend my PRs", then switch on the repos
   GitHub credentials. Glidepath checks the diff (no test skips, no CI config, no secrets, size cap), then commits with
   your git identity and pushes. It never force-pushes.
 - `push = "until_approved"` (the default) holds a fix on an approved PR, since a push dismisses the approval.
+- Review threads, "changes requested" reviews and plain comments on your PRs are handled in the same round: an agreed
+  fix gets a reply ("Fixed in `abc1234`: …") and the thread is resolved. A disagreement or an unclear ask becomes a
+  "Your call" with a draft, unless `disagree = "reply_resolve"`. Replies mention no one but the commenter and link only
+  to this PR's commits.
 - Limits: `rounds_per_day` (5 per PR), `tries_per_head` (2), `max_usd_per_session` (2), and `usage_reserve` (40):
   Glidepath never spends the last 40% of your 5-hour and weekly Claude windows. Deferred work waits for
   `quiet_hours` ("22:00-07:00,sat,sun").
@@ -217,6 +221,7 @@ Off by default. Settings → Tending → "Tend my PRs", then switch on the repos
 enabled = true
 push = "always"          # or "until_approved"
 advisor = "opus"         # Sonnet fixes, Opus consulted at hard points; "off" to skip
+disagree = "draft"       # or "reply_resolve"
 usage_reserve = 40
 
 [[repo]]
