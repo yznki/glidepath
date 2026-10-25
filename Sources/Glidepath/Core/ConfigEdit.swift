@@ -224,6 +224,7 @@ enum ConfigEditor {
         out.tend.enabled = on
         if on {
             out.tend.advisor = .opus
+            out.tend.selfReview = true
             if out.tend.merge == .off { out.tend.merge = .ask }
         }
         return out

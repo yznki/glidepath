@@ -57,6 +57,15 @@ struct YourCall: Codable, Equatable {
     var at: Date
 }
 
+/// Glidepath's own review of one PR head. `verdict` is "clean" or "changes"; `done` is set once its findings were handled.
+struct SelfReview: Codable, Equatable {
+    var head: String
+    var at: Date
+    var verdict: String
+    var findings: [DraftComment]
+    var done: Bool
+}
+
 /// What tend knows about one PR, in `stateDir/tend/<owner>-<name>-<n>.json`. Only `slug` and `n` are required; a
 /// file from an older version loads with the defaults for the rest.
 struct TendPR: Codable, Equatable {
@@ -89,6 +98,16 @@ struct TendPR: Codable, Equatable {
     var handled: [String: String] = [:]
     /// Set once the PR's reviews and plain comments so far were marked answered: tend works on what comes after.
     var seeded = false
+    /// The last self-review of this PR's head.
+    var selfReview: SelfReview?
+    /// Whether the PR was a draft at the last check.
+    var wasDraft = false
+    /// Lines for the PR description's "Changes since review" block.
+    var changes: [String] = []
+    /// When a reviewer was last pinged, by login.
+    var pinged: [String: Date] = [:]
+    /// Linear issue ids a comment was posted to for this PR.
+    var linearPosted: [String] = []
 
     init(slug: String, n: Int) {
         self.slug = slug
@@ -116,11 +135,17 @@ struct TendPR: Codable, Equatable {
         rereq = try c.decodeIfPresent([String].self, forKey: .rereq) ?? []
         handled = try c.decodeIfPresent([String: String].self, forKey: .handled) ?? [:]
         seeded = try c.decodeIfPresent(Bool.self, forKey: .seeded) ?? false
+        selfReview = try c.decodeIfPresent(SelfReview.self, forKey: .selfReview)
+        wasDraft = try c.decodeIfPresent(Bool.self, forKey: .wasDraft) ?? false
+        changes = try c.decodeIfPresent([String].self, forKey: .changes) ?? []
+        pinged = try c.decodeIfPresent([String: Date].self, forKey: .pinged) ?? [:]
+        linearPosted = try c.decodeIfPresent([String].self, forKey: .linearPosted) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case slug, n, fingerprint, roundsToday, roundsDate, triesByHead, rerunsByHead, held, stuck, off
         case pendingRan, pendingRanHead, lastRound, answered, resolvedByUs, calls, rereq, handled, seeded
+        case selfReview, wasDraft, changes, pinged, linearPosted
     }
 
     /// Marks the PR's reviews and plain comments so far as answered, the first time a check sees the PR. Threads are not

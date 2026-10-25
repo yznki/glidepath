@@ -76,6 +76,17 @@ enum Threads {
         }
         return asks
     }
+
+    /// The asks a self-review with changes raised, minus those already answered. Empty once the review is done.
+    static func selfAsks(_ review: SelfReview, answered: Set<String>) -> [Ask] {
+        guard review.verdict == "changes", !review.done else { return [] }
+        let head7 = String(review.head.prefix(7))
+        return review.findings.enumerated().compactMap { i, f in
+            let id = "self-\(head7)-\(i)"
+            guard !answered.contains(id) else { return nil }
+            return Ask(id: id, kind: "self", author: "self-review", isBot: false, body: f.body, path: f.path, line: f.line)
+        }
+    }
 }
 
 /// Checks a reply before it is posted as the user. Nil when it may go; otherwise the reason it may not.
