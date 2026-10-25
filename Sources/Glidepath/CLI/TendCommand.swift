@@ -1212,28 +1212,41 @@ final class Tender {
     // MARK: After a landing
 
     /// Looks at main's checks for each landed PR still watched: the merge commit's against its parent's. Returns whether
-    /// a record changed. A break is recorded and goes to the revert question.
+    /// a record changed. A break is recorded and goes to the revert question. A broke landing without a revert is looked
+    /// at again for the hour after its merge, since a check that failed may pass on re-run.
     private func watchLanded(now: Date) -> Bool {
         var records = store.loadLanded()
         var changed = false
         let tended = config.repos.filter(\.tend)
-        for i in records.indices where records[i].status == "watching" {
+        for i in records.indices where records[i].status == "watching"
+            || (records[i].status == "broke" && records[i].revert == nil && now.timeIntervalSince(records[i].at) <= 3600) {
             let rec = records[i]
-            guard let repo = tended.first(where: { $0.slug == rec.slug }),
-                  let merged = checkRuns(rec.slug, rec.sha), let parent = checkRuns(rec.slug, rec.parent) else { continue }
-            switch MainWatch.verdict(merge: merged, parent: parent) {
-            case .pending:
-                guard now.timeIntervalSince(rec.at) > 3600 else { continue }
+            let expired = rec.status == "watching" && now.timeIntervalSince(rec.at) > 3600
+            func timeOut() {
                 records[i].status = "timeout"
                 tower(rec.slug, rec.n, "stopped watching main after 60 min", amber: false, now: now)
+                changed = true
+            }
+            guard let repo = tended.first(where: { $0.slug == rec.slug }),
+                  let merged = checkRuns(rec.slug, rec.sha), let parent = checkRuns(rec.slug, rec.parent) else {
+                if expired { timeOut() }
+                continue
+            }
+            switch MainWatch.verdict(merge: merged, parent: parent) {
+            case .pending:
+                guard expired else { continue }
+                timeOut()
             case .ok:
                 records[i].status = "ok"
                 tower(rec.slug, rec.n, "main green", amber: false, now: now)
             case .broke(let failing):
-                records[i].status = "broke"
                 records[i].failing = failing
-                tower(rec.slug, rec.n, "main broke · \(failing.joined(separator: ", "))", amber: true, now: now)
-                breakRound(repo, &records[i], now: now)
+                // Only a fresh break is announced and goes to the revert question; a broke landing read again stays quiet.
+                if rec.status == "watching" {
+                    records[i].status = "broke"
+                    tower(rec.slug, rec.n, "main broke · \(failing.joined(separator: ", "))", amber: true, now: now)
+                    breakRound(repo, &records[i], now: now)
+                }
             }
             changed = true
         }
@@ -1260,12 +1273,19 @@ final class Tender {
                 + "# Merge commit\n" + stat
             let sitting = runCouncil(slug: repo.slug, n: record.n, topic: "Open a revert PR for #\(record.n)?",
                                      evidence: evidence, now: now)
-            if sitting?.outcome == "act" { openRevert(&record, repo, branch: branch, now: now) }
+            if sitting?.outcome == "act", stillBroke(record) { openRevert(&record, repo, branch: branch, now: now) }
             sittings = councils
             tokens = sittingTokens
         }
         try? saveRun(id, now: now, repo: repo, pr: OpenPR(n: record.n, title: record.title), summary: "Main broke · "
                      + record.failing.joined(separator: ", "), action: "broke", check: nil, tokens: tokens, councils: sittings)
+    }
+
+    /// Whether the landed PR still breaks main: its checks read again now, and the verdict is broke.
+    private func stillBroke(_ record: TendLanded) -> Bool {
+        guard let merged = checkRuns(record.slug, record.sha), let parent = checkRuns(record.slug, record.parent) else { return false }
+        if case .broke = MainWatch.verdict(merge: merged, parent: parent) { return true }
+        return false
     }
 
     /// `tend revert`: opens the revert PR of a landed PR that broke main, and nothing else.
@@ -1347,7 +1367,7 @@ final class Tender {
     /// The check runs of one commit, as CheckState. Nil when GitHub cannot be asked.
     private func checkRuns(_ slug: String, _ sha: String) -> [CheckState]? {
         let r = Shell.run("gh", ["api", "repos/\(slug)/commits/\(sha)/check-runs", "--paginate",
-                                 "-q", ".check_runs[] | [.name,.status,.conclusion] | @tsv"], env: env, timeout: 120)
+                                 "-q", ".check_runs[] | [.id,.name,.status,.conclusion] | @tsv"], env: env, timeout: 120)
         return r.ok ? Tender.parseCheckRuns(r.stdout) : nil
     }
 
@@ -1608,15 +1628,19 @@ final class Tender {
         ["revert", "--no-edit"] + (parents == 2 ? ["-m", "1"] : []) + [sha]
     }
 
-    /// The check runs from `gh api .../check-runs` as tab-separated name, status and conclusion. The status and the
-    /// conclusion are upper-cased to the names the checks use; an empty conclusion is nil.
+    /// The check runs from `gh api .../check-runs` as tab-separated id, name, status and conclusion. The status and the
+    /// conclusion are upper-cased to the names the checks use; an empty conclusion is nil. A re-run shares its name with
+    /// the run it replaces, so of the runs with one name only the highest id is kept.
     static func parseCheckRuns(_ tsv: String) -> [CheckState] {
-        tsv.split(separator: "\n").compactMap { line in
+        var latest: [String: (id: Int, check: CheckState)] = [:]
+        for line in tsv.split(separator: "\n") {
             let cols = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-            guard cols.count == 3, !cols[0].isEmpty else { return nil }
-            return CheckState(name: cols[0], status: cols[1].uppercased(),
-                              conclusion: cols[2].isEmpty ? nil : cols[2].uppercased(), url: nil)
+            guard cols.count == 4, let id = Int(cols[0]), !cols[1].isEmpty else { continue }
+            if let seen = latest[cols[1]], seen.id > id { continue }
+            latest[cols[1]] = (id, CheckState(name: cols[1], status: cols[2].uppercased(),
+                                              conclusion: cols[3].isEmpty ? nil : cols[3].uppercased(), url: nil))
         }
+        return latest.values.sorted { $0.id < $1.id }.map(\.check)
     }
 
     /// The files `git diff --name-only --diff-filter=U` lists: the paths of a merge's conflicts.

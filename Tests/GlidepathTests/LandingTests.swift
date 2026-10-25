@@ -91,6 +91,9 @@ final class LandingTests: XCTestCase {
         var unknownDefault = a
         unknownDefault.defaultBranch = ""
         XCTAssertFalse(Landing.ready(unknownDefault, nil))
+        var fork = a
+        fork.isFork = true
+        XCTAssertFalse(Landing.ready(fork, nil), "a fork's PR never lands")
     }
 
     func testNextIsLowestReadyNumberAndChildrenFollowTheBranch() {
@@ -132,8 +135,10 @@ final class LandingTests: XCTestCase {
         XCTAssertEqual(MainWatch.verdict(merge: [check("lint", "FAILURE")], parent: [check("lint", "FAILURE")]), .ok)
         // A new check that fails has no passing parent to compare with: not a break.
         XCTAssertEqual(MainWatch.verdict(merge: [check("new", "FAILURE")], parent: []), .ok)
+        // A cancelled check is not a failure, and a failure waits until every check on the merge commit has finished.
+        XCTAssertEqual(MainWatch.verdict(merge: [check("lint", "CANCELLED")], parent: [check("lint", "SUCCESS")]), .ok)
         XCTAssertEqual(MainWatch.verdict(merge: [check("lint", "FAILURE"), check("test", nil, running: true)],
-                                         parent: [check("lint", "SUCCESS")]), .broke(["lint"]))
+                                         parent: [check("lint", "SUCCESS")]), .pending)
     }
 
     func testRevertBodyNamesTheChecks() {

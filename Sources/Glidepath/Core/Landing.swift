@@ -49,9 +49,10 @@ extension TendStore {
 
 /// Whether a ready PR can land, and what the merge means for the PRs stacked on it.
 enum Landing {
-    /// The PR is approved and clean, tending may act on it, nothing waits on the user, and it targets the default branch.
+    /// The PR is approved and clean, not from a fork, tending may act on it, nothing waits on the user, and it targets the
+    /// default branch.
     static func ready(_ pr: OpenPR, _ state: TendPR?) -> Bool {
-        Approach.marker(pr) == 3 && Approach.tendable(pr, state) && state?.held == nil && state?.stuck == nil
+        !pr.isFork && Approach.marker(pr) == 3 && Approach.tendable(pr, state) && state?.held == nil && state?.stuck == nil
             && (state?.calls.isEmpty ?? true) && pr.base == pr.defaultBranch
     }
 
@@ -90,16 +91,15 @@ enum WatchVerdict: Equatable {
 }
 
 enum MainWatch {
-    /// Broke when a check failed on the merge commit and passed on its parent; a check that failed on both is not a break.
-    /// Pending while any check on the merge commit is still running, or none has appeared yet. Otherwise ok.
+    /// Broke when a check failed (FAILURE or TIMED_OUT) on the merge commit and passed on its parent; a check that failed
+    /// on both is not a break, and a cancelled one is not a failure. Pending until every check on the merge commit has
+    /// completed, or while none has appeared yet. Otherwise ok.
     static func verdict(merge: [CheckState], parent: [CheckState]) -> WatchVerdict {
-        let passedOnParent = Set(parent.filter { $0.conclusion == "SUCCESS" }.map(\.name))
-        let broke = merge.filter {
-            $0.status == "COMPLETED" && OpenPR.failureConclusions.contains($0.conclusion ?? "") && passedOnParent.contains($0.name)
-        }.map(\.name)
-        if !broke.isEmpty { return .broke(broke) }
         if merge.isEmpty || merge.contains(where: { $0.status != "COMPLETED" }) { return .pending }
-        return .ok
+        let passedOnParent = Set(parent.filter { $0.conclusion == "SUCCESS" }.map(\.name))
+        let broke = merge.filter { ["FAILURE", "TIMED_OUT"].contains($0.conclusion ?? "") && passedOnParent.contains($0.name) }
+            .map(\.name)
+        return broke.isEmpty ? .ok : .broke(broke)
     }
 }
 
