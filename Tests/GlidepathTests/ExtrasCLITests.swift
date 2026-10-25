@@ -77,6 +77,17 @@ final class ExtrasCLITests: XCTestCase {
         XCTAssertTrue(Tender.lessonsDue(last: at(19, 9), now: at(26, 9)))
     }
 
+    // MARK: Briefing
+
+    func testSelfReviewAndConsolidationAreNotRounds() {
+        var review = RunState.new(id: "a", now: at(26, 8), kind: "tend")
+        review.tendAction = "self-review"
+        var merge = RunState.new(id: "b", now: at(26, 8), kind: "tend")
+        merge.tendAction = "consolidated"
+        let briefing = Briefing.compose(since: at(25, 0), now: at(26, 9), runs: [review, merge], landed: [], needs: [])
+        XCTAssertEqual(briefing.rounds, 0)
+    }
+
     // MARK: Linear key
 
     func testLinearKeyShape() {

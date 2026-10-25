@@ -350,6 +350,8 @@ final class Tender {
         for i in fetched.indices { landStep(i, now: now) }
         publish(now)
         if watchLanded(now: now) { publish(now) }
+        consolidateLessons(now: now)
+        briefingStep(now: now)
         return 0
     }
 
@@ -730,7 +732,8 @@ final class Tender {
             let r = results.first { $0.id == ask.id }
             var text = (r?.reply ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             var verdict = r?.verdict ?? "unclear"
-            if verdict == "agree" && (sha == nil || r?.fixed != true || text.isEmpty) { verdict = "unclear" }
+            // A self-review finding posts nothing, so it needs no reply text to count as agreed.
+            if verdict == "agree" && (sha == nil || r?.fixed != true || (text.isEmpty && ask.kind != "self")) { verdict = "unclear" }
             if verdict == "disagree" && text.isEmpty { verdict = "unclear" }
             // An unclear ask has no reply: its text is dropped, so there is no draft and the council is not given one.
             if verdict == "unclear" { text = "" }
@@ -1613,6 +1616,72 @@ final class Tender {
         guard let made = send(Linear.commentBody(issueUUID: uuid, body: text), "comment.json") else { return .failed(why) }
         guard made.status == 200 else { return .failed("HTTP \(made.status)") }
         return Linear.commentPosted(made.body) ? .posted : .failed("Linear did not confirm the comment")
+    }
+
+    // MARK: Briefing
+
+    /// The morning briefing, once a day at `briefing_time` on a sweep day: what landed, what waits on the user, and what
+    /// tend did since the last one. It goes to `tend/briefing.json` and to the tower.
+    private func briefingStep(now: Date) {
+        let last = store.loadBriefing()
+        guard Briefing.isDue(now: now, last: last?.at, time: config.tend.briefingTime, days: config.days) else { return }
+        let since = last?.at ?? now.addingTimeInterval(-86_400)
+        let calendar = Calendar.current
+        let runStore = RunStore(paths: paths)
+        var runs: [RunState] = []
+        var day = calendar.startOfDay(for: since)
+        while day <= now {
+            runs += runStore.loadAll(prefix: Runner.dayPrefix(day))
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        let briefing = Briefing.compose(since: since, now: now, runs: runs, landed: store.loadLanded(),
+                                        needs: store.loadApproach()?.needs ?? [])
+        try? store.saveBriefing(briefing)
+        let text = "Morning briefing · \(briefing.landed.count) landed, \(briefing.blocked.count) blocked"
+        try? store.appendTower(TowerLine(at: now, slug: "", n: 0, text: text, detail: nil, amber: !briefing.blocked.isEmpty))
+        print(text)
+    }
+
+    // MARK: Lesson consolidation
+
+    /// Once a week, in quiet hours: each tended repo with at least four lessons of its own has them merged by a small
+    /// model. Stale lessons (older than 60 days) are dropped first. Pushback lessons keep their own heading and are not
+    /// merged. A bad answer keeps the old list. Each repo's tokens are recorded as a tend run.
+    private func consolidateLessons(now: Date) {
+        guard Tender.lessonsDue(last: store.loadLessonsRun()?.lastRun, now: now) else { return }
+        switch UsageGuard.decide(.deferred, UsageState.load(paths), reserve: config.tend.usageReserve,
+                                 quiet: config.tend.quietHours, now: now) {
+        case .now:
+            break
+        case .wait, .stop:
+            // Not quiet hours yet: the next check asks again.
+            return
+        }
+        for repo in config.repos.filter(\.tend) {
+            let book = Playbook.load(repo.slug, paths: paths).dropStale(now: now, days: 60)
+            let own = book.lessons.filter { $0.source != "pushback" }
+            guard own.count >= 4 else { continue }
+            let lines = own.map(\.text)
+            try? FileManager.default.createDirectory(atPath: store.dir, withIntermediateDirectories: true)
+            let r = Shell.run("claude", Self.lessonArguments(prompt: Lessons.consolidatePrompt(lines), config: config),
+                              cwd: store.dir, env: claudeEnv(), timeout: 300)
+            Runner.recordUsage(stream: r.stdout, paths: paths)
+            let tokens = Transcript.tokens(lines: r.stdout.split(separator: "\n").map(String.init))
+            if let merged = UsageGuard.resultText(stream: r.stdout).flatMap({ Lessons.parseList($0, max: lines.count) }) {
+                var next = book
+                next.lessons = book.lessons.filter { $0.source == "pushback" }
+                    + merged.map { Playbook.Lesson(text: $0, source: "consolidated", date: now) }
+                try? next.cap().save(repo.slug, paths: paths)
+                print("\(repo.slug): \(own.count) lessons merged into \(merged.count)")
+            }
+            var run = RunState.new(id: Runner.makeID(now), now: now, kind: "tend", target: "repo:\(repo.slug)")
+            run.tokens = tokens
+            run.tendAction = "consolidated"
+            run.finish(at: Date(), error: nil)
+            try? RunStore(paths: paths).save(run)
+        }
+        try? store.saveLessonsRun(LessonsRun(lastRun: now))
     }
 
     // MARK: Self-review
