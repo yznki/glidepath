@@ -22,7 +22,6 @@ final class ShortcutTests: XCTestCase {
         XCTAssertEqual(Shortcuts.shortcut(.runSweep).glyphs, "⌘R")
         XCTAssertEqual(Shortcuts.shortcut(.stopSweep).glyphs, "⌘.")
         XCTAssertEqual(Shortcuts.shortcut(.togglePause).glyphs, "⇧⌘P")
-        XCTAssertEqual(Shortcuts.shortcut(.filterSkipped).glyphs, "⌥⌘4")
         XCTAssertEqual(Shortcuts.shortcut(.shortcuts).glyphs, "⌘/")
         XCTAssertEqual(Shortcuts.shortcut(.togglePopover).glyphs, "⌥⌘G")
     }
@@ -138,7 +137,7 @@ final class ShortcutGuardTests: XCTestCase {
     func testWhileEditingEveryCommandComboPerforms() {
         // ⌘1–5, ⌘, ⌘. ⌘/ and ⌥⌘1–4 must keep working inside a text field.
         for action: ShortcutAction in [.find, .closeWindow, .showOverview, .showSettings, .settings, .stopSweep,
-                                       .shortcuts, .filterAll, .filterSkipped, .postReview, .runSweep] {
+                                       .shortcuts, .postReview, .runSweep] {
             XCTAssertEqual(ShortcutRoute.route(action, editing: true), .perform, "\(action)")
         }
     }

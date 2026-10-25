@@ -31,13 +31,14 @@ enum WindowFixtures {
         return (repo, pr)
     }
 
-    static func run(_ id: String, _ start: Date, minutes: Double?, prs: [(String, PRState)], tokens: Int) -> RunState {
+    static func run(_ id: String, _ start: Date, minutes: Double?, prs: [(String, PRState)], tokens: Int,
+                    kind: String? = nil, target: String? = nil) -> RunState {
         RunState(id: id, started: start, finished: minutes.map { start.addingTimeInterval($0 * 60) },
                  repos: repos.map { slug in RepoState(slug: slug, prs: prs.filter { $0.0 == slug }.map(\.1), error: nil) },
-                 tokens: tokens, error: nil)
+                 tokens: tokens, error: nil, kind: kind, target: target)
     }
 
-    /// The 1:00 PM sweep: the Now rows and the Reviews grid.
+    /// The 1:00 PM sweep: six reviewed (two held), one stopped, one too large. The earlier sweep the author run follows.
     static func sweepAfternoon(_ now: Date) -> RunState {
         run("fixture-1pm", at(13, 0, now), minutes: 9, prs: [
             row("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", verdict: .changes,
@@ -52,13 +53,48 @@ enum WindowFixtures {
             row("lumen/web", 91, "kai", "Redesign the empty states for projects", verdict: .approve),
             row("lumen/api", 1225, "tom", "Drop the legacy webhook retry table", verdict: .approve,
                 posted: at(13, 4, now)),
+            row("lumen/api", 1258, "lea", "Fetch an alarm's preview under bounds", verdict: nil, stage: .review),
         ], tokens: 412_000)
     }
 
-    /// The 7:00 AM sweep, for the Reviews list's second group.
+    /// The by-hand review of one author's PRs at 3:40 PM, after the 1:00 PM sweep: four reviewed (two held), 21 already
+    /// reviewed and skipped, and two rows the review did not touch, carried from the sweep.
+    static func authorRun(_ now: Date) -> RunState {
+        let carriedFrom = at(13, 0, now)
+        func carry(_ entry: (String, PRState)) -> (String, PRState) {
+            var pr = entry.1
+            pr.carriedFrom = carriedFrom
+            return (entry.0, pr)
+        }
+        let alreadyReviewed = [1285, 1284, 1283, 1282, 1281, 1280, 1279, 1278, 1273, 1272, 1271, 1270, 1269, 1268,
+                               1267, 1266, 1265, 1264, 1263, 1262, 1231]
+        var prs: [(String, PRState)] = [
+            row("lumen/web", 1274, "eleyy", "Read-only endpoints for the asset list", verdict: .approve,
+                reason: "a few edge cases worth tightening", posted: at(15, 44, now)),
+            row("lumen/web", 1275, "eleyy", "Cross-discipline row adoption", verdict: .changes,
+                reason: "legacy lock mismatch", posted: at(15, 46, now)),
+            row("lumen/web", 1276, "eleyy", "Selection race in the upload picker", verdict: .changes,
+                reason: "race still open; no error state", draft: true),
+            row("lumen/web", 1277, "eleyy", "Fan-out publish for shared ids", verdict: .changes,
+                reason: "drops a second owner of the same id", draft: true),
+        ]
+        prs += alreadyReviewed.map { n in
+            row("lumen/web", n, "eleyy", "Open PR", verdict: .skipped, reason: "already reviewed at this head")
+        }
+        prs += [carry(row("lumen/api", 1225, "tom", "Drop the legacy webhook retry table", verdict: .approve)),
+                carry(row("lumen/web", 91, "kai", "Redesign the empty states for projects", verdict: .approve))]
+        return run("fixture-eleyy", at(15, 40, now), minutes: 14, prs: prs, tokens: 1_700_000,
+                   kind: "review", target: "author:eleyy")
+    }
+
+    /// The 7:00 AM sweep: two reviewed, one stopped in gather, one bot skipped.
     static func sweepMorning(_ now: Date) -> RunState {
         run("fixture-7am", at(7, 0, now), minutes: 6, prs: [
-            row("lumen/web", 84, "sam", "Bump next to 15.1", verdict: .skipped, reason: "bot"),
+            row("lumen/api", 1300, "ines", "Index the alarm history by device", verdict: .approve, posted: at(7, 3, now)),
+            row("lumen/api", 1125, "sam", "Retry the export on a 429", verdict: .changes,
+                reason: "no backoff cap", posted: at(7, 4, now)),
+            row("lumen/api", 808, "ana", "ENG-424", verdict: nil, stage: .gather),
+            row("lumen/web", 84, "sam", "Bump next to 15.1", verdict: .skipped, reason: "bot author"),
         ], tokens: 198_000)
     }
 
@@ -87,7 +123,14 @@ enum WindowFixtures {
 
         The new query has no test for a caller from another org, which is the case the cache must never leak.
         """
+        let authorPosted = ISO8601DateFormatter().string(from: at(15, 44, now))
         return [
+            "fixture-eleyy|lumen/web#1274": ReviewTextRecord(
+                event: "APPROVE", body: "The endpoints are read-only and paginate. Two edge cases worth tightening.",
+                comments: [], head: head, posted: authorPosted),
+            "fixture-eleyy|lumen/web#1275": ReviewTextRecord(
+                event: "REQUEST_CHANGES", body: "The row adoption takes the legacy lock but the new path does not.",
+                comments: [], head: head, posted: authorPosted),
             "fixture-1pm|lumen/api#1212": ReviewTextRecord(
                 event: "REQUEST_CHANGES", body: cacheBody,
                 comments: [
@@ -139,7 +182,7 @@ enum WindowFixtures {
 
     /// The snapshot for every window section. Now shows the 1:00 PM sweep; Running shows one in flight.
     static func section(_ name: String, now: Date) -> Snapshot {
-        let runs = [sweepAfternoon(now), sweepMorning(now)]
+        let runs = [authorRun(now), sweepAfternoon(now), sweepMorning(now)]
         // The next sweep comes from the same function the app uses, so the footer and the Schedule subtitle agree.
         var snap = Snapshot(run: runs[0], jobInstalled: true,
                             nextRun: ScheduleTimes.nextSweep(after: now, times: times, days: .weekdays),
@@ -155,6 +198,11 @@ enum WindowFixtures {
         if name == "running" {
             snap.run = sweepRunning(now)
             snap.running = true
+        }
+        if name == "now-clear" {
+            // Nothing held and nothing running: the newest run is the morning sweep.
+            snap.run = sweepMorning(now)
+            snap.runs = [sweepMorning(now), sweepAfternoon(now)]
         }
         if name == "now-dry-run" {
             // The first sweep's dry run holds the lock. It is not the current run, so the run is nil.

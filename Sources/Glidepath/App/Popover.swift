@@ -617,7 +617,7 @@ struct PopoverView: View {
                     Divider()
                     Button(store.snap.paused ? "Resume" : "Pause") { store.togglePause() }
                     Button("Open log") { store.openLog() }
-                    Button("Reviews") { WindowRouter.shared.open(.reviews) }
+                    Button("History") { WindowRouter.shared.open(.reviews) }
                     Button("Check for updates…") { store.checkForUpdates(manual: true) }
                         .disabled(store.snap.updateChecking)
                     if let tokens = store.snap.run?.tokens, tokens > 0 {

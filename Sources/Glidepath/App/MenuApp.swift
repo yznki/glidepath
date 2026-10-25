@@ -113,7 +113,7 @@ enum Snapshotter {
         let now = WindowFixtures.clock
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let sections: [(String, WindowSection)] = [
-            ("now", .now), ("running", .now), ("now-dry-run", .now), ("reviews", .reviews),
+            ("now", .now), ("running", .now), ("now-clear", .now), ("now-dry-run", .now), ("reviews", .reviews),
             ("repos", .repos), ("schedule", .schedule), ("settings", .settings),
         ]
         for (name, section) in sections {

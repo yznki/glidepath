@@ -84,7 +84,7 @@ struct Sidebar: View {
 
     private func navRow(_ section: WindowSection) -> some View {
         let on = router.section == section
-        let count = section == .reviews ? store.waitingCount : 0
+        let count = section == .now ? store.waitingCount : 0
         return Button {
             router.section = section
         } label: {

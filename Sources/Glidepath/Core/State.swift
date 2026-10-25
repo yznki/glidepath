@@ -110,9 +110,10 @@ struct RunState: Codable, Equatable {
             let listed = repos.first { $0.slug == d.slug }?.prs.contains { $0.n == d.n } ?? false
             guard !listed else { continue }
             let ri = repoIndex(d.slug)
+            // Carried, as the run it came from is not this one: the digest leaves it out, and the row says when it was held.
             repos[ri].prs.append(PRState(n: d.n, author: d.author, title: d.title, stage: .post, active: false,
                                          verdict: d.event == "APPROVE" ? .approve : .changes, reason: nil, tokens: 0,
-                                         draft: true))
+                                         carriedFrom: d.created, draft: true))
         }
     }
 

@@ -50,9 +50,9 @@ struct WindowScreen: View {
         Group {
             switch router.section {
             case .now:
-                NowView(store: store, router: router)
+                NowView(store: store)
             case .reviews:
-                ReviewsView(store: store)
+                HistoryView(store: store)
             case .repos:
                 ReposView(store: store)
             case .schedule:

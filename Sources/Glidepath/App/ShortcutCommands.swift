@@ -33,8 +33,6 @@ enum ShortcutAvailability {
         case .addRepo:
             // Onboarding has its own repo picker, so Add Repo's sheet is not offered there.
             return !s.onboarding
-        case .filterAll, .filterChanges, .filterDrafts, .filterSkipped:
-            return !s.onboarding && s.section == .reviews
         case .find:
             // Onboarding's search is on the Repos step only; the Repos section has its own.
             return s.onboarding ? s.repoStepShowing : s.section == .repos
@@ -220,8 +218,6 @@ enum ShortcutDispatch {
         case .showRepos: router.open(.repos)
         case .showSchedule: router.open(.schedule)
         case .showSettings, .settings: router.open(.settings)
-        case .filterAll, .filterChanges, .filterDrafts, .filterSkipped:
-            router.deliver(action, section: .reviews)
         case .addRepo:
             router.deliver(action, section: .repos)
         case .addTime:

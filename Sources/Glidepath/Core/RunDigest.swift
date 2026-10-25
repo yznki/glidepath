@@ -10,6 +10,9 @@ struct RunDigest: Equatable {
     struct Row: Equatable {
         var slug: String
         var pr: PRState
+
+        /// The PR's key in the window: `owner/name#n`, as `Strip.id`.
+        var stripID: String { "\(slug)#\(pr.n)" }
     }
 
     var title: String
@@ -96,7 +99,7 @@ struct RunDigest: Equatable {
         return .other
     }
 
-    private static func groupText(_ kind: SkipKind, _ n: Int) -> String {
+    static func groupText(_ kind: SkipKind, _ n: Int) -> String {
         switch kind {
         case .own: return "\(n) yours"
         case .bot: return n == 1 ? "1 bot" : "\(n) bots"
