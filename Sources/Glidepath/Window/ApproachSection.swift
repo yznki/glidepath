@@ -284,7 +284,7 @@ struct ApproachPopoverBlock: View {
                     .background(Color(hex: "060608"))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
-                ForEach(Array(approach.needs.prefix(3)), id: \.id) { item in
+                ForEach(Array(actionFirst(approach.needs).prefix(3)), id: \.id) { item in
                     strip(item)
                 }
                 HStack(spacing: 8) {
@@ -308,16 +308,30 @@ struct ApproachPopoverBlock: View {
         }
     }
 
+    /// Ready PRs and broken-main reverts first: they act now. The rest keep their order.
+    private func actionFirst(_ needs: [NeedsItem]) -> [NeedsItem] {
+        let acting = needs.filter { $0.kind == "land" || $0.kind == "revert" }
+        return acting + needs.filter { $0.kind != "land" && $0.kind != "revert" }
+    }
+
     private func strip(_ item: NeedsItem) -> some View {
-        let call = item.kind == "call"
+        let call = item.kind == "call", land = item.kind == "land", revert = item.kind == "revert"
+        let parts = item.detail.components(separatedBy: " · ")
         // A call reads "#n needs your call" and names the reviewer whose draft waits; its Review button opens Approach.
-        let title = call ? "#\(String(item.n)) needs your call" : item.title
+        let title: String = call ? "#\(String(item.n)) needs your call"
+            : land ? "#\(String(item.n)) ready to land"
+            : revert ? "Main broke after #\(String(item.n))"
+            : item.title
         let line: String = {
+            if land {
+                // The stack above it, when there is one; else the checks it has.
+                return parts.first { $0.hasPrefix("then ") } ?? parts.dropFirst().joined(separator: " · ")
+            }
+            if revert { return parts.dropFirst().joined(separator: " · ") + " failed on the merge commit" }
             guard call else { return "\(item.detail) · \(item.slug) #\(String(item.n))" }
             let who = store.snap.calls[item.id]?.author ?? "a reviewer"
             return "\(store.snap.calls[item.id]?.draft == nil ? "reply" : "draft reply") to \(who)"
         }()
-        let action = call ? "Review" : "Open"
         return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -330,10 +344,18 @@ struct ApproachPopoverBlock: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            if offscreen {
-                Text(action).font(.system(size: 12, weight: .semibold)).foregroundStyle(Gotham.fg)
+            if land || revert {
+                // Landing and the revert merge or open a PR, so they take a hold, as the Needs rows do.
+                HoldButton(title: land ? "Hold to land" : "Open revert PR", doneTitle: land ? "Landing…" : "Opening…",
+                           tint: signal, compact: true) {
+                    store.tendCommand([land ? "land" : "revert", item.slug, "\(item.n)"], item: item.id)
+                }
+                .id("\(item.id)#\(store.tendFailures[item.id] ?? 0)")
+                .disabled(store.tendBusy.contains(item.id))
+            } else if offscreen {
+                Text(call ? "Review" : "Open").font(.system(size: 12, weight: .semibold)).foregroundStyle(Gotham.fg)
             } else {
-                SettingButton(title: action) { WindowRouter.shared.open(.approach) }
+                SettingButton(title: call ? "Review" : "Open") { WindowRouter.shared.open(.approach) }
             }
         }
         .padding(.horizontal, 10)
@@ -375,6 +397,10 @@ struct TendNeedRow: View {
     private var signal: Color { Gotham.signal(signalKey) }
     private var held: Bool { item.kind == "held" }
     private var call: Bool { item.kind == "call" }
+    private var land: Bool { item.kind == "land" }
+    private var revert: Bool { item.kind == "revert" }
+    /// The row's mark: ? for a call, a down arrow for a ready PR, ! for the rest.
+    private var mark: String { call ? "?" : land ? "↓" : "!" }
     /// A tend command for this item is running: its buttons wait for it.
     private var busy: Bool { store.tendBusy.contains(item.id) }
 
@@ -390,7 +416,7 @@ struct TendNeedRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Text(call ? "?" : "!")
+            Text(mark)
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(signal)
                 .frame(width: 26, height: 26)
@@ -429,6 +455,19 @@ struct TendNeedRow: View {
     private var actions: some View {
         if call {
             callActions
+        } else if land {
+            // Landing merges the PR on GitHub, so it takes a hold, like a push.
+            HoldButton(title: "Hold to land", doneTitle: "Landing…", tint: signal, compact: true) {
+                store.tendCommand(["land", item.slug, "\(item.n)"], item: item.id)
+            }
+            .id("\(item.id)#\(store.tendFailures[item.id] ?? 0)")
+            .disabled(busy)
+        } else if revert {
+            HoldButton(title: "Open revert PR", doneTitle: "Opening…", tint: signal, compact: true) {
+                store.tendCommand(["revert", item.slug, "\(item.n)"], item: item.id)
+            }
+            .id("\(item.id)#\(store.tendFailures[item.id] ?? 0)")
+            .disabled(busy)
         } else if held {
             HStack(spacing: 8) {
                 Button("Discard") { store.tendCommand(["discard", item.slug, "\(item.n)"], item: item.id) }
