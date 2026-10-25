@@ -87,8 +87,8 @@ enum Snapshotter {
         writeReviewSheets(to: dir)
     }
 
-    /// The review sheet at 860 x 760, from the flight recorder fixtures: a landed changes review and a run with no
-    /// result. Dark only, since the sheet's Gotham tokens are fixed. The sheet draws its settled state.
+    /// The review sheet at 860 x 760, from the flight recorder fixtures: a landed changes review, a run with no result and
+    /// a review that was not posted. Dark only, since the sheet's Gotham tokens are fixed. The sheet draws its settled state.
     static func writeReviewSheets(to dir: URL) {
         let store = Store(snapshot: Snapshot())
         let landed = WindowFixtures.reviewLanded()
@@ -99,6 +99,10 @@ enum Snapshotter {
         write(ReviewSheet(row: stopped.row, text: nil, store: store, fixture: stopped.artifacts, onClose: {})
                 .environment(\.offscreenRender, true),
               dark: true, to: dir.appendingPathComponent("review-noresult.png"), scale: 2)
+        let notPosted = WindowFixtures.reviewNotPosted()
+        write(ReviewSheet(row: notPosted.row, text: nil, store: store, fixture: notPosted.artifacts, onClose: {})
+                .environment(\.offscreenRender, true),
+              dark: true, to: dir.appendingPathComponent("review-notposted.png"), scale: 2)
     }
 
     /// Every window section and onboarding step, light and dark, from `WindowFixtures`. Each store is a fixture store,

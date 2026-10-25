@@ -277,6 +277,29 @@ enum WindowFixtures {
         return (row, artifacts)
     }
 
+    /// The review sheet, not posted: a changes verdict whose draft was discarded, so no draft and no posting. The
+    /// checker's final is absent, so the approach ends at the check and the Land figure says so.
+    static func reviewNotPosted() -> (row: ReviewRow, artifacts: RunArtifacts) {
+        let row = ReviewRow(runId: "fixture-notposted", repo: "lumen/web", number: 1262, author: "ibrahim-k",
+                            title: "Pin the preview cache TTL", reason: "Cache key ignores the tenant", verdict: .changes,
+                            draft: false, skipReason: nil, changedLines: 212, head: "4e0a1f2", flagged: false,
+                            tokens: 96_000, duration: 6 * 60 + 41, postedAt: nil, stage: .post)
+        let draft = RunArtifacts.Review(
+            verdict: .changes, reason: "Cache key ignores the tenant", body: "The cache key drops the tenant id, so one tenant can read another's previews.",
+            comments: [
+                RunArtifacts.Comment(path: "cache.ts", line: 48, body: "The key is built from the path alone, so tenants share entries."),
+                RunArtifacts.Comment(path: "preview.ts", line: 91, body: "The TTL is read before the tenant is known."),
+            ])
+        let artifacts = RunArtifacts(
+            folder: "/fixture/review-notposted", fileCount: 9, additions: 201, deletions: 11, headSha: "4e0a1f2c9b7d",
+            baseRef: "main", reviewCount: 2, reviewCommentCount: 4, issueCommentCount: 1,
+            drafts: [draft],
+            blast: "Callers from GitNexus, 4 found.\n- `cache.ts` is read by `preview.ts` and `tenant.ts`.",
+            notes: ["The draft was discarded by hand before posting; nothing reached GitHub."],
+            diffParts: 2)
+        return (row, artifacts)
+    }
+
     /// The onboarding model for one step. `repos` and the tool rows are what the step's checks would have found.
     @MainActor static func onboarding(_ step: OnboardingStep, now: Date, paths: Paths, running: Bool = false) -> OnboardingModel {
         var state = OnboardingState()
