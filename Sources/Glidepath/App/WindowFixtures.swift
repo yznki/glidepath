@@ -202,6 +202,8 @@ enum WindowFixtures {
         snap.reviewTexts = reviewTexts(now)
         snap.tools = checks
         snap.loginOn = true
+        // The fixture fakes the Linear key as saved, so Settings never reads the Keychain.
+        snap.linearKey = true
         if name == "running" {
             snap.run = sweepRunning(now)
             snap.running = true
@@ -217,8 +219,11 @@ enum WindowFixtures {
             snap.dryRunning = true
             snap.dryRun = firstSweepRun(now, landed: false)
         }
-        if ["approach", "approach-drawer", "approach-landing"].contains(name) {
+        if ["approach", "approach-drawer", "approach-landing", "settings-playbook"].contains(name) {
             addTend(&snap, now: now)
+        }
+        if name == "approach" {
+            snap.briefing = briefing(now)
         }
         if name == "approach-landing" {
             // #1240 landed a moment ago and its glide is at 0.6 of the way to the runway.
@@ -375,6 +380,9 @@ enum WindowFixtures {
         snap.calls = ["lumen/api#1246/\(gadiCallID)": gadiCall(now)]
         snap.playbooks = ["lumen/api": playbook(now)]
         snap.landed = landedRecords(now)
+        var pr1246 = TendPR(slug: "lumen/api", n: 1246)
+        pr1246.changes = ["a91c03e return the stored response on retry", "5e27b10 await the save"]
+        snap.prStates = ["lumen/api#1246": pr1246]
         // Seen long ago, so the chart shows #1240 on the runway without a glide.
         snap.landedSeen = [landedID: .distantPast]
     }
@@ -406,10 +414,10 @@ enum WindowFixtures {
         let slug = "lumen/api"
         func plane(_ n: Int, _ title: String, phase: ApproachPhase, marker: Int, lane: Int, stack: Int? = nil,
                    label: String, waitingOn: String? = nil, ci: String, off: Bool = false,
-                   gates: [Gate]) -> ApproachPlane {
+                   selfReview: String? = nil, gates: [Gate]) -> ApproachPlane {
             ApproachPlane(slug: slug, n: n, title: title, url: "https://github.com/\(slug)/pull/\(n)", phase: phase,
                           marker: marker, label: label, waitingOn: waitingOn, lane: lane, stackIndex: stack, off: off,
-                          gates: gates, ci: ci)
+                          gates: gates, ci: ci, selfReview: selfReview)
         }
         func gate(_ name: String, _ state: GateState, _ detail: String, who: String? = nil) -> Gate {
             Gate(name: name, state: state, detail: detail, who: who)
@@ -444,13 +452,13 @@ enum WindowFixtures {
                           gate("Threads", .wait, "1 open", who: "you"),
                           gate("Approval", .wait, "Changes requested by Gadi", who: "you"),
                           gate("Ready", .wait, "Conflicts with main", who: "you")]),
-            plane(1318, "Card views: pilot certifications list", phase: .waiting, marker: 1, lane: 4,
+            plane(1250, "Card views: pilot certifications list", phase: .waiting, marker: 1, lane: 4,
                   label: "Waiting on Gadi · code owner · 26 h", waitingOn: "Gadi", ci: "passed",
                   gates: [gate("CI", .ok, "3 of 3 checks green"), gate("Threads", .ok, "All resolved"),
                           gate("Approval", .wait, "Waiting on Gadi", who: "Gadi"),
                           gate("Ready", .wait, "Blocked by branch rules")]),
-            plane(1330, "Certifications: draft for self-review", phase: .taxiing, marker: 0, lane: 0,
-                  label: "Draft", ci: "pending",
+            plane(1260, "Certifications: draft for self-review", phase: .taxiing, marker: 0, lane: 0,
+                  label: "Draft", ci: "pending", selfReview: "Self-review: 2 findings",
                   gates: [gate("CI", .wait, "1 running"), gate("Threads", .ok, "All resolved"),
                           gate("Approval", .wait, "No review yet"), gate("Ready", .none, "Draft")]),
             Approach.landedPlane(landedRecords(now)[0], lane: 0),
@@ -471,6 +479,8 @@ enum WindowFixtures {
             NeedsItem(id: "\(slug)#1246/\(gadiCallID)", slug: slug, n: 1246,
                       title: "fix(api): repeated create and retry requests return the first result", kind: "call",
                       detail: "Your call · Gadi: \"use a unique index instead\" · draft reply ready"),
+            NeedsItem(id: "\(slug)#1250/wait-gadi", slug: slug, n: 1250, title: "Card views: pilot certifications list",
+                      kind: "blocked", detail: "Waiting 26 h on gadi"),
         ]
         return ApproachSnapshot(updated: now, planes: planes, needs: needs, queued: 2, status: nil,
                                 working: "Fixing Unit Tests on #1253", nextLook: now.addingTimeInterval(180))
@@ -486,9 +496,9 @@ enum WindowFixtures {
                       text: "#1246 replied to 2 threads, resolved 2 · 1 needs you",
                       detail: "Fixed in a91c03e: return the stored response on retry\n-  return create(req)\n+  return existing ?? create(req)",
                       amber: true),
-            TowerLine(at: at(13, 55, now), slug: "lumen/api", n: 1318, text: "#1318 reran Browser E2E · runner lost · green",
+            TowerLine(at: at(13, 55, now), slug: "lumen/api", n: 1250, text: "#1250 reran Browser E2E · runner lost · green",
                       detail: nil, amber: false),
-            TowerLine(at: at(13, 10, now), slug: "lumen/api", n: 1330, text: "#1330 self-review fixed 2 findings before review",
+            TowerLine(at: at(13, 10, now), slug: "lumen/api", n: 1260, text: "#1260 self-review fixed 2 findings before review",
                       detail: nil, amber: false),
             TowerLine(at: at(11, 2, now), slug: "lumen/api", n: 1301, text: "#1301 merged main in · 1 conflict in schema.prisma resolved",
                       detail: nil, amber: false),
@@ -528,11 +538,25 @@ enum WindowFixtures {
     }
 
     static func playbook(_ now: Date) -> Playbook {
-        Playbook(commands: [Playbook.Command(command: "npm test -w lumen -- --run", verified: 9, date: now)],
+        Playbook(commands: [Playbook.Command(command: "npm test -w lumen -- --run", verified: 9, date: now),
+                            Playbook.Command(command: "npx prisma validate", verified: 4, date: now.addingTimeInterval(-2 * 86_400)),
+                            Playbook.Command(command: "npm run lint -w lumen", verified: 2, date: now.addingTimeInterval(-5 * 86_400))],
                  lessons: [Playbook.Lesson(text: "Gadi prefers DB constraints over app guards; cite them in replies",
                                            source: "from your edit", date: now.addingTimeInterval(-3 * 86_400)),
                            Playbook.Lesson(text: "Never touch prisma/migrations/*; add a new migration",
-                                           source: "you taught", date: now.addingTimeInterval(-7 * 86_400))])
+                                           source: "you taught", date: now.addingTimeInterval(-7 * 86_400)),
+                           Playbook.Lesson(text: "Basem wants a regression test with every bug fix",
+                                           source: "pushback", date: now.addingTimeInterval(-10 * 86_400)),
+                           Playbook.Lesson(text: "Run the seed script before the e2e suite",
+                                           source: "consolidated", date: now.addingTimeInterval(-1 * 86_400))])
+    }
+
+    /// The morning briefing at 08:00: two landed since the last one, #1250 blocked on Gadi, and the day's rounds so far.
+    static func briefing(_ now: Date) -> Briefing {
+        Briefing(at: at(8, 0, now),
+                 landed: ["#1240 Audit log for certification changes", "#1239 Export certifications as CSV"],
+                 blocked: ["#1250 · Waiting 26 h on gadi"],
+                 rounds: 6, threads: 4, councils: 1, tokens: 210_000)
     }
 
     /// The popover with tending on: the 1:00 PM sweep's cards and the approach strip.

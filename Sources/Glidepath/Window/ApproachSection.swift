@@ -35,6 +35,10 @@ struct ApproachSectionView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     header
                     if store.snap.tendOn {
+                        if let briefing = store.snap.briefing, briefing.dismissedAt == nil {
+                            BriefingCard(briefing: briefing) { store.dismissBriefing() }
+                                .padding(.top, 18)
+                        }
                         chartCard
                             .padding(.top, 18)
                         columns
@@ -128,6 +132,8 @@ struct ApproachSectionView: View {
                 .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity)
+        // Its natural height (the chart's aspect), so a card above it cannot squeeze the planes together.
+        .fixedSize(horizontal: false, vertical: true)
         .background(
             RadialGradient(colors: [.white.opacity(0.05), .clear], center: UnitPoint(x: 0.92, y: 0.5),
                            startRadius: 0, endRadius: 420)
@@ -399,6 +405,14 @@ struct TendNeedRow: View {
     private var call: Bool { item.kind == "call" }
     private var land: Bool { item.kind == "land" }
     private var revert: Bool { item.kind == "revert" }
+    private var blocked: Bool { item.kind == "blocked" }
+    /// The reviewer a blocked row waits on: its id is "<slug>#<n>/wait-<login>".
+    private var waitingLogin: String { String(item.callID.dropFirst("wait-".count)) }
+    /// The reviewer was pinged today, per the PR's tend state.
+    private var pingedToday: Bool {
+        guard let at = store.snap.prStates["\(item.slug)#\(item.n)"]?.pinged[waitingLogin] else { return false }
+        return Calendar.current.isDateInToday(at)
+    }
     /// The row's mark: ? for a call, a down arrow for a ready PR, ! for the rest.
     private var mark: String { call ? "?" : land ? "↓" : "!" }
     /// A tend command for this item is running: its buttons wait for it.
@@ -485,6 +499,12 @@ struct TendNeedRow: View {
                 .id("\(item.id)#\(store.tendFailures[item.id] ?? 0)")
                 .disabled(busy)
             }
+        } else if blocked {
+            // A wait on a reviewer: one ping a reviewer a day, so the button stays off once it has pinged today.
+            let pinged = pingedToday
+            SettingButton(title: pinged ? "Pinged today" : "Ping \(waitingLogin)", enabled: !busy && !pinged) {
+                store.tendCommand(["ping", item.slug, "\(item.n)", waitingLogin], item: item.id)
+            }
         } else {
             HStack(spacing: 8) {
                 SettingButton(title: "Open PR") {
@@ -534,6 +554,7 @@ struct ApproachDrawer: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                 markers
+                reviewLines
                 if plane.phase == .landed { landedRecord } else { gates }
                 rounds
                 teach
@@ -595,6 +616,31 @@ struct ApproachDrawer: View {
             }
         }
         .padding(.top, 18)
+    }
+
+    /// The self-review line, then the commits pushed since the review. Nothing when neither exists.
+    @ViewBuilder private var reviewLines: some View {
+        let changes = store.snap.prStates[plane.id]?.changes ?? []
+        if plane.selfReview != nil || !changes.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                if let review = plane.selfReview {
+                    Text(review)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Gotham.mute)
+                }
+                if !changes.isEmpty {
+                    capLabel("Changes since review")
+                        .padding(.top, 6)
+                    ForEach(Array(changes.enumerated()), id: \.offset) { _, change in
+                        Text(verbatim: change)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(Gotham.fg.opacity(0.8))
+                            .lineLimit(2)
+                    }
+                }
+            }
+            .padding(.top, 20)
+        }
     }
 
     /// A landed PR's line: what main has done since the merge, and the merge commit.
