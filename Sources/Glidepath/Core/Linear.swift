@@ -29,6 +29,14 @@ enum Linear {
         return id
     }
 
+    /// The response body and the HTTP status that curl appended with `-w "\n%{http_code}"`. Nil when there is no status.
+    static func splitStatus(_ output: String) -> (body: Data, status: Int)? {
+        guard let cut = output.range(of: "\n", options: .backwards), let status = Int(output[cut.upperBound...]) else {
+            return nil
+        }
+        return (Data(output[..<cut.lowerBound].utf8), status)
+    }
+
     /// True when a commentCreate response says the comment was made.
     static func commentPosted(_ data: Data) -> Bool {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
