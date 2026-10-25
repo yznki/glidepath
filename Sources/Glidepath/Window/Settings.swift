@@ -62,26 +62,44 @@ enum SettingsCopy {
 
     static let reviewing = Block(id: "review", title: "Reviewing",
                                  rows: [drafts, whenReady, strictness, reviewModel, size, ownPRs, bots, authors, flags])
+    // Tending. Every caption says "tend", so the search "tend" shows the whole block.
+    static let tendOn = Row(label: "Tend my PRs", caption: "Glidepath tends your open PRs: it fixes CI and answers review threads.")
+    static let tendRepos = Row(label: "Tended repos", caption: "Glidepath tends the PRs in the repos switched on here.")
+    static let tendPush = Row(label: "Approved fixes", caption: "Push anyway pushes a tended fix at once. Hold the fix keeps it for you.")
+    static let tendRounds = Row(label: "Rounds a day", caption: "Tending rounds across all your PRs.")
+    static let tendAutopilot = Row(label: "Autopilot", caption: "Tending merges, replies and resolves without asking. Hard stops still come to you.")
+    static let tendAccount = Row(label: "Claude account", caption: "Tending and reviews sign in as this account.")
+    static let tendReserve = Row(label: "Usage reserve", caption: "Tending never spends the last share of your 5-hour and weekly windows.")
+    static let tendQuiet = Row(label: "Quiet hours", caption: "Heavy tending waits for these hours.")
+    static let tending = Block(id: "tending", title: "Tending",
+                               rows: [tendOn, tendRepos, tendPush, tendRounds, tendAutopilot, tendAccount, tendReserve, tendQuiet])
+
     static let notifications = Block(id: "notify", title: "Notifications", rows: [notify, changesOnly, sound, focus])
     static let menuBar = Block(id: "menubar", title: "Menu bar", rows: [icon, badge, shortcut, login])
     static let look = Block(id: "look", title: "Look", rows: [signal, glass, motion])
     static let budget = Block(id: "budget", title: "Budget", rows: [monthly, pause])
     static let advanced = Block(id: "advanced", title: "Advanced",
                                 rows: [dryRun, codeGraph, checks, updates, files, tools, reset, uninstall])
-    static let blocks = [reviewing, notifications, menuBar, look, budget, advanced]
+    static let blocks = [reviewing, tending, notifications, menuBar, look, budget, advanced]
 }
 
 /// Settings: the search, the section chips, and six groups of rows. Each switch, segment and slider saves at once
 /// through `SettingsModel.commit`; look rows save to UserDefaults.
 struct SettingsView: View {
     @ObservedObject var store: Store
-    @StateObject private var model = SettingsModel()
+    @StateObject private var model: SettingsModel
     @Environment(\.offscreenRender) private var offscreen
     @AppStorage("signalColour") private var signalKey = "amber"
     @AppStorage("glyphStyle") private var glyphStyle = "glider"
     @AppStorage("glyphBadge") private var glyphBadge = true
     @AppStorage("glassBlur") private var glassBlur = 22.0
     @AppStorage("motion") private var motion = "full"
+
+    /// `query` starts the search. Snapshot rendering uses it to show one group.
+    init(store: Store, query: String = "") {
+        self.store = store
+        _model = StateObject(wrappedValue: SettingsModel(query: query))
+    }
 
     private var config: Config? { store.snap.config }
     private var repos: [RepoConfig] { config?.repos ?? [] }
@@ -126,6 +144,7 @@ struct SettingsView: View {
                 WinScroll {
                     VStack(alignment: .leading, spacing: 0) {
                         reviewing
+                        tending
                         notifications
                         menuBar
                         look
@@ -365,6 +384,95 @@ struct SettingsView: View {
                     SettingTags(tags: paths, placeholder: "Add path, Enter",
                                 onAdd: { model.addFlag($0, store: store) },
                                 onRemove: { model.removeFlag($0, store: store) })
+                }
+            }
+        }
+    }
+
+    // MARK: Tending
+
+    /// The tend job's install or removal after the switch is saved. A message when it fails, else nil.
+    private func tendJob(_ on: Bool) -> String? {
+        do {
+            if on { try TendJob.install(paths: store.paths) } else { TendJob.remove(paths: store.paths) }
+            return nil
+        } catch {
+            return "Could not \(on ? "install" : "remove") the tend job: \(error.localizedDescription)"
+        }
+    }
+
+    @ViewBuilder private var tending: some View {
+        if model.matches(SettingsCopy.tending) {
+            let tend = config?.tend ?? TendConfig()
+            SettingGroup(id: "g-tending", title: "Tending") {
+                row(SettingsCopy.tendOn, error: model.rowErrors["tend"]) {
+                    SettingSwitch(isOn: tend.enabled, label: "Tend my PRs") {
+                        let on = !tend.enabled
+                        model.commit("tend", store: store, onSaved: { tendJob(on) }) { ConfigEditor.setTendEnabled($0, on) }
+                    }
+                }
+                if model.matches(SettingsCopy.tendRepos) {
+                    ForEach(Array(repos.enumerated()), id: \.offset) { i, repo in
+                        SettingItem(label: repo.slug, caption: i == 0 ? SettingsCopy.tendRepos.caption : "",
+                                    error: model.rowErrors["tendRepo-\(repo.slug)"]) {
+                            SettingSwitch(isOn: repo.tend, label: "Tend \(repo.slug)") {
+                                model.commit("tendRepo-\(repo.slug)", store: store) {
+                                    try ConfigEditor.setRepoTend($0, slug: repo.slug, !repo.tend)
+                                }
+                            }
+                        }
+                    }
+                }
+                row(SettingsCopy.tendPush, error: model.rowErrors["tendPush"]) {
+                    SettingSegmented(
+                        options: [(value: TendPush.always, label: "Push anyway"), (value: .untilApproved, label: "Hold the fix")],
+                        selected: tend.push) { choice in
+                            model.commit("tendPush", store: store) { ConfigEditor.setTendPush($0, choice) }
+                        }
+                }
+                if model.matches(SettingsCopy.tendRounds) {
+                    SliderRow(row: SettingsCopy.tendRounds, error: model.rowErrors["tendRounds"],
+                              committed: Double(tend.roundsPerDay), range: 1...10, valueText: { "\(Int($0.rounded()))" }) { value in
+                        model.commit("tendRounds", store: store) { try ConfigEditor.setTendRoundsPerDay($0, Int(value.rounded())) }
+                    }
+                }
+                row(SettingsCopy.tendAutopilot, error: model.rowErrors["autopilot"]) {
+                    SettingSwitch(isOn: tend.autopilot, label: "Autopilot") {
+                        model.commit("autopilot", store: store) { ConfigEditor.setAutopilot($0, !$0.tend.autopilot) }
+                    }
+                }
+                if model.matches(SettingsCopy.tendAccount) {
+                    let separate = config?.claudeConfigDir != nil
+                    SettingItem(label: SettingsCopy.tendAccount.label, caption: model.accountStatus ?? "Checking…",
+                                error: model.rowErrors["account"], stacked: true) {
+                        HStack(spacing: 8) {
+                            SettingSegmented(
+                                options: [(value: false, label: "Same as my claude"), (value: true, label: "Separate account")],
+                                selected: separate) { choice in
+                                    model.chooseAccount(separate: choice, store: store)
+                                }
+                            if separate {
+                                SettingButton(title: "Sign in…") { model.signIn(store) }
+                            }
+                        }
+                        .padding(.bottom, 6)
+                    }
+                }
+                if model.matches(SettingsCopy.tendReserve) {
+                    SliderRow(row: SettingsCopy.tendReserve, error: model.rowErrors["reserve"],
+                              committed: Double(tend.usageReserve), range: 0...90, step: 5,
+                              valueText: { "\(Int($0.rounded()))%" },
+                              caption: { "Tending never spends the last \(Int($0.rounded()))% of your 5-hour and weekly windows." }) { value in
+                        model.commit("reserve", store: store) { try ConfigEditor.setUsageReserve($0, Int(value.rounded())) }
+                    }
+                }
+                if model.matches(SettingsCopy.tendQuiet) {
+                    SettingItem(label: SettingsCopy.tendQuiet.label, caption: SettingsCopy.tendQuiet.caption,
+                                error: model.rowErrors["quiet"]) {
+                        QuietHoursField(text: tend.quietHours.text, offscreen: offscreen) { text in
+                            model.commit("quiet", store: store) { try ConfigEditor.setQuietHours($0, text) }
+                        }
+                    }
                 }
             }
         }
