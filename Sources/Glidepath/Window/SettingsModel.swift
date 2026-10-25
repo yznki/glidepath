@@ -250,13 +250,13 @@ final class SettingsModel: ObservableObject {
         rowErrors["login"] = store.actionError
     }
 
-    /// Runs `Checks.tools()` and `Checks.installed(paths)` off the main thread. Shows "Checking…" until they return.
+    /// Runs `Checks.tools(env:)` and `Checks.installed(paths)` off the main thread. Shows "Checking…" until they return.
     func runChecks(_ paths: Paths) {
         guard !checking else { return }
         checking = true
         tools = []
         Task {
-            let items = await Task.detached { Checks.tools() + Checks.installed(paths) }.value
+            let items = await Task.detached { Checks.tools(env: Runner.environment(paths)) + Checks.installed(paths) }.value
             tools = items
             checking = false
         }
@@ -266,6 +266,17 @@ final class SettingsModel: ObservableObject {
     func copy(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    /// Opens the fix commands for `items` in Terminal, then checks again once Glidepath is active.
+    func fix(_ items: [Checks.Item], _ paths: Paths) {
+        guard FixInTerminal.open(items) else { return }
+        Task {
+            for await _ in NotificationCenter.default.notifications(named: NSApplication.didBecomeActiveNotification) {
+                runChecks(paths)
+                return
+            }
+        }
     }
 
     // MARK: Files
@@ -335,5 +346,23 @@ final class SettingsModel: ObservableObject {
             rowErrors["uninstall"] = "Uninstall failed. See the log."
         }
         store.reload()
+    }
+}
+
+/// Runs fix commands in Terminal: the script goes to a temporary `.command` file, which Terminal opens.
+enum FixInTerminal {
+    /// False when there is nothing to run or the file cannot be written.
+    @discardableResult
+    static func open(_ items: [Checks.Item]) -> Bool {
+        guard let script = Checks.fixScript(items) else { return false }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("glidepath-fix-\(UUID().uuidString).command")
+        do {
+            try script.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: url.path)
+        } catch {
+            return false
+        }
+        return NSWorkspace.shared.open(url)
     }
 }

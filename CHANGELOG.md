@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.4.0
 
 - The review sheet is a flight recorder: the PR's approach through its run (gather, review, check, land), its verdict, and readouts for the checker's changes, blast radius and the session's notes.
 - A review the run left without a verdict, or a PR it skipped, has a Review again button; the sheet shows the notes the run left on what stopped it.
+- The Tools check now finds Homebrew tools when the app is opened from Finder.
+- "Fix all in Terminal" runs every missing fix.
 
 ## 1.3.8
 
