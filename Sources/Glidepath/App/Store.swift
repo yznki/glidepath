@@ -114,6 +114,12 @@ struct Snapshot {
     var landedSeen: [String: Date] = [:]
     /// Snapshot rendering only: the playbooks by repo, in place of reading them.
     var playbooks: [String: Playbook] = [:]
+    /// The morning briefing from `tend/briefing.json`, when tend has written one.
+    var briefing: Briefing?
+    /// Each approach plane's tend state, by `ApproachPlane.id`: its changes since review, and when each reviewer was pinged.
+    var prStates: [String: TendPR] = [:]
+    /// Snapshot rendering only: whether a Linear key is saved, in place of reading the Keychain. Nil in the live app.
+    var linearKey: Bool?
 }
 
 extension NeedsItem {
@@ -209,6 +215,9 @@ final class Store: ObservableObject {
     private var seenNeeds: Set<String>?
     /// The landed PRs seen by the last load, by id. Nil until the first load, which notifies nothing.
     private var seenLanded: Set<String>?
+    /// Whether the first load has run, and the briefing time the last load saw. The first load notifies nothing.
+    private var briefingLoaded = false
+    private var seenBriefingAt: Date?
 
     /// `snapshot == nil` is the live app: registers at login and watches the state folders.
     /// A non-nil snapshot is fixed state for snapshot rendering.
@@ -367,6 +376,7 @@ final class Store: ObservableObject {
         snap = s
         notifyNewNeeds(config: config)
         notifyLanded(config: config)
+        notifyBriefing(config: config)
         reconcileJob()
         syncLiveTokens()
         hovered = hovered.flatMap { h in Store.strips(from: s.run).contains { $0.id == h } ? h : nil }
@@ -378,6 +388,10 @@ final class Store: ObservableObject {
         s.tendOn = config?.tend.enabled ?? false
         s.approach = tend.loadApproach()
         s.landed = tend.loadLanded()
+        s.briefing = BriefingFile.load(paths)
+        for plane in s.approach?.planes ?? [] {
+            if let state = tend.load(plane.slug, plane.n) { s.prStates[plane.id] = state }
+        }
         // A landed PR that broke main needs a revert. Tend writes that need too; the id keeps one copy of each.
         if var approach = s.approach {
             for record in s.landed {
@@ -431,6 +445,31 @@ final class Store: ObservableObject {
                           runID: "tend-landed-\(record.slug)#\(record.n)",
                           sound: config?.notifySound ?? .glass, respectFocus: config?.respectFocus ?? true)
         }
+    }
+
+    /// Notifies once when a new briefing appears (its time moves). The first load notifies nothing.
+    private func notifyBriefing(config: Config?) {
+        guard !isFixture else { return }
+        let first = !briefingLoaded
+        let previous = seenBriefingAt
+        briefingLoaded = true
+        seenBriefingAt = snap.briefing?.at
+        guard !first, let briefing = snap.briefing, briefing.at != previous, config?.notify ?? true else { return }
+        Notifier.post(SweepNotice(title: "Glidepath briefing",
+                                  body: "\(briefing.landed.count) landed, \(briefing.blocked.count) blocked"),
+                      runID: "tend-briefing-\(Int(briefing.at.timeIntervalSince1970))",
+                      sound: config?.notifySound ?? .glass, respectFocus: config?.respectFocus ?? true)
+    }
+
+    /// Dismisses the briefing card: stamps `dismissedAt` in the briefing file, then reads the state again.
+    func dismissBriefing() {
+        guard !isFixture else { return }
+        do {
+            try BriefingFile.dismiss(paths)
+        } catch {
+            actionError = "could not dismiss the briefing: \(error.localizedDescription)"
+        }
+        reload()
     }
 
     /// The first-seen times after a load: the ones already known, plus each new landed PR at now. On the first load every
