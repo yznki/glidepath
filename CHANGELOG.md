@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.8
+
+- A review session waits for its agents before it ends, so their reviews are no longer dropped when the session finishes early.
+- A PR the session left without a verdict shows as No result, and its row opens its review. Now rows open their review once the run has finished.
+
 ## 1.3.7
 
 - Huge PRs (over GitHub's 300-file diff limit) are reviewed: when `gh pr diff` fails, the diff is built from the run's clone, `--path` included.
