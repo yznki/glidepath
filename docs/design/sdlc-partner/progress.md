@@ -26,3 +26,6 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 ## Open issues
 
 - none yet
+- gh token lacks `workflow` scope (re-auth needs a browser), so the scratch repo has no Actions workflow. Live CI
+  checks use a local fake CI (`/tmp/gp-fakeci.sh`: runs `npm test` per head, posts commit status "Unit tests").
+  Job-log fetching and `gh run rerun` stay unverified live; covered by unit tests only. Fix: `gh auth refresh -s workflow`.
