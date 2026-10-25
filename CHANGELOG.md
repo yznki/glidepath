@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Now shows what needs you and what each run did, in one sentence per run.
+- Skipped PRs fold away.
+- Reviews is now History.
+- The popover shows only what needs you.
+
 ## 1.4.0
 
 - The review sheet is a flight recorder: the PR's approach through its run (gather, review, check, land), its verdict, and readouts for the checker's changes, blast radius and the session's notes.
