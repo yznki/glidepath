@@ -358,15 +358,26 @@ enum WindowFixtures {
 
     // MARK: Tending
 
-    /// Adds tend's state to a fixture snapshot: the approach chart, the tower, today's rounds and a playbook. The planes
-    /// are one morning in lumen/api: a stack of three landing in order, a fix in flight, a held fix, a stuck PR, a PR
-    /// waiting on Gadi, and a draft.
+    /// Adds tend's state to a fixture snapshot: the approach chart, the tower, today's rounds, the user's call and a
+    /// playbook. The planes are one morning in lumen/api: a stack of three landing in order, a fix in flight, a held fix,
+    /// a stuck PR, a PR waiting on Gadi, and a draft.
     static func addTend(_ snap: inout Snapshot, now: Date) {
         snap.tendOn = true
         snap.approach = approachSnapshot(now)
         snap.tower = towerLines(now)
         snap.tendRounds = tendRounds(now)
+        snap.calls = ["lumen/api#1246/\(gadiCallID)": gadiCall(now)]
         snap.playbooks = ["lumen/api": playbook(now)]
+    }
+
+    /// The call id of Gadi's thread on #1246, as tend keeps it in the PR's state.
+    static let gadiCallID = "PRRT_kwDO1246gadi"
+
+    /// Gadi's "use a unique index instead" on #1246, with the draft tend wrote for it.
+    static func gadiCall(_ now: Date) -> YourCall {
+        YourCall(id: gadiCallID, kind: "thread", author: "Gadi", quote: "use a unique index instead",
+                 draft: "The index exists (migration 0412). This guard covers the retry window the index cannot.",
+                 at: at(14, 21, now))
     }
 
     static func approachSnapshot(_ now: Date) -> ApproachSnapshot {
@@ -427,6 +438,9 @@ enum WindowFixtures {
             NeedsItem(id: "\(slug)#1246/stuck", slug: slug, n: 1246,
                       title: "fix(api): repeated create and retry requests return the first result", kind: "stuck",
                       detail: "Stuck · 2 tries on this head used"),
+            NeedsItem(id: "\(slug)#1246/\(gadiCallID)", slug: slug, n: 1246,
+                      title: "fix(api): repeated create and retry requests return the first result", kind: "call",
+                      detail: "Your call · Gadi: \"use a unique index instead\" · draft reply ready"),
         ]
         return ApproachSnapshot(updated: now, planes: planes, needs: needs, queued: 2, status: nil,
                                 working: "Fixing Unit Tests on #1253", nextLook: now.addingTimeInterval(180))
@@ -435,6 +449,8 @@ enum WindowFixtures {
     static func towerLines(_ now: Date) -> [TowerLine] {
         [
             TowerLine(at: at(14, 32, now), slug: "lumen/api", n: 1253, text: "#1253 reproducing Unit Tests · npm test -w lumen",
+                      detail: nil, amber: false),
+            TowerLine(at: at(14, 21, now), slug: "lumen/api", n: 1246, text: "#1246 Council 2–1, chair: act",
                       detail: nil, amber: false),
             TowerLine(at: at(14, 20, now), slug: "lumen/api", n: 1246,
                       text: "#1246 replied to 2 threads, resolved 2 · 1 needs you",
@@ -452,11 +468,28 @@ enum WindowFixtures {
 
     /// Two rounds today: a CI fix on #1246 and a CI fix on #1253, each titled as the CLI titles it.
     static func tendRounds(_ now: Date) -> [RunState] {
-        [
-            run("fixture-tend-1246", at(14, 20, now), minutes: 4,
-                prs: [row("lumen/api", 1246, "omar", "fix(api): repeated create and retry requests", verdict: nil,
-                          reason: "Unit Tests failed on the retry path. Fixed the stored-response branch in one commit; pushed.")],
-                tokens: 38_000, kind: "tend", target: "pr:lumen/api#1246", tendAction: "fixed"),
+        var threadRound = run("fixture-tend-1246", at(14, 20, now), minutes: 4,
+                              prs: [row("lumen/api", 1246, "omar", "fix(api): repeated create and retry requests", verdict: nil,
+                                        reason: "Agreed with 2 of 3 comments. Fixed both in one commit, replied, resolved.")],
+                              tokens: 38_000, kind: "tend", target: "pr:lumen/api#1246", tendAction: "fixed")
+        // Two agreed threads, fixed and posted; Gadi's disagreement waits as a draft, and a council sat on it.
+        threadRound.tendThreads = [
+            ThreadVerdict(id: "PRRT_kwDO1246basem", author: "Basem", quote: "retry should return the stored body",
+                          verdict: "agree", reply: "Fixed in a91c03e: return the stored response on retry.", posted: true),
+            ThreadVerdict(id: "PRRT_kwDO1246bot", author: "coderabbit", quote: "missing await on save",
+                          verdict: "agree", reply: "Fixed in a91c03e: await the save.", posted: true),
+            ThreadVerdict(id: gadiCallID, author: "Gadi", quote: "use a unique index instead",
+                          verdict: "disagree", reply: gadiCall(now).draft, posted: false),
+        ]
+        threadRound.council = [
+            CouncilRecord(topic: "Gadi's thread",
+                          seats: [Seat(lens: "correctness", vote: "act", reason: "Index exists (migration 0412). The guard covers the retry window the index can't.", confidence: "high", security: false),
+                                  Seat(lens: "intent", vote: "act", reason: "Gadi's real worry is duplicates; the reply should cite the index.", confidence: "medium", security: false),
+                                  Seat(lens: "risk", vote: "hold", reason: "Two sources of truth for uniqueness; drop the guard.", confidence: "medium", security: false)],
+                          chair: "act", outcome: "act"),
+        ]
+        return [
+            threadRound,
             run("fixture-tend-1253", at(11, 40, now), minutes: 3,
                 prs: [row("lumen/api", 1253, "ines", "feat(ops): picture card views", verdict: nil,
                           reason: "Unit Tests failed on a stale snapshot. Updated it to the new contract; no assertion removed.")],

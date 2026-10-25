@@ -130,6 +130,13 @@ enum Snapshotter {
                 writeWindow(screen, dark: dark, to: dir.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png"))
             }
         }
+        // Approach with the Edit sheet open on Gadi's call, the reply text drafted.
+        let callStore = Store(snapshot: WindowFixtures.section("approach", now: now))
+        let callScreen = WindowScreen(store: callStore, router: WindowRouter(section: .approach, showOnboarding: false),
+                                      callOpen: "lumen/api#1246/\(WindowFixtures.gadiCallID)")
+        for dark in [true, false] {
+            writeWindow(callScreen, dark: dark, to: dir.appendingPathComponent("approach-call-edit-\(dark ? "dark" : "light").png"))
+        }
         let steps: [(String, OnboardingStep, Bool)] = [
             ("onb-welcome", .welcome, false), ("onb-tools", .tools, false), ("onb-repos", .repos, false),
             ("onb-review", .review, false), ("onb-schedule", .schedule, false),
