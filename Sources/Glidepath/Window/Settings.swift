@@ -68,11 +68,14 @@ enum SettingsCopy {
     static let tendPush = Row(label: "Approved fixes", caption: "Push anyway pushes a tended fix at once. Hold the fix keeps it for you.")
     static let tendRounds = Row(label: "Rounds per PR a day", caption: "Each PR gets at most this many tending rounds a day.")
     static let tendAutopilot = Row(label: "Autopilot", caption: "Tending merges, replies and resolves without asking. Hard stops still come to you.")
+    static let tendDisagree = Row(label: "When Glidepath disagrees",
+                                  caption: "Tending leaves the reply as a draft for you, or posts it and resolves the thread.")
     static let tendAccount = Row(label: "Claude account", caption: "Tending and reviews sign in as this account.")
     static let tendReserve = Row(label: "Usage reserve", caption: "Tending never spends the last share of your 5-hour and weekly windows.")
     static let tendQuiet = Row(label: "Quiet hours", caption: "Heavy tending waits for these hours.")
     static let tending = Block(id: "tending", title: "Tending",
-                               rows: [tendOn, tendRepos, tendPush, tendRounds, tendAutopilot, tendAccount, tendReserve, tendQuiet])
+                               rows: [tendOn, tendRepos, tendPush, tendRounds, tendAutopilot, tendDisagree, tendAccount,
+                                      tendReserve, tendQuiet])
 
     static let notifications = Block(id: "notify", title: "Notifications", rows: [notify, changesOnly, sound, focus])
     static let menuBar = Block(id: "menubar", title: "Menu bar", rows: [icon, badge, shortcut, login])
@@ -439,6 +442,13 @@ struct SettingsView: View {
                     SettingSwitch(isOn: tend.autopilot, label: "Autopilot") {
                         model.commit("autopilot", store: store) { ConfigEditor.setAutopilot($0, !$0.tend.autopilot) }
                     }
+                }
+                row(SettingsCopy.tendDisagree, error: model.rowErrors["tendDisagree"]) {
+                    SettingSegmented(
+                        options: [(value: TendDisagree.draft, label: "Draft for me"), (value: .replyResolve, label: "Reply and resolve")],
+                        selected: tend.disagree) { choice in
+                            model.commit("tendDisagree", store: store) { ConfigEditor.setTendDisagree($0, choice) }
+                        }
                 }
                 if model.matches(SettingsCopy.tendAccount) {
                     let separate = config?.claudeConfigDir != nil
