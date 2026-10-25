@@ -213,7 +213,9 @@ enum CIEvidence {
     /// The lines around each `##[error]`, merged where they touch, capped at `cap` lines. A log with no error gives its
     /// last 300 lines.
     static func windows(_ log: String, before: Int = 60, after: Int = 20, cap: Int = 400) -> [String] {
-        let lines = log.components(separatedBy: "\n")
+        // Job logs carry ANSI colour codes; the session reads plain text.
+        let plain = log.replacingOccurrences(of: "\u{1B}\\[[0-9;]*[A-Za-z]", with: "", options: .regularExpression)
+        let lines = plain.components(separatedBy: "\n")
         let errors = lines.indices.filter { lines[$0].contains("##[error]") }
         guard !errors.isEmpty else { return Array(lines.suffix(300)) }
         var merged: [ClosedRange<Int>] = []

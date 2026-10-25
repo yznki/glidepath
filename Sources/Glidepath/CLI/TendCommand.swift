@@ -425,7 +425,7 @@ final class Tender {
                 continue
             }
             for job in ids.job.map({ [$0] }) ?? failedJobs(repo.slug, run: ids.run) where seen.insert(job).inserted {
-                let log = Shell.run("gh", ["api", "repos/\(repo.slug)/actions/jobs/\(job)/logs"], env: env, timeout: 120).stdout
+                let log = Shell.run("gh", ["api", "--allow-escape-sequences", "repos/\(repo.slug)/actions/jobs/\(job)/logs"], env: env, timeout: 120).stdout
                 out += "\n## \(c.name) · job \(job)\n" + CIEvidence.windows(log).joined(separator: "\n") + "\n"
             }
         }
