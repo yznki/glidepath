@@ -36,9 +36,10 @@ enum ApproachGeometry {
         return min(max(date.timeIntervalSince(seen) / landingDuration, 0), 1)
     }
 
-    /// The glide's ease: quick off the marker, settling on the runway.
+    /// The glide's ease: a smoothstep, so the glide is mid-air at 0.6 and settles on the runway.
     static func landingEase(_ progress: Double) -> CGFloat {
-        CGFloat(1 - pow(1 - min(max(progress, 0), 1), 3))
+        let p = CGFloat(min(max(progress, 0), 1))
+        return p * p * (3 - 2 * p)
     }
 
     /// The runway flash as the plane touches down: dark until 70% of the glide, full at 80%, gone by the end.
