@@ -40,7 +40,8 @@ enum PRFilter {
     /// `reviewDrafts` and `includeBots` turn off the draft and bot skips. The runner passes the repo's value of
     /// `review_drafts` when it has one, else the global value.
     /// `byHand` (`glidepath review`) skips the draft, bot, size and authors checks, so `isCollaborator` is never
-    /// called. Your own PR and the reviewed and held-draft checks still apply.
+    /// called. Your own PR is skipped unless `includeOwn` is set (the runner sets it for a named PR), and the
+    /// reviewed and held-draft checks still apply.
     static func evaluate(_ pr: PRInfo, me: String, includeOwn: Bool = false, reviewDrafts: Bool = false,
                          includeBots: Bool = false, byHand: Bool = false, authors: AuthorPolicy, limits: Limits,
                          draftHeads: Set<String> = [], isCollaborator: () -> Bool?, reviewedHeads: () -> Set<String>?) -> Decision {
