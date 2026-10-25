@@ -23,6 +23,8 @@ final class SettingsModel: ObservableObject {
     /// Bumped by a reset so its hold button starts again.
     @Published private(set) var resetCount = 0
     let saved = SavedFlash()
+    /// The Claude account line under "Claude account": the signed-in email and plan, or why it is not known.
+    @Published private(set) var accountStatus: String?
 
     private var keyMonitor: Any?
     private var toastTask: Task<Void, Never>?
@@ -32,6 +34,11 @@ final class SettingsModel: ObservableObject {
 
     /// The UserDefaults keys the look rows own. Reset clears them with the config keys.
     static let lookKeys = ["glyphStyle", "glyphBadge", "signalColour", "glassBlur", "motion"]
+
+    /// `query` starts the search: snapshot rendering uses it to show one group.
+    init(query: String = "") {
+        self.query = query
+    }
 
     // MARK: Search
 
@@ -52,11 +59,47 @@ final class SettingsModel: ObservableObject {
     func refresh(_ store: Store) {
         loginOn = store.loginItemOn
         refreshUsed(store)
+        refreshAccount(store, dir: store.snap.config?.claudeConfigDir)
         if store.isFixture {
             tools = store.snap.tools ?? []
             return
         }
         runChecks(store.paths)
+    }
+
+    /// Reads the signed-in account of `dir` (or the user's own when nil) with `claude auth status`, off the main thread.
+    /// Fixtures show a fixed line: they never run claude.
+    func refreshAccount(_ store: Store, dir: String?) {
+        guard !store.isFixture else {
+            accountStatus = "you@example.com · max"
+            return
+        }
+        let paths = store.paths
+        Task {
+            accountStatus = await Task.detached { ClaudeAccount.status(dir: dir, paths: paths) }.value
+        }
+    }
+
+    /// Switches between the user's own Claude sign-in and a separate account. A separate account gets its folder, and
+    /// Terminal opens to sign it in.
+    func chooseAccount(separate: Bool, store: Store) {
+        let paths = store.paths
+        let dir = ClaudeAccount.dir(paths)
+        commit("account", store: store, onSaved: { [weak self] in
+            let error = separate ? ClaudeAccount.adopt(dir: dir, home: paths.home) : nil
+            self?.refreshAccount(store, dir: separate ? dir : nil)
+            return error
+        }) { ConfigEditor.setClaudeAccount($0, separate: separate, home: paths.home) }
+    }
+
+    /// Opens Terminal to sign the separate account in again.
+    func signIn(_ store: Store) {
+        let dir = ClaudeAccount.dir(store.paths)
+        guard FixInTerminal.open(script: ClaudeAccount.signInScript(dir: dir)) else {
+            rowErrors["account"] = "Could not open Terminal to sign in."
+            return
+        }
+        rowErrors["account"] = nil
     }
 
     /// Tokens used by the runs that started this calendar month. The budget ring reads it.
@@ -355,6 +398,12 @@ enum FixInTerminal {
     @discardableResult
     static func open(_ items: [Checks.Item]) -> Bool {
         guard let script = Checks.fixScript(items) else { return false }
+        return open(script: script)
+    }
+
+    /// Writes `script` to a temporary `.command` file and opens it in Terminal. False when the file cannot be written.
+    @discardableResult
+    static func open(script: String) -> Bool {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("glidepath-fix-\(UUID().uuidString).command")
         do {
@@ -364,5 +413,53 @@ enum FixInTerminal {
             return false
         }
         return NSWorkspace.shared.open(url)
+    }
+}
+
+/// The separate Claude account: its sign-in folder, the user's skills linked into it, and the sign-in and status calls
+/// that run with `CLAUDE_CONFIG_DIR` pointing there. The config's `claude_config_dir` names the folder.
+enum ClaudeAccount {
+    /// `~/.config/glidepath/claude`, the folder a separate account signs in to.
+    static func dir(_ paths: Paths) -> String {
+        paths.home + "/.config/glidepath/claude"
+    }
+
+    /// Creates the folder, and links `skills` in it to `~/.claude/skills` when nothing is there yet. Then opens Terminal to
+    /// sign in. Returns a message when something failed, else nil.
+    static func adopt(dir: String, home: String) -> String? {
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            let link = dir + "/skills"
+            // A symlink that is already there, even a broken one, is left as it is.
+            if !fm.fileExists(atPath: link), (try? fm.destinationOfSymbolicLink(atPath: link)) == nil {
+                try fm.createSymbolicLink(atPath: link, withDestinationPath: home + "/.claude/skills")
+            }
+        } catch {
+            return "Could not set up the account folder: \(error.localizedDescription)"
+        }
+        guard FixInTerminal.open(script: signInScript(dir: dir)) else {
+            return "Could not open Terminal to sign in."
+        }
+        return nil
+    }
+
+    /// The Terminal script that signs the account in to `dir`.
+    static func signInScript(dir: String) -> String {
+        "#!/bin/sh\nCLAUDE_CONFIG_DIR='\(dir)' claude auth login\n"
+    }
+
+    /// "email · plan" from `claude auth status --json` run with `dir` (or the user's own when nil). Off the main thread.
+    static func status(dir: String?, paths: Paths) -> String {
+        var env = Runner.environment(paths)
+        if let dir { env["CLAUDE_CONFIG_DIR"] = dir }
+        let result = Shell.run("claude", ["auth", "status", "--json"], env: env, timeout: 30)
+        guard result.ok, let data = result.stdout.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return "Not signed in, or claude is not installed"
+        }
+        let parts = [json["email"] as? String, json["subscriptionType"] as? String].compactMap { $0 }
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? "Signed in" : parts.joined(separator: " · ")
     }
 }

@@ -28,6 +28,8 @@ struct WindowScreen: View {
     var onboarding: OnboardingModel?
     /// Snapshot rendering only: the plane whose Approach drawer is open at first draw.
     var approachOpen: String?
+    /// Snapshot rendering only: the Settings search at first draw.
+    var settingsQuery = ""
 
     var body: some View {
         Group {
@@ -63,7 +65,7 @@ struct WindowScreen: View {
                 ScheduleView(store: store)
             case .settings:
                 // Settings lays out its own title row and scrolls as one column.
-                SettingsView(store: store)
+                SettingsView(store: store, query: settingsQuery)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

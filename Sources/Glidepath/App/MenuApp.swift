@@ -114,15 +114,17 @@ enum Snapshotter {
         let now = WindowFixtures.clock
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         // The plane whose Approach drawer is open, and the Settings search, for the shots that show them.
-        let sections: [(name: String, section: WindowSection, opened: String?)] = [
-            ("now", .now, nil), ("running", .now, nil), ("now-clear", .now, nil), ("now-dry-run", .now, nil),
-            ("approach", .approach, nil), ("approach-drawer", .approach, "lumen/api#1246"),
-            ("reviews", .reviews, nil), ("repos", .repos, nil), ("schedule", .schedule, nil), ("settings", .settings, nil),
+        // The Settings search "tend" shows only the Tending group, which the shot needs in view.
+        let sections: [(name: String, section: WindowSection, opened: String?, query: String)] = [
+            ("now", .now, nil, ""), ("running", .now, nil, ""), ("now-clear", .now, nil, ""), ("now-dry-run", .now, nil, ""),
+            ("approach", .approach, nil, ""), ("approach-drawer", .approach, "lumen/api#1246", ""),
+            ("reviews", .reviews, nil, ""), ("repos", .repos, nil, ""), ("schedule", .schedule, nil, ""),
+            ("settings", .settings, nil, ""), ("settings-tending", .settings, nil, "tend"),
         ]
         for entry in sections {
             let store = Store(snapshot: WindowFixtures.section(entry.name, now: now))
             let screen = WindowScreen(store: store, router: WindowRouter(section: entry.section, showOnboarding: false),
-                                      approachOpen: entry.opened)
+                                      approachOpen: entry.opened, settingsQuery: entry.query)
             let name = entry.name
             for dark in [true, false] {
                 writeWindow(screen, dark: dark, to: dir.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png"))
