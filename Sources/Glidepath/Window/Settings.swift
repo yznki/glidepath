@@ -67,7 +67,7 @@ enum SettingsCopy {
     static let tendRepos = Row(label: "Tended repos", caption: "Glidepath tends the PRs in the repos switched on here.")
     static let tendPush = Row(label: "Approved fixes", caption: "Push anyway pushes a tended fix at once. Hold the fix keeps it for you.")
     static let tendRounds = Row(label: "Rounds per PR a day", caption: "Each PR gets at most this many tending rounds a day.")
-    static let tendLanding = Row(label: "Landing", caption: "Tending never merges while Off. Ask me puts a ready PR in Needs you. Automatically lands it at the next check.")
+    static let tendLanding = Row(label: "Landing", caption: "Off never merges unless Autopilot is on, and Autopilot lands on its own. Ask me puts a ready PR in Needs you. Automatically lands it at the next check.")
     static let tendAutopilot = Row(label: "Autopilot", caption: "Tending lands ready PRs, replies and resolves without asking. Hard stops still come to you.")
     static let tendDisagree = Row(label: "When Glidepath disagrees",
                                   caption: "Tending leaves the reply as a draft for you, or posts it and resolves the thread.")
