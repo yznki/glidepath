@@ -59,7 +59,7 @@ final class LandingTests: XCTestCase {
     func testAutopilotLandConflictAndRevertAcrossSettings() {
         for autopilot in [false, true] {
             for merge in TendMerge.allCases {
-                let landActor: Actor = merge == .off ? .you : (autopilot || merge == .auto ? .act : .you)
+                let landActor: Actor = autopilot || merge == .auto ? .act : .you
                 XCTAssertEqual(Autopilot.actor(.land, autopilot: autopilot, push: .untilApproved, merge: merge), landActor,
                                "land autopilot=\(autopilot) merge=\(merge)")
                 XCTAssertEqual(Autopilot.actor(.conflict, autopilot: autopilot, push: .untilApproved, merge: merge),
@@ -68,8 +68,9 @@ final class LandingTests: XCTestCase {
                                autopilot ? .council : .you)
             }
         }
-        // Existing call sites keep their behaviour: merge defaults to off, and landing is never proposed then.
-        XCTAssertEqual(Autopilot.actor(.land, autopilot: true, push: .always), .you)
+        // Autopilot lands even with merge off; without it, a default-off call gets the user.
+        XCTAssertEqual(Autopilot.actor(.land, autopilot: true, push: .always), .act)
+        XCTAssertEqual(Autopilot.actor(.land, autopilot: false, push: .always), .you)
     }
 
     // MARK: Landing

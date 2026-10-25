@@ -248,6 +248,7 @@ enum Approach {
         if let held = state?.held { return "Fix held · \(held.summary)" }
         if let stuck = state?.stuck { return "Stuck · \(stuck)" }
         if working {
+            if pr.mergeStateStatus == "DIRTY" { return "Glidepath resolving conflicts with \(pr.base)" }
             let tries = min((state?.triesByHead[pr.head] ?? 0) + 1, triesPerHead)
             return "Glidepath fixing \(pr.failedChecks.first?.name ?? "CI") · try \(tries) of \(triesPerHead)"
         }
