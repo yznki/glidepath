@@ -1231,6 +1231,8 @@ final class Tender {
         if pr.isFork { return "it comes from a fork" }
         if pr.branch == pr.defaultBranch { return "it is the default branch" }
         let protected = Shell.run("gh", ["api", "repos/\(repo.slug)/branches/\(pr.branch)", "-q", ".protected"], env: env, timeout: 120)
+        // Gone already, when GitHub deletes the head on merge: there is nothing to keep.
+        if !protected.ok, protected.stderr.contains("HTTP 404") { return nil }
         guard protected.ok else { return "GitHub could not read the branch" }
         if protected.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "true" { return "it is protected" }
         for (flag, why) in [("--base", "an open PR is based on it"), ("--head", "an open PR comes from it")] {
@@ -1329,8 +1331,9 @@ final class Tender {
         let dir = paths.scratchDir + "/tend-" + id + "/" + repo.owner + "-" + repo.name + "-\(record.n)"
         var sittings: [CouncilRecord] = []
         var tokens = 0
+        // A rebase-merged PR is not reverted by Glidepath, so no council sits on it; the Needs item asks the user.
         if Autopilot.actor(.revert, autopilot: config.tend.autopilot, push: config.tend.push) == .council,
-           let branch = syncDefault(repo) {
+           repo.mergeMethod != .rebase, let branch = syncDefault(repo) {
             try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
             scratch = dir
             councils = []
@@ -1383,10 +1386,6 @@ final class Tender {
     @discardableResult
     private func openRevert(_ record: inout TendLanded, _ repo: RepoConfig, branch: String, now: Date) -> Bool {
         let n = record.n
-        if repo.mergeMethod == .rebase {
-            tower(repo.slug, n, "revert not opened · #\(n) was rebase-merged; revert it by hand", amber: true, now: now)
-            return false
-        }
         let dir = store.revertDir(repo.slug, n)
         defer { try? locked(repo.slug) { removeWorktree(repo, dir) } }
         do {
@@ -1394,6 +1393,8 @@ final class Tender {
             if Shell.run("gh", ["api", "repos/\(repo.slug)/branches/\(head)"], env: env, timeout: 120).ok {
                 let open = Shell.run("gh", ["pr", "list", "-R", repo.slug, "--state", "open", "--head", head, "--json", "number",
                                             "-q", ".[0].number // empty"], env: env, timeout: 120)
+                // A failed listing is not "no open PR": a second revert PR would follow.
+                guard open.ok else { throw RunError("could not list the open PRs of \(head)") }
                 if let number = Int(open.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) {
                     record.revert = number
                     record.status = "reverted"
@@ -1760,6 +1761,7 @@ final class Tender {
         if let gate = Approach.gates(pr, state: state).first(where: { $0.state != .ok && $0.state != .none }) {
             return "\(gate.name) · \(gate.detail)"
         }
+        if pr.isFork { return "it comes from a fork" }
         if pr.base != pr.defaultBranch { return "based on \(pr.base), not \(pr.defaultBranch)" }
         return "not clean with \(pr.base)"
     }
