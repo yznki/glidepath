@@ -277,11 +277,34 @@ struct TendStore {
         }
     }
 
+    func loadBriefing() -> Briefing? {
+        guard let data = FileManager.default.contents(atPath: dir + "/briefing.json") else { return nil }
+        return try? RunStore.decoder().decode(Briefing.self, from: data)
+    }
+
+    func saveBriefing(_ briefing: Briefing) throws {
+        try write(RunStore.encoder().encode(briefing), to: dir + "/briefing.json")
+    }
+
+    func loadLessonsRun() -> LessonsRun? {
+        guard let data = FileManager.default.contents(atPath: dir + "/lessons.json") else { return nil }
+        return try? RunStore.decoder().decode(LessonsRun.self, from: data)
+    }
+
+    func saveLessonsRun(_ run: LessonsRun) throws {
+        try write(RunStore.encoder().encode(run), to: dir + "/lessons.json")
+    }
+
     func write(_ data: Data, to path: String) throws {
         try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
                                                 withIntermediateDirectories: true)
         try data.write(to: URL(fileURLWithPath: path), options: .atomic)
     }
+}
+
+/// `tend/lessons.json`: when the weekly lesson consolidation last ran.
+struct LessonsRun: Codable, Equatable {
+    var lastRun: Date?
 }
 
 /// What the checks looked like, for telling a new failure from one a round already tried. The order of checks does

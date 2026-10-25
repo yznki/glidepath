@@ -20,7 +20,7 @@ extension Briefing {
             at: now,
             landed: landed.filter { $0.at >= since }.map { "#\($0.n) \($0.title)" },
             blocked: needs.filter { ["held", "stuck", "call", "blocked"].contains($0.kind) }.map { "#\($0.n) · \($0.detail)" },
-            rounds: recent.filter { $0.tendAction != nil }.count,
+            rounds: recent.filter { $0.tendAction != nil && !["self-review", "consolidated"].contains($0.tendAction ?? "") }.count,
             threads: recent.reduce(0) { $0 + ($1.tendThreads?.count ?? 0) },
             councils: recent.reduce(0) { $0 + ($1.council?.count ?? 0) },
             tokens: recent.reduce(0) { $0 + $1.tokens })
