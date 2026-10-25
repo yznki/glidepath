@@ -101,14 +101,21 @@ enum SpendDecision: Equatable {
 enum UsageGuard {
     /// The rate-limit windows in a stream-json transcript: each `rate_limit_event` line, seen at `now`.
     static func events(stream: String, now: Date) -> [UsageWindow] {
-        stream.components(separatedBy: "\n").compactMap { line -> UsageWindow? in
+        stream.components(separatedBy: "\n").flatMap { line -> [UsageWindow] in
             guard line.contains("\"rate_limit_event\""), let obj = Transcript.json(line),
                   obj["type"] as? String == "rate_limit_event",
-                  let info = obj["rate_limit_info"] as? [String: Any],
-                  let type = info["rateLimitType"] as? String,
-                  let utilization = (info["utilization"] as? NSNumber)?.doubleValue else { return nil }
-            let resets = (info["resetsAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
-            return UsageWindow(type: type, utilization: utilization, resetsAt: resets, seen: now)
+                  let info = obj["rate_limit_info"] as? [String: Any] else { return [] }
+            func window(_ type: String, _ fields: [String: Any]) -> UsageWindow? {
+                guard let utilization = (fields["utilization"] as? NSNumber)?.doubleValue else { return nil }
+                let resets = (fields["resetsAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
+                return UsageWindow(type: type, utilization: utilization, resetsAt: resets, seen: now)
+            }
+            // Claude Code 2.1.310 nests each window under unifiedWindows; the flat form is the older shape.
+            if let windows = info["unifiedWindows"] as? [String: [String: Any]] {
+                return windows.sorted { $0.key < $1.key }.compactMap { window($0.key, $0.value) }
+            }
+            guard let type = info["rateLimitType"] as? String else { return [] }
+            return window(type, info).map { [$0] } ?? []
         }
     }
 
