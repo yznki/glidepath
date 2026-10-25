@@ -5,6 +5,8 @@ struct TendHeld: Codable, Equatable {
     var commit: String
     var summary: String
     var at: Date
+    /// The commands the fix session reported as passing. Kept so the playbook can count them once the fix is pushed.
+    var ran: [String]? = nil
 }
 
 /// What tend knows about one PR, in `stateDir/tend/<owner>-<name>-<n>.json`. Only `slug` and `n` are required; a

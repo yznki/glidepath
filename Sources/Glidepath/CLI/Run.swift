@@ -727,7 +727,7 @@ final class Runner {
         let text = UsageGuard.resultText(stream: result.stdout) ?? result.stdout
         try? (text + result.stderr).write(toFile: logPath, atomically: true, encoding: .utf8)
         if dryRun { print(text) }
-        recordUsage(stream: result.stdout)
+        Runner.recordUsage(stream: result.stdout, paths: paths)
 
         let usage = Transcript.usage(paths: paths, cwd: repo.clone, sessionId: session, keptPRs: Set(numbers),
                                      claudeDir: config.claudeConfigDir)
@@ -743,7 +743,7 @@ final class Runner {
     }
 
     /// Keeps the newest rate-limit window of each type, so the usage guard knows how much Claude usage is left.
-    func recordUsage(stream: String) {
+    static func recordUsage(stream: String, paths: Paths) {
         var state = UsageState.load(paths)
         state.record(UsageGuard.events(stream: stream, now: Date()))
         try? state.save(paths)

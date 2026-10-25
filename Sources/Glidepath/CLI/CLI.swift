@@ -47,6 +47,11 @@ enum CLI {
       glidepath drafts discard owner/name N  delete the newest draft for a PR
       glidepath dashboard                 write the run history and open drafts to a page and open it in the browser
       glidepath pause | resume            skip or allow scheduled runs
+      glidepath tend                      run one tend check now (launchd runs it every 5 minutes)
+      glidepath tend push|discard|retry|on|off owner/name N
+                                             act on one tended PR: push or discard a held fix, retry a stuck one,
+                                             or switch tending off or on for it
+      glidepath teach owner/name "text"   add a lesson to a repo's playbook for tend
       glidepath doctor                    check requirements and installed pieces
       glidepath uninstall [--purge]       remove the job, skill and app link; --purge also removes config and state
       glidepath                           open the menu bar app (also: glidepath app)
@@ -69,6 +74,8 @@ enum CLI {
         case "dashboard": return DashboardCommand.main()
         case "pr": return PRCommands.main(rest)
         case "post": return PRCommands.post(rest)
+        case "tend": return TendCommand.main(rest)
+        case "teach": return TendCommand.teach(rest)
         case "pause": return setPaused(true)
         case "resume": return setPaused(false)
         case "doctor": return Doctor.main()
