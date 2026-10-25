@@ -26,6 +26,8 @@ struct WindowScreen: View {
     @ObservedObject var store: Store
     @ObservedObject var router: WindowRouter
     var onboarding: OnboardingModel?
+    /// Snapshot rendering only: the plane whose Approach drawer is open at first draw.
+    var approachOpen: String?
 
     var body: some View {
         Group {
@@ -52,7 +54,7 @@ struct WindowScreen: View {
             case .now:
                 NowView(store: store)
             case .approach:
-                ApproachSectionView(store: store)
+                ApproachSectionView(store: store, opened: approachOpen)
             case .reviews:
                 HistoryView(store: store)
             case .repos:
