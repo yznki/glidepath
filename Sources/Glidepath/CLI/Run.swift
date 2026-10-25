@@ -175,32 +175,71 @@ enum RunCommand {
     }
 }
 
-/// What `glidepath review` reviews: one PR, or every open PR by one author.
+/// One PR a by-hand review names.
+struct PRRef: Hashable {
+    let slug: String
+    let n: Int
+}
+
+/// What `glidepath review` reviews: the named PRs, or every open PR by one author.
 enum ReviewTarget: Equatable {
-    case pr(slug: String, n: Int)
+    /// Never empty. Duplicates are removed and the order is kept.
+    case prs([PRRef])
     case author(String)
 
     /// Whether a PR is in this target. Slugs and logins match case-insensitively. An author target ignores the slug.
     func includes(slug: String, n: Int, author: String?) -> Bool {
         switch self {
-        case .pr(let target, let number):
-            return target.caseInsensitiveCompare(slug) == .orderedSame && number == n
+        case .prs(let refs):
+            return refs.contains { $0.n == n && $0.slug.caseInsensitiveCompare(slug) == .orderedSame }
         case .author(let login):
             guard let author else { return false }
             return author.caseInsensitiveCompare(login) == .orderedSame
         }
     }
 
-    /// The PR a review names: `["owner/name", "N"]`, or `[url]` for a GitHub pull request link. Nil otherwise.
-    static func parsePR(_ positional: [String]) -> (slug: String, n: Int)? {
-        if positional.count == 2 {
-            guard RepoConfig.isValidSlug(positional[0]), let n = Int(positional[1]), n > 0, String(n) == positional[1] else {
+    /// The PRs a review names, read left to right. A slug token sets the repo for the numbers after it. A number (an
+    /// optional `#`, no leading zero) is a PR in that repo, or in `defaultRepo` before any slug. A GitHub PR link is a
+    /// PR on its own and leaves the repo as it was. Anything else, a slug with no number after it, or no PRs gives nil.
+    /// Duplicates (slugs ignoring case) are dropped.
+    static func parsePRs(_ tokens: [String], defaultRepo: String? = nil) -> [PRRef]? {
+        var refs: [PRRef] = []
+        var repo = defaultRepo
+        var slugAwaitingNumber = false
+        for token in tokens {
+            if RepoConfig.isValidSlug(token) {
+                if slugAwaitingNumber { return nil }
+                repo = token
+                slugAwaitingNumber = true
+                continue
+            }
+            let ref: PRRef
+            if let n = number(token) {
+                guard let repo else { return nil }
+                ref = PRRef(slug: repo, n: n)
+                slugAwaitingNumber = false
+            } else if let link = link(token) {
+                ref = link
+            } else {
                 return nil
             }
-            return (positional[0], n)
+            if !refs.contains(where: { $0.n == ref.n && $0.slug.caseInsensitiveCompare(ref.slug) == .orderedSame }) {
+                refs.append(ref)
+            }
         }
-        guard positional.count == 1 else { return nil }
-        let url = positional[0]
+        guard !slugAwaitingNumber, !refs.isEmpty else { return nil }
+        return refs
+    }
+
+    /// A PR number: a positive whole number, written without leading zeros, with an optional `#`.
+    private static func number(_ token: String) -> Int? {
+        let digits = token.hasPrefix("#") ? String(token.dropFirst()) : token
+        guard let n = Int(digits), n > 0, String(n) == digits else { return nil }
+        return n
+    }
+
+    /// The PR a GitHub pull request link names, or nil.
+    private static func link(_ url: String) -> PRRef? {
         let pattern = #"\Ahttps?://(www\.)?github\.com/([^/\s]+/[^/\s]+)/pull/([0-9]+)([/?#].*)?\z"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)),
@@ -208,25 +247,32 @@ enum ReviewTarget: Equatable {
               let numberRange = Range(match.range(at: 3), in: url) else { return nil }
         let slug = String(url[slugRange])
         guard RepoConfig.isValidSlug(slug), let n = Int(url[numberRange]), n > 0 else { return nil }
-        return (slug, n)
+        return PRRef(slug: slug, n: n)
     }
 
-    /// The CLI arguments the app spawns for this target.
+    /// The CLI arguments the app spawns for this target: each repo's slug, then its numbers, in first-seen order.
     var arguments: [String] {
         switch self {
-        case .pr(let slug, let n): return ["review", slug, String(n)]
+        case .prs(let refs):
+            var slugs: [String] = []
+            for ref in refs where !slugs.contains(where: { $0.caseInsensitiveCompare(ref.slug) == .orderedSame }) {
+                slugs.append(ref.slug)
+            }
+            return ["review"] + slugs.flatMap { slug in
+                [slug] + refs.filter { $0.slug.caseInsensitiveCompare(slug) == .orderedSame }.map { String($0.n) }
+            }
         case .author(let login): return ["review", "--author", login]
         }
     }
 }
 
-/// `glidepath review owner/name N | PR-URL | --author login [--repo owner/name] [--dry-run] [--again]`: reviews one
-/// open PR now, including one over `max_changed_lines`, or every open PR by one author. A by-hand review ignores the
-/// authors list, the size limit, the per-sweep cap, and the draft and bot skips. A named PR is reviewed even when it
-/// is yours; author mode still skips your own PRs unless `include_own` is set. Both still skip PRs reviewed at this
-/// head and PRs with a held draft at this head. The run lock is taken, as for a sweep.
+/// `glidepath review owner/name N [N...] | PR-URL [PR-URL...] | --author login [--repo owner/name] [--dry-run] [--again]`:
+/// reviews the named PRs now, including ones over `max_changed_lines`, or every open PR by one author. A by-hand review
+/// ignores the authors list, the size limit, the per-sweep cap, and the draft and bot skips. A named PR is reviewed even
+/// when it is yours; author mode still skips your own PRs unless `include_own` is set. Both still skip PRs reviewed at
+/// this head and PRs with a held draft at this head. The run lock is taken once, as for a sweep.
 enum ReviewCommand {
-    static let usage = "usage: glidepath review owner/name N | PR-URL | --author login [--repo owner/name]  [--dry-run] [--again]"
+    static let usage = "usage: glidepath review owner/name N [N...] | PR-URL [PR-URL...] | --author login [--repo owner/name]  [--dry-run] [--again]"
 
     /// The parsed arguments, or nil when they are not one of the three forms.
     static func parse(_ args: [String]) -> (target: ReviewTarget, repo: String?, dryRun: Bool, again: Bool)? {
@@ -254,8 +300,8 @@ enum ReviewCommand {
             }
         }
         guard let login = author else {
-            guard repo == nil, let pr = ReviewTarget.parsePR(positional) else { return nil }
-            return (.pr(slug: pr.slug, n: pr.n), nil, dryRun, again)
+            guard repo == nil, let refs = ReviewTarget.parsePRs(positional) else { return nil }
+            return (.prs(refs), nil, dryRun, again)
         }
         guard positional.isEmpty, (try? ConfigEditor.validateLogin(login)) != nil else { return nil }
         if let repo, !RepoConfig.isValidSlug(repo) { return nil }
@@ -282,13 +328,18 @@ enum ReviewCommand {
         var target = parsed.target
         let repos: [RepoConfig]
         switch parsed.target {
-        case .pr(let slug, let n):
-            guard let repo = config.repos.first(where: { $0.slug.caseInsensitiveCompare(slug) == .orderedSame }) else {
-                eprint("repo \(slug) is not in the config")
-                return 1
+        case .prs(let refs):
+            // The refs take the config's spelling of each slug; the repos run in config order.
+            var named: [PRRef] = []
+            for ref in refs {
+                guard let repo = config.repos.first(where: { $0.slug.caseInsensitiveCompare(ref.slug) == .orderedSame }) else {
+                    eprint("repo \(ref.slug) is not in the config")
+                    return 1
+                }
+                named.append(PRRef(slug: repo.slug, n: ref.n))
             }
-            repos = [repo]
-            target = .pr(slug: repo.slug, n: n)
+            repos = config.repos.filter { repo in named.contains { $0.slug == repo.slug } }
+            target = .prs(named)
         case .author:
             guard !config.repos.isEmpty else {
                 eprint("no repos configured; run glidepath init")
@@ -482,7 +533,7 @@ final class Runner {
 
     /// Whether the user's own PRs are considered: always for a named PR, else only when the repo sets `include_own`.
     static func includeOwn(_ repo: RepoConfig, target: ReviewTarget?) -> Bool {
-        if case .pr? = target { return true }
+        if case .prs? = target { return true }
         return repo.includeOwn
     }
 
@@ -493,7 +544,11 @@ final class Runner {
         if let target {
             // `glidepath review`: only the PRs in the target are considered, and they skip the by-hand filters.
             prs = prs.filter { target.includes(slug: repo.slug, n: $0.n, author: $0.author) }
-            if case .pr(_, let n) = target, prs.isEmpty { print("\(repo.slug) #\(n): not an open PR") }
+            if case .prs(let refs) = target {
+                for ref in refs where ref.slug.caseInsensitiveCompare(repo.slug) == .orderedSame && !prs.contains(where: { $0.n == ref.n }) {
+                    print("\(repo.slug) #\(ref.n): not an open PR")
+                }
+            }
         }
         // A review with nothing to consider in this repo clones nothing. A sweep always syncs the clone.
         if target == nil || !prs.isEmpty { try prepareClone(repo) }

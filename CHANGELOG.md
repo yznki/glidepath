@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `glidepath review` and the Review sheet take several PRs at once (`owner/name 12 15`, several PR links, or PRs from several repos), run as one review.
+
 ## 1.3.5
 
 - `glidepath review` takes a PR link, and `--author login [--repo owner/name]` reviews every open PR by one author. A by-hand review ignores the authors list, size limit, per-run cap and draft and bot skips. A named PR is reviewed even if it is yours; `--author` still skips your own PRs unless `include_own` is on.

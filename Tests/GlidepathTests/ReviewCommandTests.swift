@@ -48,7 +48,7 @@ final class ReviewCommandTests: XCTestCase {
         let off = RepoConfig(slug: "acme/api", clone: "/fake")
         var on = off
         on.includeOwn = true
-        let pr = ReviewTarget.pr(slug: "acme/api", n: 2)
+        let pr = ReviewTarget.prs([PRRef(slug: "acme/api", n: 2)])
         XCTAssertTrue(Runner.includeOwn(off, target: pr), "a named PR is reviewed even when it is yours")
         XCTAssertFalse(Runner.includeOwn(off, target: .author("me")), "author mode skips your own PRs")
         XCTAssertFalse(Runner.includeOwn(off, target: nil), "a sweep skips your own PRs")
@@ -57,17 +57,31 @@ final class ReviewCommandTests: XCTestCase {
         XCTAssertTrue(Runner.includeOwn(on, target: nil))
     }
 
-    func testParsePRAcceptsNumberAndLinkForms() {
-        func pr(_ positional: [String]) -> String? { ReviewTarget.parsePR(positional).map { "\($0.slug)#\($0.n)" } }
-        XCTAssertEqual(pr(["acme/api", "12"]), "acme/api#12")
-        XCTAssertEqual(pr(["https://github.com/acme/api/pull/12"]), "acme/api#12")
-        XCTAssertEqual(pr(["https://github.com/acme/api/pull/12/files"]), "acme/api#12")
-        XCTAssertEqual(pr(["https://www.github.com/acme/api/pull/12#discussion_r1"]), "acme/api#12")
-        XCTAssertNil(pr(["acme/api", "012"]))
-        XCTAssertNil(pr(["acme/api", "0"]))
-        XCTAssertNil(pr(["https://gitlab.com/acme/api/pull/12"]))
-        XCTAssertNil(pr(["https://github.com/acme/api/issues/12"]))
-        XCTAssertNil(pr(["acme/api"]))
+    func testParsePRsAcceptsNumbersAndLinks() {
+        func refs(_ tokens: [String], defaultRepo: String? = nil) -> [String]? {
+            ReviewTarget.parsePRs(tokens, defaultRepo: defaultRepo)?.map { "\($0.slug)#\($0.n)" }
+        }
+        XCTAssertEqual(refs(["acme/api", "12"]), ["acme/api#12"])
+        XCTAssertEqual(refs(["acme/api", "12", "15", "#18"]), ["acme/api#12", "acme/api#15", "acme/api#18"])
+        XCTAssertEqual(refs(["acme/api", "1", "acme/web", "2"]), ["acme/api#1", "acme/web#2"])
+        XCTAssertEqual(refs(["https://github.com/acme/api/pull/1", "https://github.com/acme/web/pull/2"]),
+                       ["acme/api#1", "acme/web#2"])
+        XCTAssertEqual(refs(["acme/api", "1", "https://github.com/acme/web/pull/2", "3"]),
+                       ["acme/api#1", "acme/web#2", "acme/api#3"])
+        XCTAssertEqual(refs(["acme/api", "1", "1", "acme/API", "1", "2"]), ["acme/api#1", "acme/API#2"])
+        XCTAssertEqual(refs(["https://github.com/acme/api/pull/12"]), ["acme/api#12"])
+        XCTAssertEqual(refs(["https://github.com/acme/api/pull/12/files"]), ["acme/api#12"])
+        XCTAssertEqual(refs(["https://www.github.com/acme/api/pull/12#discussion_r1"]), ["acme/api#12"])
+        XCTAssertEqual(refs(["12", "15"], defaultRepo: "acme/api"), ["acme/api#12", "acme/api#15"])
+        XCTAssertNil(refs(["12"]))
+        XCTAssertNil(refs(["acme/api"]))
+        XCTAssertNil(refs(["acme/api", "0"]))
+        XCTAssertNil(refs(["acme/api", "012"]))
+        XCTAssertNil(refs(["acme/api", "x"]))
+        XCTAssertNil(refs(["acme/api", "1", "acme/web"]))
+        XCTAssertNil(refs(["https://gitlab.com/acme/api/pull/12"]))
+        XCTAssertNil(refs(["https://github.com/acme/api/issues/12"]))
+        XCTAssertNil(refs([]))
     }
 
     func testParseReadsEachFormAndRefusesTheRest() throws {
@@ -80,7 +94,7 @@ final class ReviewCommandTests: XCTestCase {
         XCTAssertEqual(narrow.repo, "acme/api")
         XCTAssertTrue(narrow.again)
         let number = try XCTUnwrap(ReviewCommand.parse(["acme/api", "3", "--dry-run"]))
-        XCTAssertEqual(number.target, .pr(slug: "acme/api", n: 3))
+        XCTAssertEqual(number.target, .prs([PRRef(slug: "acme/api", n: 3)]))
         XCTAssertTrue(number.dryRun)
         for args in [["--author"], ["--author", "bad login"], ["--author", "ines", "acme/api", "1"],
                      ["acme/api", "1", "--repo", "acme/api"], ["acme/api", "1", "--force"]] {
@@ -91,8 +105,23 @@ final class ReviewCommandTests: XCTestCase {
     func testIncludesIgnoresCaseForSlugsAndLogins() {
         XCTAssertTrue(ReviewTarget.author("Ines").includes(slug: "acme/api", n: 1, author: "ines"))
         XCTAssertFalse(ReviewTarget.author("ines").includes(slug: "acme/api", n: 1, author: nil))
-        XCTAssertTrue(ReviewTarget.pr(slug: "Acme/API", n: 4).includes(slug: "acme/api", n: 4, author: nil))
-        XCTAssertFalse(ReviewTarget.pr(slug: "acme/api", n: 4).includes(slug: "acme/api", n: 5, author: "ines"))
+        XCTAssertTrue(ReviewTarget.prs([PRRef(slug: "Acme/API", n: 4)]).includes(slug: "acme/api", n: 4, author: nil))
+        XCTAssertFalse(ReviewTarget.prs([PRRef(slug: "acme/api", n: 4)]).includes(slug: "acme/api", n: 5, author: "ines"))
+        XCTAssertTrue(ReviewTarget.prs([PRRef(slug: "acme/api", n: 4), PRRef(slug: "acme/web", n: 2)])
+            .includes(slug: "ACME/web", n: 2, author: nil))
+    }
+
+    func testByHandPRsRoundTripThroughTheArguments() throws {
+        let target = ReviewTarget.prs([PRRef(slug: "acme/api", n: 1), PRRef(slug: "acme/api", n: 3),
+                                       PRRef(slug: "acme/web", n: 2)])
+        XCTAssertEqual(target.arguments, ["review", "acme/api", "1", "3", "acme/web", "2"])
+        let parsed = try XCTUnwrap(ReviewCommand.parse(Array(target.arguments.dropFirst())))
+        XCTAssertEqual(parsed.target, target)
+    }
+
+    func testIncludeOwnIsForcedForNamedPRs() {
+        let off = RepoConfig(slug: "acme/api", clone: "/fake")
+        XCTAssertTrue(Runner.includeOwn(off, target: .prs([PRRef(slug: "acme/api", n: 1), PRRef(slug: "acme/web", n: 2)])))
     }
 
     func testHeldRunLockRefusesAReview() throws {

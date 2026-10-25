@@ -221,11 +221,14 @@ Review one PR, or every open PR by one author, now. From a terminal:
 
 ```
 glidepath review owner/name 1219
-glidepath review https://github.com/owner/name/pull/1219
+glidepath review owner/name 1219 1220 1225
+glidepath review https://github.com/owner/name/pull/1219 https://github.com/other/repo/pull/7
 glidepath review --author login [--repo owner/name]
 ```
 
-The Now screen has the same thing: **Review a PR or author…** sits under **Run now**. It asks for a repo and a PR number or link, or lists the authors with open PRs in your repos (with a search box) and reviews all of one author's. The app asks first when the review would post for real.
+Several PRs, from one repo or several, make one review run: one lock, and each PR is reviewed as if named alone.
+
+The Now screen has the same thing: **Review a PR or author…** sits under **Run now**. For a PR, it takes PR numbers in the picked repo and GitHub PR links, separated by commas or spaces (`12, 15`), or lists the authors with open PRs in your repos (with a search box) and reviews all of one author's. The app asks first when the review would post for real.
 
 A by-hand review ignores the `authors` list, `max_changed_lines`, `max_prs_per_run`, and the draft and bot skips. A named PR is reviewed even if it is yours. `--author` still skips your own PRs unless `include_own` is on. Both still skip PRs already reviewed at the current head, and PRs with a held draft at that head. `--again` reviews those two again, as it does for `review owner/name N`. `--dry-run` reviews and posts nothing. `posting` applies as usual.
 
@@ -340,7 +343,7 @@ config directory to `~/.config/gh`).
 | `glidepath run [--dry-run] [--repo owner/name]` | Run now. `--dry-run` reviews and posts nothing. |
 | `glidepath state show [--run ID]` | Print a run as JSON. Defaults to the current run. |
 | `glidepath pr info` / `pr diff` / `pr threads` / `post` | Used by the review session. Run them only inside a run; see [docs/security.md](docs/security.md). |
-| `glidepath review owner/name N \| PR-URL \| --author login [--repo owner/name] [--dry-run] [--again]` | Review one open PR now (a number or a link), or every open PR by one author. By hand, the authors list, size limit, per-run cap and draft and bot skips do not apply. A named PR is reviewed even if it is yours. See [Reviewing by hand](#reviewing-by-hand). Refused while a run is in progress. |
+| `glidepath review owner/name N [N...] \| PR-URL [PR-URL...] \| --author login [--repo owner/name] [--dry-run] [--again]` | Review open PRs now (numbers or links, one or several), or every open PR by one author. By hand, the authors list, size limit, per-run cap and draft and bot skips do not apply. A named PR is reviewed even if it is yours. See [Reviewing by hand](#reviewing-by-hand). Refused while a run is in progress. |
 | `glidepath drafts list` / `post owner/name N` / `discard owner/name N` | List, post or discard held reviews. See [Drafts](#drafts). |
 | `glidepath dashboard` | Write the dashboard page and open it. See [Dashboard](#dashboard). |
 | `glidepath pause` / `resume` | Skip or allow scheduled runs. |
