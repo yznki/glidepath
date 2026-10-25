@@ -66,7 +66,7 @@ enum SettingsCopy {
     static let tendOn = Row(label: "Tend my PRs", caption: "Glidepath fixes failing CI on your open PRs in the repos switched on below.")
     static let tendRepos = Row(label: "Tended repos", caption: "Glidepath tends the PRs in the repos switched on here.")
     static let tendPush = Row(label: "Approved fixes", caption: "Push anyway pushes a tended fix at once. Hold the fix keeps it for you.")
-    static let tendRounds = Row(label: "Rounds per PR a day", caption: "Each PR gets at most this many rounds a day.")
+    static let tendRounds = Row(label: "Rounds per PR a day", caption: "Each PR gets at most this many tending rounds a day.")
     static let tendAutopilot = Row(label: "Autopilot", caption: "Tending merges, replies and resolves without asking. Hard stops still come to you.")
     static let tendAccount = Row(label: "Claude account", caption: "Tending and reviews sign in as this account.")
     static let tendReserve = Row(label: "Usage reserve", caption: "Tending never spends the last share of your 5-hour and weekly windows.")
