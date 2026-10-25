@@ -90,6 +90,7 @@ struct RunDigest: Equatable {
             let number = "#" + (run.target?.split(separator: "#").last.map(String.init) ?? "?")
             switch run.tendAction {
             case "fixed": return "Fixed CI on \(number)"
+            case "answered": return "Answered threads on \(number)"
             case "reran": return "Reran \(run.tendCheck ?? "CI") on \(number)"
             case "held": return "Fix held on \(number)"
             case "stuck": return "Stuck on \(number)"

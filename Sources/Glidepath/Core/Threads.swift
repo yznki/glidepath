@@ -11,6 +11,8 @@ struct Ask: Codable, Equatable {
     var path: String?
     var line: Int?
     var databaseId: Int?
+    /// For a thread: every comment in it, oldest first, for the evidence file.
+    var thread: [ThreadComment] = []
 }
 
 enum Threads {
@@ -39,7 +41,8 @@ enum Threads {
             guard let last = thread.comments.last, !mine(last.author) else { continue }
             let first = thread.comments[0]
             asks.append(Ask(id: thread.id, kind: "thread", author: last.author, isBot: isBot(last.author),
-                            body: last.body, path: first.path, line: first.line, databaseId: last.databaseId))
+                            body: last.body, path: first.path, line: first.line, databaseId: last.databaseId,
+                            thread: thread.comments))
         }
         for review in pr.reviews where review.state == "CHANGES_REQUESTED" && !review.body.isEmpty
             && !mine(review.author) && !answered.contains(review.id) {

@@ -63,7 +63,8 @@ final class TendCommentsTests: XCTestCase {
         let open = pr(threads: [thread("t1", [comment("c1", "alice", "rename this")])])
         let asks = Threads.actionable(open, me: "dev", answered: [])
         XCTAssertEqual(asks, [Ask(id: "t1", kind: "thread", author: "alice", isBot: false, body: "rename this",
-                                  path: "Sources/a.swift", line: 12, databaseId: nil)])
+                                  path: "Sources/a.swift", line: 12, databaseId: nil,
+                                  thread: [comment("c1", "alice", "rename this")])])
 
         // The last word is ours: waiting on the reviewer.
         let ours = pr(threads: [thread("t2", [comment("c2", "alice", "why?"), comment("c3", "dev", "because")])])
