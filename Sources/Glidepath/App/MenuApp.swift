@@ -66,6 +66,7 @@ enum Snapshotter {
             ("too-large", Fixtures.tooLarge(now)),
             ("update", Fixtures.update(now)),
             ("updating", Fixtures.updating(now)),
+            ("tend", WindowFixtures.popoverTend(now)),
         ]
         for (name, var snap) in states {
             snap.repoCount = 2
@@ -112,13 +113,17 @@ enum Snapshotter {
         // Every window render reads the fixture clock, not the real one, so the renders match their mockups on any day.
         let now = WindowFixtures.clock
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let sections: [(String, WindowSection)] = [
-            ("now", .now), ("running", .now), ("now-clear", .now), ("now-dry-run", .now), ("reviews", .reviews),
-            ("repos", .repos), ("schedule", .schedule), ("settings", .settings),
+        // The plane whose Approach drawer is open, and the Settings search, for the shots that show them.
+        let sections: [(name: String, section: WindowSection, opened: String?)] = [
+            ("now", .now, nil), ("running", .now, nil), ("now-clear", .now, nil), ("now-dry-run", .now, nil),
+            ("approach", .approach, nil), ("approach-drawer", .approach, "lumen/api#1246"),
+            ("reviews", .reviews, nil), ("repos", .repos, nil), ("schedule", .schedule, nil), ("settings", .settings, nil),
         ]
-        for (name, section) in sections {
-            let store = Store(snapshot: WindowFixtures.section(name, now: now))
-            let screen = WindowScreen(store: store, router: WindowRouter(section: section, showOnboarding: false))
+        for entry in sections {
+            let store = Store(snapshot: WindowFixtures.section(entry.name, now: now))
+            let screen = WindowScreen(store: store, router: WindowRouter(section: entry.section, showOnboarding: false),
+                                      approachOpen: entry.opened)
+            let name = entry.name
             for dark in [true, false] {
                 writeWindow(screen, dark: dark, to: dir.appendingPathComponent("\(name)-\(dark ? "dark" : "light").png"))
             }

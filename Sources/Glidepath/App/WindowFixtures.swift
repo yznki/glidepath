@@ -166,6 +166,11 @@ enum WindowFixtures {
         api.flagNote = "Needs a devops code-owner approval."
         var web = RepoConfig(slug: "lumen/web", clone: "/Users/you/code/lumen/web")
         web.posting = .draft
+        // Tending is on for lumen/api only; the Tending block shows the switch, the repo, and the other settings.
+        api.tend = true
+        config.tend.enabled = true
+        config.tend.autopilot = true
+        config.tend.roundsPerDay = 5
         config.repos = [api, web]
         return config
     }
@@ -209,6 +214,9 @@ enum WindowFixtures {
             snap.run = nil
             snap.dryRunning = true
             snap.dryRun = firstSweepRun(now, landed: false)
+        }
+        if name == "approach" || name == "approach-drawer" {
+            addTend(&snap, now: now)
         }
         return snap
     }
@@ -346,6 +354,123 @@ enum WindowFixtures {
             notes: ["The draft was discarded by hand before posting; nothing reached GitHub."],
             diffParts: 2)
         return (row, artifacts)
+    }
+
+    // MARK: Tending
+
+    /// Adds tend's state to a fixture snapshot: the approach chart, the tower, today's rounds and a playbook. The planes
+    /// are one morning in lumen/api: a stack of three landing in order, a fix in flight, a held fix, a stuck PR, a PR
+    /// waiting on Gadi, and a draft.
+    static func addTend(_ snap: inout Snapshot, now: Date) {
+        snap.tendOn = true
+        snap.approach = approachSnapshot(now)
+        snap.tower = towerLines(now)
+        snap.tendRounds = tendRounds(now)
+        snap.playbooks = ["lumen/api": playbook(now)]
+    }
+
+    static func approachSnapshot(_ now: Date) -> ApproachSnapshot {
+        let slug = "lumen/api"
+        func plane(_ n: Int, _ title: String, phase: ApproachPhase, marker: Int, lane: Int, stack: Int? = nil,
+                   label: String, waitingOn: String? = nil, ci: String, off: Bool = false,
+                   gates: [Gate]) -> ApproachPlane {
+            ApproachPlane(slug: slug, n: n, title: title, url: "https://github.com/\(slug)/pull/\(n)", phase: phase,
+                          marker: marker, label: label, waitingOn: waitingOn, lane: lane, stackIndex: stack, off: off,
+                          gates: gates, ci: ci)
+        }
+        func gate(_ name: String, _ state: GateState, _ detail: String, who: String? = nil) -> Gate {
+            Gate(name: name, state: state, detail: detail, who: who)
+        }
+        let passed = [gate("CI", .ok, "Passed"), gate("Threads", .ok, "All resolved"),
+                      gate("Approval", .ok, "Approved"), gate("Ready", .ok, "Clean")]
+        let planes = [
+            plane(1301, "Notification schema: migration and backfill", phase: .cleared, marker: 3, lane: 0, stack: 1,
+                  label: "Ready to land", ci: "passed", gates: passed),
+            plane(1302, "Notification engine on the new schema", phase: .waiting, marker: 2, lane: 0, stack: 2,
+                  label: "Waiting on Basem", waitingOn: "Basem", ci: "passed",
+                  gates: [gate("CI", .ok, "Passed"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .wait, "Needs approval", who: "Basem"), gate("Ready", .wait, "behind")]),
+            plane(1303, "Notification digest emails", phase: .waiting, marker: 1, lane: 0, stack: 3,
+                  label: "Waiting on Gadi", waitingOn: "Gadi", ci: "passed",
+                  gates: [gate("CI", .ok, "Passed"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .wait, "Needs approval", who: "Gadi"), gate("Ready", .wait, "behind")]),
+            plane(1253, "feat(ops): picture card views for pilots, clients and sites", phase: .flying, marker: 0, lane: 2,
+                  label: "Glidepath fixing Unit Tests · try 1 of 2", ci: "failed",
+                  gates: [gate("CI", .work, "Unit Tests", who: "Glidepath"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .wait, "Needs approval", who: "Basem"), gate("Ready", .wait, "unstable")]),
+            plane(1360, "fix(api): retries return the stored response", phase: .holding, marker: 1, lane: 1,
+                  label: "Fix held · approved, pushing cancels it", ci: "passed",
+                  gates: [gate("CI", .ok, "Passed"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .ok, "Approved"), gate("Ready", .wait, "behind")]),
+            plane(1246, "fix(api): repeated create and retry requests return the first result", phase: .holding,
+                  marker: 2, lane: 3, label: "Stuck · Unit Tests failed twice on this head", ci: "failed",
+                  gates: [gate("CI", .work, "Unit Tests"), gate("Threads", .work, "1 open", who: "Gadi"),
+                          gate("Approval", .work, "Changes requested", who: "Gadi"), gate("Ready", .wait, "dirty")]),
+            plane(1318, "Card views: pilot certifications list", phase: .waiting, marker: 1, lane: 4,
+                  label: "Waiting on Gadi · code owner · 26 h", waitingOn: "Gadi", ci: "passed",
+                  gates: [gate("CI", .ok, "Passed"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .wait, "Code owner · 26 h", who: "Gadi"), gate("Ready", .wait, "blocked")]),
+            plane(1330, "Certifications: draft for self-review", phase: .taxiing, marker: 0, lane: 0,
+                  label: "Draft", ci: "pending",
+                  gates: [gate("CI", .wait, "Running"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .wait, "Needs approval"), gate("Ready", .none, "Draft")]),
+        ]
+        let needs = [
+            NeedsItem(id: "\(slug)#1360/held", slug: slug, n: 1360, title: "fix(api): retries return the stored response",
+                      kind: "held", detail: "Fix held · approved, pushing cancels the approval"),
+            NeedsItem(id: "\(slug)#1246/stuck", slug: slug, n: 1246,
+                      title: "fix(api): repeated create and retry requests return the first result", kind: "stuck",
+                      detail: "Stuck · 2 tries on this head used"),
+        ]
+        return ApproachSnapshot(updated: now, planes: planes, needs: needs, queued: 2, status: nil,
+                                working: "Fixing Unit Tests on #1253", nextLook: now.addingTimeInterval(180))
+    }
+
+    static func towerLines(_ now: Date) -> [TowerLine] {
+        [
+            TowerLine(at: at(14, 32, now), slug: "lumen/api", n: 1253, text: "#1253 reproducing Unit Tests · npm test -w lumen",
+                      detail: nil, amber: false),
+            TowerLine(at: at(14, 20, now), slug: "lumen/api", n: 1246,
+                      text: "#1246 replied to 2 threads, resolved 2 · 1 needs you",
+                      detail: "Fixed in a91c03e: return the stored response on retry\n-  return create(req)\n+  return existing ?? create(req)",
+                      amber: true),
+            TowerLine(at: at(13, 55, now), slug: "lumen/api", n: 1318, text: "#1318 reran Browser E2E · runner lost · green",
+                      detail: nil, amber: false),
+            TowerLine(at: at(13, 10, now), slug: "lumen/api", n: 1330, text: "#1330 self-review fixed 2 findings before review",
+                      detail: nil, amber: false),
+            TowerLine(at: at(11, 2, now), slug: "lumen/api", n: 1301, text: "#1301 merged main in · 1 conflict in schema.prisma resolved",
+                      detail: nil, amber: false),
+            TowerLine(at: at(9, 40, now), slug: "lumen/api", n: 1301, text: "#1301 approved by Basem", detail: nil, amber: false),
+        ]
+    }
+
+    /// Two rounds today: a CI fix on #1253 and a thread round on #1246.
+    static func tendRounds(_ now: Date) -> [RunState] {
+        [
+            run("fixture-tend-1246", at(14, 20, now), minutes: 4,
+                prs: [row("lumen/api", 1246, "omar", "fix(api): repeated create and retry requests", verdict: nil,
+                          reason: "Agreed with 2 of 3 comments. Fixed both in one commit, replied, resolved.")],
+                tokens: 38_000, kind: "tend", target: "pr:lumen/api#1246"),
+            run("fixture-tend-1253", at(11, 40, now), minutes: 3,
+                prs: [row("lumen/api", 1253, "ines", "feat(ops): picture card views", verdict: nil,
+                          reason: "Unit Tests failed on a stale snapshot. Updated it to the new contract; no assertion removed.")],
+                tokens: 22_000, kind: "tend", target: "pr:lumen/api#1253"),
+        ]
+    }
+
+    static func playbook(_ now: Date) -> Playbook {
+        Playbook(commands: [Playbook.Command(command: "npm test -w lumen -- --run", verified: 9, date: now)],
+                 lessons: [Playbook.Lesson(text: "Gadi prefers DB constraints over app guards; cite them in replies",
+                                           source: "from your edit", date: now.addingTimeInterval(-3 * 86_400)),
+                           Playbook.Lesson(text: "Never touch prisma/migrations/*; add a new migration",
+                                           source: "you taught", date: now.addingTimeInterval(-7 * 86_400))])
+    }
+
+    /// The popover with tending on: the 1:00 PM sweep's cards and the approach strip.
+    static func popoverTend(_ now: Date) -> Snapshot {
+        var snap = Fixtures.idleChanges(now)
+        addTend(&snap, now: now)
+        return snap
     }
 
     /// The onboarding model for one step. `repos` and the tool rows are what the step's checks would have found.

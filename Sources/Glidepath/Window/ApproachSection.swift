@@ -152,7 +152,7 @@ struct ApproachSectionView: View {
             needs
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             tower
-                .frame(width: 380, alignment: .topLeading)
+                .frame(width: 340, alignment: .topLeading)
         }
     }
 
@@ -282,6 +282,16 @@ struct TendNeedRow: View {
     private var signal: Color { Gotham.signal(signalKey) }
     private var held: Bool { item.kind == "held" }
 
+    /// The detail split at its first " · ": the state, and the rest.
+    private var lead: String {
+        item.detail.components(separatedBy: " · ").first ?? item.detail
+    }
+
+    private var rest: String {
+        let parts = item.detail.components(separatedBy: " · ")
+        return parts.count > 1 ? " · " + parts.dropFirst().joined(separator: " · ") : ""
+    }
+
     var body: some View {
         HStack(spacing: 12) {
             Text("!")
@@ -295,16 +305,18 @@ struct TendNeedRow: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Gotham.fg)
                     .lineLimit(1)
-                (Text(held ? "Fix held" : "Stuck")
+                // The detail leads with its state ("Fix held", "Stuck"), which takes the signal colour.
+                (Text(lead)
                     .foregroundStyle(signal)
                     .fontWeight(.semibold)
-                 + Text(verbatim: " · \(item.detail) · \(item.slug) #\(item.n)")
+                 + Text(verbatim: rest + " · \(item.slug) #\(item.n)")
                     .foregroundStyle(Gotham.mute))
                     .font(.system(size: 12))
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
             actions
+                .fixedSize()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
@@ -378,7 +390,7 @@ struct ApproachDrawer: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Gotham.fg)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("\(plane.slug) #\(plane.n) · \(plane.label)")
+                Text(verbatim: "\(plane.slug) #\(String(plane.n)) · \(plane.label)")
                     .font(.system(size: 12))
                     .foregroundStyle(Gotham.mute)
                     .fixedSize(horizontal: false, vertical: true)
