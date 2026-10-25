@@ -83,6 +83,8 @@ final class SettingsModel: ObservableObject {
     /// Switches between the user's own Claude sign-in and a separate account. A separate account gets its folder, and
     /// Terminal opens to sign it in.
     func chooseAccount(separate: Bool, store: Store) {
+        // The choice already in effect: nothing to write, and no Terminal.
+        guard (store.snap.config?.claudeConfigDir != nil) != separate else { return }
         let paths = store.paths
         let dir = ClaudeAccount.dir(paths)
         commit("account", store: store, onSaved: { [weak self] in

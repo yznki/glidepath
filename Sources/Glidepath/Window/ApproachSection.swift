@@ -384,6 +384,12 @@ struct TendNeedRow: View {
                     .foregroundStyle(Gotham.mute))
                     .font(.system(size: 12))
                     .lineLimit(1)
+                if let error = store.tendErrors[item.id] {
+                    Text(error)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(signal)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 8)
             actions
@@ -398,16 +404,17 @@ struct TendNeedRow: View {
     private var actions: some View {
         if held {
             HStack(spacing: 8) {
-                Button("Discard") { store.tendCommand(["discard", item.slug, "\(item.n)"]) }
+                Button("Discard") { store.tendCommand(["discard", item.slug, "\(item.n)"], item: item.id) }
                     .buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Gotham.mute)
                     .padding(.horizontal, 10)
                     .frame(height: 28)
                 HoldButton(title: "Hold to push", doneTitle: "Pushing…", tint: signal, compact: true) {
-                    store.tendCommand(["push", item.slug, "\(item.n)"])
+                    store.tendCommand(["push", item.slug, "\(item.n)"], item: item.id)
                 }
-                .id(item.id)
+                // A failed push gives the button a new identity, so the hold starts again.
+                .id("\(item.id)#\(store.tendFailures[item.id] ?? 0)")
             }
         } else {
             HStack(spacing: 8) {
@@ -415,7 +422,7 @@ struct TendNeedRow: View {
                     if let link = URL(string: url) { NSWorkspace.shared.open(link) }
                 }
                 SettingButton(title: "Try again", prominent: true) {
-                    store.tendCommand(["retry", item.slug, "\(item.n)"])
+                    store.tendCommand(["retry", item.slug, "\(item.n)"], item: item.id)
                 }
             }
         }
@@ -633,7 +640,7 @@ struct ApproachDrawer: View {
     private var tendToggle: some View {
         HStack(alignment: .center, spacing: 10) {
             SettingSwitch(isOn: !plane.off, label: "Glidepath tends this PR") {
-                model.setTending(!plane.off, plane: plane, store: store)
+                model.setTending(plane.off, plane: plane, store: store)
             }
             Text("Glidepath tends this PR · or add the ")
                 .font(.system(size: 12))
@@ -723,6 +730,7 @@ final class ApproachModel: ObservableObject {
                 var state = tend.load(slug, n) ?? TendPR(slug: slug, n: n)
                 state.off = !on
                 try? tend.save(state)
+                tend.patchPlaneOff(slug, n, state.off)
             }.value
             store.reload()
         }

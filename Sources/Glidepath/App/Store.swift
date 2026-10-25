@@ -166,6 +166,10 @@ final class Store: ObservableObject {
     /// Draft posts and discards running from this app, and the last error of each.
     @Published private(set) var draftBusy: [String: DraftAction] = [:]
     @Published private(set) var draftErrors: [String: String] = [:]
+    /// Tend commands run from the Needs rows, by item id: how many have failed, and the last one's error line. A failed
+    /// count gives the row's hold button a new identity, so it starts again.
+    @Published private(set) var tendFailures: [String: Int] = [:]
+    @Published private(set) var tendErrors: [String: String] = [:]
     /// Tokens so far in the live sweep's session, read from its transcript every 2 s while the sweep runs. Zero otherwise.
     @Published private(set) var liveTokens: (total: Int, byPR: [Int: Int]) = (0, [:])
     private var liveTokenTask: Task<Void, Never>?
@@ -358,7 +362,7 @@ final class Store: ObservableObject {
         s.tower = tend.tower(limit: 30)
         if s.tendOn {
             let today = Date()
-            s.tendRounds = RunStore(paths: paths).loadAll()
+            s.tendRounds = RunStore(paths: paths).loadAll(prefix: Runner.dayPrefix(today))
                 .filter { $0.kind == "tend" && Calendar.current.isDate($0.started, inSameDayAs: today) }
                 .sorted { $0.started > $1.started }
         }
@@ -670,7 +674,8 @@ final class Store: ObservableObject {
 
     /// Runs `glidepath tend <args>` (push, discard, retry) with the job's environment, off the main thread. A failure
     /// shows its last output line; either way the state is read again after.
-    func tendCommand(_ args: [String]) {
+    /// Runs `glidepath tend <args>`. `item` is the Needs row it came from, whose failure count and error it updates.
+    func tendCommand(_ args: [String], item: String? = nil) {
         guard let binary = Bundle.main.executablePath else {
             actionError = "cannot find the glidepath binary"
             return
@@ -680,10 +685,16 @@ final class Store: ObservableObject {
             let result = await Task.detached { Shell.run(binary, ["tend"] + args, env: env) }.value
             if result.ok {
                 actionError = nil
+                if let item { tendErrors[item] = nil }
             } else {
                 let text = result.stderr.isEmpty ? result.stdout : result.stderr
                 let last = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init)
                 actionError = "tend \(args.first ?? ""): \(last ?? "failed")"
+                if let item {
+                    tendFailures[item, default: 0] += 1
+                    let first = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").first
+                    tendErrors[item] = first.map(String.init) ?? last ?? "failed"
+                }
             }
             reload()
         }
