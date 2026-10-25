@@ -140,6 +140,61 @@ final class TendCommentsTests: XCTestCase {
 
     // MARK: Fingerprint and decision
 
+    func testReplyGuardRefusesEveryLinkBypass() {
+        let slug = "acme/api"
+        for text in ["See www.evil.com", "See HTTPS://evil.com", "Get ftp://x", "[x](//evil.com)",
+                     "![x](//evil.com/p.png)", "<a href=x>", "<img src=x>", "Use //evil.com/a"] {
+            XCTAssertNotNil(ReplyGuard.check(text, author: "alice", slug: slug, n: 7), text)
+        }
+        // A code comment is not a link, and a commit link of this PR is allowed in any case.
+        XCTAssertNil(ReplyGuard.check("// a code comment", author: "alice", slug: slug, n: 7))
+        XCTAssertNil(ReplyGuard.check("Fixed in https://github.com/acme/api/commit/abc1234.", author: "alice", slug: slug, n: 7))
+        XCTAssertNil(ReplyGuard.check("Fixed in HTTPS://GITHUB.COM/acme/api/commit/abc1234", author: "alice", slug: slug, n: 7))
+        XCTAssertNotNil(ReplyGuard.check("Fixed in https://github.com/acme/api/commit/abc1234x.evil.com",
+                                         author: "alice", slug: slug, n: 7))
+        // The bot's author is compared without its [bot] suffix.
+        XCTAssertNil(ReplyGuard.check("Thanks @copilot", author: "copilot[bot]", slug: slug, n: 7))
+    }
+
+    func testHandledThreadWaitsForANewerComment() {
+        let open = pr(threads: [thread("t1", [comment("c1", "alice", "rename this")])])
+        XCTAssertEqual(Threads.actionable(open, me: "dev", answered: [], handled: ["t1": "c1"]), [])
+        let newer = pr(threads: [thread("t1", [comment("c1", "alice", "rename this"), comment("c2", "alice", "and this")])])
+        XCTAssertEqual(Threads.actionable(newer, me: "dev", answered: [], handled: ["t1": "c1"]).map(\.id), ["t1"])
+        // A review or comment marked handled with "" stays out.
+        let review = pr(reviews: [ReviewInfo(id: "r1", author: "bob", state: "CHANGES_REQUESTED", body: "Split.")])
+        XCTAssertEqual(Threads.actionable(review, me: "dev", answered: [], handled: ["r1": ""]), [])
+        let chat = pr(comments: [plain("p1", "carol", "Add a test?")])
+        XCTAssertEqual(Threads.actionable(chat, me: "dev", answered: [], handled: ["p1": ""]), [])
+    }
+
+    func testOnlyTheLatestReviewOfAnAuthorIsAsked() {
+        let old = ReviewInfo(id: "r1", author: "bob", state: "CHANGES_REQUESTED", body: "Split.")
+        let settled = pr(reviews: [old, ReviewInfo(id: "r2", author: "bob", state: "COMMENTED", body: "Thanks.")])
+        XCTAssertEqual(Threads.actionable(settled, me: "dev", answered: []), [])
+        let again = pr(reviews: [old, ReviewInfo(id: "r3", author: "bob", state: "CHANGES_REQUESTED", body: "Still.")])
+        XCTAssertEqual(Threads.actionable(again, me: "dev", answered: []).map(\.id), ["r3"])
+    }
+
+    func testNoiseThreadIsNotAsked() {
+        let praise = pr(threads: [thread("t5", [comment("c5", "alice", "👍")])])
+        XCTAssertEqual(Threads.actionable(praise, me: "dev", answered: []), [])
+    }
+
+    func testFirstSightSeedsReviewsAndCommentsNotThreads() {
+        let review = ReviewInfo(id: "r1", author: "bob", state: "CHANGES_REQUESTED", body: "Split.")
+        let open = pr(threads: [thread("t1", [comment("c1", "alice", "rename")])], reviews: [review],
+                      comments: [plain("p1", "carol", "Test?")])
+        var s = TendPR(slug: "acme/api", n: 7)
+        s.seed(open)
+        XCTAssertEqual(s.answered, ["r1", "p1"])
+        XCTAssertTrue(s.seeded)
+        XCTAssertEqual(Threads.actionable(open, me: "dev", answered: Set(s.answered)).map(\.id), ["t1"])
+        // Once seeded, a later review is news.
+        s.seed(pr(reviews: [review, ReviewInfo(id: "r9", author: "bob", state: "CHANGES_REQUESTED", body: "New.")]))
+        XCTAssertEqual(s.answered, ["r1", "p1"])
+    }
+
     func testFullFingerprintTracksNewActivityNotOrder() {
         let t1 = thread("t1", [comment("c1", "alice", "a")])
         let t2 = thread("t2", [comment("c2", "bob", "b")])

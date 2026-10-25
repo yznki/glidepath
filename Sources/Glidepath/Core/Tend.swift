@@ -11,12 +11,28 @@ struct TendHeld: Codable, Equatable {
     var replies: [PendingReply] = []
 }
 
-/// A reply tend has drafted or agreed to post. `askId` is the ask it answers; `resolve` closes its thread after.
+/// A reply tend has drafted or agreed to post. `askId` is the ask it answers; `resolve` closes its thread after. A
+/// `fixed` reply is the agreed text without its "Fixed in" line: that line is built with the pushed head when it posts.
 struct PendingReply: Codable, Equatable {
     var askId: String
     var kind: String
     var body: String
     var resolve: Bool
+    var fixed = false
+    /// The ask itself: its reviewer to ask again, and the call it becomes when the reply cannot post.
+    var ask: Ask? = nil
+}
+
+extension PendingReply {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        askId = try c.decode(String.self, forKey: .askId)
+        kind = try c.decode(String.self, forKey: .kind)
+        body = try c.decode(String.self, forKey: .body)
+        resolve = try c.decode(Bool.self, forKey: .resolve)
+        fixed = try c.decodeIfPresent(Bool.self, forKey: .fixed) ?? false
+        ask = try c.decodeIfPresent(Ask.self, forKey: .ask)
+    }
 }
 
 extension TendHeld {
@@ -68,6 +84,11 @@ struct TendPR: Codable, Equatable {
     var calls: [YourCall] = []
     /// Reviewers asked to review again in the last round.
     var rereq: [String] = []
+    /// Asks tend has handled, by ask id: a thread's last comment id, or "" for a review or comment. A newer comment on a
+    /// thread makes it actionable again.
+    var handled: [String: String] = [:]
+    /// Set once the PR's reviews and plain comments so far were marked answered: tend works on what comes after.
+    var seeded = false
 
     init(slug: String, n: Int) {
         self.slug = slug
@@ -93,11 +114,38 @@ struct TendPR: Codable, Equatable {
         resolvedByUs = try c.decodeIfPresent([String].self, forKey: .resolvedByUs) ?? []
         calls = try c.decodeIfPresent([YourCall].self, forKey: .calls) ?? []
         rereq = try c.decodeIfPresent([String].self, forKey: .rereq) ?? []
+        handled = try c.decodeIfPresent([String: String].self, forKey: .handled) ?? [:]
+        seeded = try c.decodeIfPresent(Bool.self, forKey: .seeded) ?? false
     }
 
     private enum CodingKeys: String, CodingKey {
         case slug, n, fingerprint, roundsToday, roundsDate, triesByHead, rerunsByHead, held, stuck, off
-        case pendingRan, pendingRanHead, lastRound, answered, resolvedByUs, calls, rereq
+        case pendingRan, pendingRanHead, lastRound, answered, resolvedByUs, calls, rereq, handled, seeded
+    }
+
+    /// Marks the PR's reviews and plain comments so far as answered, the first time a check sees the PR. Threads are not
+    /// marked: an open thread is real work.
+    mutating func seed(_ pr: OpenPR) {
+        guard !seeded else { return }
+        let known = Set(answered)
+        answered += (pr.reviews.map(\.id) + pr.comments.map(\.id)).filter { !known.contains($0) }
+        seeded = true
+    }
+
+    /// The round's state merged with the state on disk, which the user or `act` may have changed while the round ran.
+    /// A call the user removed during the round stays removed. Answered ids and resolved threads union, `handled` keeps
+    /// the disk's value for each key, `off` comes from disk, and a held fix comes from disk unless the round set one.
+    func merged(disk d: TendPR, startCalls: Set<String>) -> TendPR {
+        var out = self
+        let removed = startCalls.subtracting(d.calls.map(\.id))
+        let answeredNow = Set(d.answered)
+        out.calls = calls.filter { !removed.contains($0.id) && !answeredNow.contains($0.id) }
+        out.answered += d.answered.filter { !answered.contains($0) }
+        out.resolvedByUs += d.resolvedByUs.filter { !resolvedByUs.contains($0) }
+        out.handled.merge(d.handled) { _, disk in disk }
+        out.off = d.off
+        if out.held == nil { out.held = d.held }
+        return out
     }
 }
 
@@ -130,6 +178,9 @@ struct TendStore {
     }
 
     func file(_ slug: String, _ n: Int) -> String { dir + "/" + stem(slug, n) + ".json" }
+
+    /// The lock a PR's state is read and changed under, so two writers never interleave.
+    func lockPath(_ slug: String, _ n: Int) -> String { dir + "/" + stem(slug, n) + ".lock" }
 
     /// The worktree a PR's fixes are made in.
     func wtDir(_ slug: String, _ n: Int) -> String { dir + "/wt/" + stem(slug, n) }
@@ -251,7 +302,7 @@ enum TendDecision: Equatable {
         if !Approach.tendable(pr, state) { return .skip("hands off") }
         if state.held != nil { return .idle }
         guard pr.ciStatus != .pending else { return .idle }
-        let asks = Threads.actionable(pr, me: me, answered: Set(state.answered))
+        let asks = Threads.actionable(pr, me: me, answered: Set(state.answered), handled: state.handled)
         guard pr.ciStatus == .failed || !asks.isEmpty else { return .idle }
         guard state.fingerprint != Fingerprint.full(pr, me: me) else { return .idle }
         return .round(pr.approved && pr.ciStatus == .failed ? .urgent : .normal)

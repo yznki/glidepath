@@ -272,6 +272,8 @@ final class Tender {
                 // Read again: the app or `act` may have changed this PR's state since pass one.
                 var s = freshState(repo.slug, pr, now)
                 let before = s
+                // Before the first decision, so what was already there is not a new ask.
+                s.seed(pr)
                 verifyPlaybook(repo, pr, &s, now)
                 checkPushback(repo, pr, &s)
                 do {
@@ -343,7 +345,9 @@ final class Tender {
         let scratch = paths.scratchDir + "/tend-" + id + "/" + repo.owner + "-" + repo.name + "-\(pr.n)"
         try FileManager.default.createDirectory(atPath: scratch, withIntermediateDirectories: true)
         try evidence(repo, pr, wt: wt).write(toFile: scratch + "/evidence.md", atomically: true, encoding: .utf8)
-        let asks = Threads.actionable(pr, me: me, answered: Set(s.answered))
+        // The calls the round starts with: one the user removes during the round is not put back when it ends.
+        let startCalls = Set(s.calls.map(\.id))
+        let asks = Threads.actionable(pr, me: me, answered: Set(s.answered), handled: s.handled)
         if !asks.isEmpty {
             try Tender.threadsMarkdown(asks: asks, readFile: { Tender.worktreeLines(wt, $0) })
                 .write(toFile: scratch + "/threads.md", atomically: true, encoding: .utf8)
@@ -392,17 +396,14 @@ final class Tender {
                                       held: outcome.held, s: &s, wt: wt, now: now)
             verdicts = thread.verdicts
             if thread.replied > 0 || thread.resolved > 0 || !s.calls.isEmpty {
-                let need = s.calls.isEmpty ? "" : " · \(s.calls.count) need you"
-                tower(repo.slug, pr.n, "replied to \(thread.replied) threads, resolved \(thread.resolved)\(need)",
+                let need = s.calls.isEmpty ? "" : " · " + Tender.needsYou(s.calls.count)
+                let replied = Tender.plural(thread.replied, "thread", "threads")
+                tower(repo.slug, pr.n, "replied to \(replied), resolved \(thread.resolved)\(need)",
                       amber: !s.calls.isEmpty, now: now)
             }
             // Reviewers whose change request an agreed reply answered are asked to look again, once each.
-            let logins = Tender.rerequestLogins(pr: pr, posted: thread.agreedPosted, asks: asks)
-            for login in logins {
-                _ = Shell.run("gh", ["api", "-X", "POST", "repos/\(repo.slug)/pulls/\(pr.n)/requested_reviewers",
-                                     "-f", "reviewers[]=\(login)"], env: env, timeout: 120)
-            }
-            s.rereq = logins
+            s.rereq = rerequest(repo.slug, pr.n, reviews: pr.reviews,
+                                reviewers: asks.filter { thread.agreedPosted.contains($0.id) }.compactMap(\.reviewer))
         }
 
         // A round with threads and no failing check is an answer, not a CI fix.
@@ -410,9 +411,11 @@ final class Tender {
         if action == "fixed", pr.failedChecks.isEmpty, !asks.isEmpty { action = "answered" }
         // After a rerun the checks are running again, so no fingerprint: a red result after it gets its own round.
         s.fingerprint = action == "reran" ? nil : Fingerprint.full(pr, me: me)
-        // The app or `act` may have switched the PR off during the session. Keep that.
-        s.off = store.load(repo.slug, pr.n)?.off ?? s.off
-        try store.save(s)
+        // The app or `act` may have changed the PR during the session. What is on disk is merged in under the PR's lock.
+        try withPRLock(repo.slug, pr.n) {
+            s = s.merged(disk: store.load(repo.slug, pr.n) ?? s, startCalls: startCalls)
+            try store.save(s)
+        }
         let total = tokens + sittingTokens
         var run = RunState.new(id: id, now: now, kind: "tend", target: "pr:\(key)")
         run.repos = [RepoState(slug: repo.slug, prs: [PRState(n: pr.n, author: pr.author, title: pr.title, stage: .post,
@@ -512,7 +515,8 @@ final class Tender {
         s.pendingRanHead = head
         let what = pr.failedChecks.isEmpty ? "threads" : check
         tower(repo.slug, pr.n, "fixed \(what) · pushed \(head.prefix(7))", amber: false, detail: commitDetail(wt), now: now)
-        return RoundOutcome(action: "fixed", summary: result.summary, commit: sha)
+        // The pushed head is the one the "Fixed in" replies name; a rebase may have made it differ from the commit.
+        return RoundOutcome(action: "fixed", summary: result.summary, commit: head)
     }
 
     /// Brings the worktree to the PR's head. False when the branch has moved since the PR was listed; the next check
@@ -628,11 +632,18 @@ final class Tender {
                               held: Bool, s: inout TendPR, wt: String, now: Date) -> ThreadRound {
         var out = ThreadRound()
         for ask in asks {
+            // Read again for each ask: the user may have answered it while the session ran.
+            if let disk = store.load(repo.slug, pr.n),
+               disk.answered.contains(ask.id) || disk.handled[ask.id] == ask.handledMark {
+                continue
+            }
             let r = results.first { $0.id == ask.id }
-            let text = (r?.reply ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            var text = (r?.reply ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             var verdict = r?.verdict ?? "unclear"
             if verdict == "agree" && (sha == nil || r?.fixed != true || text.isEmpty) { verdict = "unclear" }
             if verdict == "disagree" && text.isEmpty { verdict = "unclear" }
+            // An unclear ask has no reply: its text is dropped, so there is no draft and the council is not given one.
+            if verdict == "unclear" { text = "" }
             let body = verdict == "agree" ? Tender.agreedBody(sha: sha ?? "", reply: text) : text
             let resolve = ask.kind == "thread" && verdict != "unclear"
 
@@ -656,7 +667,9 @@ final class Tender {
             var queued = false
             if approved, ReplyGuard.check(body, author: ask.author, slug: repo.slug, n: pr.n) == nil {
                 if held && verdict == "agree" {
-                    s.held?.replies.append(PendingReply(askId: ask.id, kind: ask.kind, body: body, resolve: resolve))
+                    // The raw reply waits; its "Fixed in" line gets the head that is pushed.
+                    s.held?.replies.append(PendingReply(askId: ask.id, kind: ask.kind, body: text, resolve: resolve,
+                                                        fixed: true, ask: ask))
                     queued = true
                 } else {
                     let sent = send(kind: ask.kind, id: ask.id, body: body, resolve: resolve, slug: repo.slug, n: pr.n)
@@ -697,11 +710,13 @@ final class Tender {
         }
     }
 
-    /// Adds a Your call item for an ask, once per ask id.
+    /// Adds a Your call item for an ask, once per ask id. The ask is marked handled as it stood, so the call does not
+    /// bring the thread back; a newer comment on it does.
     private func addCall(_ s: inout TendPR, _ ask: Ask, draft: String?, now: Date) {
         s.calls.removeAll { $0.id == ask.id }
         s.calls.append(YourCall(id: ask.id, kind: ask.kind, author: ask.author, quote: String(ask.body.prefix(160)),
                                 draft: draft, at: now))
+        s.handled[ask.id] = ask.handledMark
     }
 
     /// The council's evidence for one ask: the thread or comment with its code, then the proposed action.
@@ -709,34 +724,65 @@ final class Tender {
         Tender.threadsMarkdown(asks: [ask], readFile: { Tender.worktreeLines(wt, $0) }) + "\nProposed: \(proposed)\n"
     }
 
-    /// Posts the agreed replies a held fix waited on, now that its commit is pushed. A reply GitHub refuses stays on the
-    /// tower for the user.
-    private func postPending(_ replies: [PendingReply], _ repo: RepoConfig, _ n: Int, _ s: inout TendPR, now: Date) {
+    /// Posts the agreed replies a held fix waited on, now that its commit is pushed at `head`. A fixed reply gets its
+    /// "Fixed in" line with that head. A reply that does not post, or that the guard refuses now, becomes a call with its
+    /// draft. Returns the replies that posted.
+    private func postPending(_ replies: [PendingReply], head: String, _ repo: RepoConfig, _ n: Int, _ s: inout TendPR,
+                             now: Date) -> [PendingReply] {
+        var posted: [PendingReply] = []
         for reply in replies {
-            let sent = send(kind: reply.kind, id: reply.askId, body: reply.body, resolve: reply.resolve,
-                            slug: repo.slug, n: n)
+            let body = reply.fixed ? Tender.agreedBody(sha: head, reply: reply.body) : reply.body
+            var sent = (posted: false, resolved: false)
+            if ReplyGuard.check(body, author: reply.ask?.author ?? "", slug: repo.slug, n: n) == nil {
+                sent = send(kind: reply.kind, id: reply.askId, body: body, resolve: reply.resolve, slug: repo.slug, n: n)
+            }
             if sent.posted {
                 settle(&s, kind: reply.kind, id: reply.askId, resolved: sent.resolved)
+                posted.append(reply)
             } else {
                 tower(repo.slug, n, "reply not posted on \(reply.askId)", amber: true, now: now)
+                if let ask = reply.ask { addCall(&s, ask, draft: body, now: now) }
             }
         }
+        return posted
+    }
+
+    /// Asks again each reviewer whose change request an agreed reply answered, once each. Returns the logins asked.
+    private func rerequest(_ slug: String, _ n: Int, reviews: [ReviewInfo], reviewers: [String]) -> [String] {
+        let logins = Tender.rerequestLogins(reviews: reviews, reviewers: reviewers)
+        for login in logins {
+            _ = Shell.run("gh", ["api", "-X", "POST", "repos/\(slug)/pulls/\(n)/requested_reviewers",
+                                 "-f", "reviewers[]=\(login)"], env: env, timeout: 120)
+        }
+        return logins
+    }
+
+    /// Runs `body` holding the PR's lock, so a reply, a dismiss, an `act` and the end of a round never interleave.
+    private func withPRLock<T>(_ slug: String, _ n: Int, _ body: () throws -> T) throws -> T {
+        let lock = try RunLock.acquire(store.lockPath(slug, n), wait: true)
+        return try withExtendedLifetime(lock) { try body() }
     }
 
     /// `tend reply`: posts the call's draft, or the `text` given, through the reply guard, resolves a thread, and drops
     /// the call. A text that differs from the draft is taught to the playbook.
     func reply(_ repo: RepoConfig, _ n: Int, callId: String, text: String?) throws {
-        var s = store.load(repo.slug, n) ?? TendPR(slug: repo.slug, n: n)
-        guard let call = s.calls.first(where: { $0.id == callId }) else { throw RunError("no call \(callId) on #\(n)") }
-        let sent = (text ?? call.draft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !sent.isEmpty else { throw RunError("no reply text: pass --text, the call has no draft") }
-        if let why = ReplyGuard.check(sent, author: call.author, slug: repo.slug, n: n) { throw RunError(why) }
-        let posted = send(kind: call.kind, id: call.id, body: sent, resolve: call.kind == "thread",
-                          slug: repo.slug, n: n)
-        guard posted.posted else { throw RunError("GitHub refused the reply to #\(n)") }
-        settle(&s, kind: call.kind, id: call.id, resolved: posted.resolved)
-        s.calls.removeAll { $0.id == callId }
-        try store.save(s)
+        // Read and posted under the PR's lock, so a second click finds the call gone and posts nothing.
+        let (call, sent) = try withPRLock(repo.slug, n) { () throws -> (YourCall, String) in
+            var s = store.load(repo.slug, n) ?? TendPR(slug: repo.slug, n: n)
+            guard let call = s.calls.first(where: { $0.id == callId }) else {
+                throw RunError("already handled: no call \(callId) on #\(n)")
+            }
+            let sent = (text ?? call.draft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !sent.isEmpty else { throw RunError("no reply text: pass --text, the call has no draft") }
+            if let why = ReplyGuard.check(sent, author: call.author, slug: repo.slug, n: n) { throw RunError(why) }
+            let posted = send(kind: call.kind, id: call.id, body: sent, resolve: call.kind == "thread",
+                              slug: repo.slug, n: n)
+            guard posted.posted else { throw RunError("GitHub refused the reply to #\(n)") }
+            settle(&s, kind: call.kind, id: call.id, resolved: posted.resolved)
+            s.calls.removeAll { $0.id == callId }
+            try store.save(s)
+            return (call, sent)
+        }
         dropNeeds(repo.slug, n, call: callId)
         tower(repo.slug, n, "replied to \(call.author)", amber: false)
         print("\(repo.slug) #\(n): replied to \(call.author)")
@@ -745,13 +791,19 @@ final class Tender {
         }
     }
 
-    /// `tend dismiss`: drops a Your call item without replying. A review or comment counts as answered.
+    /// `tend dismiss`: drops a Your call item without replying. A review or comment counts as answered. Read under the
+    /// PR's lock, so a dismiss of a call that is gone says so.
     func dismiss(_ repo: RepoConfig, _ n: Int, callId: String) throws {
-        var s = store.load(repo.slug, n) ?? TendPR(slug: repo.slug, n: n)
-        guard let call = s.calls.first(where: { $0.id == callId }) else { throw RunError("no call \(callId) on #\(n)") }
-        if call.kind != "thread" { s.answered.append(call.id) }
-        s.calls.removeAll { $0.id == callId }
-        try store.save(s)
+        let call = try withPRLock(repo.slug, n) { () throws -> YourCall in
+            var s = store.load(repo.slug, n) ?? TendPR(slug: repo.slug, n: n)
+            guard let call = s.calls.first(where: { $0.id == callId }) else {
+                throw RunError("already handled: no call \(callId) on #\(n)")
+            }
+            if call.kind != "thread" { s.answered.append(call.id) }
+            s.calls.removeAll { $0.id == callId }
+            try store.save(s)
+            return call
+        }
         dropNeeds(repo.slug, n, call: callId)
         tower(repo.slug, n, "dismissed the call from \(call.author)", amber: false)
         print("\(repo.slug) #\(n): dismissed the call from \(call.author)")
@@ -793,7 +845,8 @@ final class Tender {
               let skill = try? String(contentsOfFile: SkillText.installedDir() + "/council.md", encoding: .utf8) else {
             return nil
         }
-        try? Council.bump(paths: paths, now: now)
+        // A sitting that cannot be counted against the day's cap does not sit: the question goes to the user.
+        guard (try? Council.bump(paths: paths, now: now)) != nil else { return nil }
         let system = skill + "\n\n# Playbook\n\n" + Playbook.load(slug, paths: paths).render()
         let lenses = Council.lenses
         let judges = lenses.map {
@@ -856,8 +909,12 @@ final class Tender {
 
     // MARK: Subcommands on one PR
 
-    /// `push`, `discard`, `retry`, `on` and `off` for one PR.
+    /// `push`, `discard`, `retry`, `on` and `off` for one PR, under the PR's lock.
     func act(_ action: String, _ repo: RepoConfig, _ n: Int) throws {
+        try withPRLock(repo.slug, n) { try change(action, repo, n) }
+    }
+
+    private func change(_ action: String, _ repo: RepoConfig, _ n: Int) throws {
         let now = Date()
         var s = store.load(repo.slug, n) ?? TendPR(slug: repo.slug, n: n)
         let wt = store.wtDir(repo.slug, n)
@@ -872,7 +929,13 @@ final class Tender {
             s.held = nil
             s.pendingRan = held.ran ?? []
             s.pendingRanHead = head
-            postPending(held.replies, repo, n, &s, now: now)
+            let posted = postPending(held.replies, head: head, repo, n, &s, now: now)
+            // The agreed replies answered change requests: those reviewers are asked again, as a round asks them.
+            let reviewers = posted.compactMap { $0.ask?.reviewer }
+            if !reviewers.isEmpty, let user = try? login(), let pr = (try? fetchOpen(repo.slug))?.first(where: { $0.n == n }) {
+                me = user
+                _ = rerequest(repo.slug, n, reviews: pr.reviews, reviewers: reviewers)
+            }
             try store.save(s)
             dropNeeds(repo.slug, n)
             tower(repo.slug, n, "held fix pushed · \(head.prefix(7))", amber: false, now: now)
@@ -883,6 +946,10 @@ final class Tender {
             try locked(repo.slug) { _ = try gitOK(["-C", wt, "reset", "--hard", held.commit + "^"]) }
             s.held = nil
             s.stuck = "You discarded the fix"
+            // The fix went with its replies: each ask waits for the user, with no draft.
+            for reply in held.replies {
+                if let ask = reply.ask { addCall(&s, ask, draft: nil, now: now) }
+            }
             try store.save(s)
             dropNeeds(repo.slug, n)
             tower(repo.slug, n, "held fix discarded", amber: false, now: now)
@@ -902,11 +969,13 @@ final class Tender {
     }
 
     /// Takes the PR's need off the approach snapshot now, so the app reacts before the next check. With `call`, only
-    /// that Your call item goes.
+    /// that Your call item goes. Without it, only the PR's held fix or stuck mark goes; its calls stay.
     private func dropNeeds(_ slug: String, _ n: Int, call: String? = nil) {
         guard var snapshot = store.loadApproach() else { return }
         let id = call.map { "\(slug)#\(n)/\($0)" }
-        snapshot.needs.removeAll { $0.slug == slug && $0.n == n && (id == nil || $0.id == id) }
+        snapshot.needs.removeAll { item in
+            item.slug == slug && item.n == n && (id.map { item.id == $0 } ?? (item.kind != "call"))
+        }
         try? store.saveApproach(snapshot)
     }
 
@@ -1059,9 +1128,9 @@ final class Tender {
       mergeable mergeStateStatus reviewDecision updatedAt author { login }
       labels(first: 20) { nodes { name } }
       reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { name } } } }
-      reviews(last: 20) { nodes { id databaseId state body author { login } } }
-      comments(last: 30) { nodes { id databaseId body author { login } } }
-      reviewThreads(first: 50) { nodes { id isResolved comments(last: 10) { nodes { id databaseId body path line author { login } } } } }
+      reviews(last: 20) { nodes { id databaseId state body author { __typename login } } }
+      comments(last: 30) { nodes { id databaseId body author { __typename login } } }
+      reviewThreads(first: 50) { nodes { id isResolved comments(last: 10) { nodes { id databaseId body path line author { __typename login } } } } }
       commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 60) { nodes { __typename
         ... on CheckRun { name status conclusion detailsUrl }
         ... on StatusContext { context state targetUrl } } } } } } }
@@ -1117,19 +1186,26 @@ final class Tender {
         "Fixed in `\(sha.prefix(7))`: \(reply)"
     }
 
-    /// Reviewers to ask again: each whose latest review requests changes and whose ask got an agreed reply this round.
-    /// A thread counts through its first comment's author. Bots are never asked, and each login is listed once.
-    static func rerequestLogins(pr: OpenPR, posted: Set<String>, asks: [Ask]) -> [String] {
+    /// Reviewers to ask again, from the logins whose asks got an agreed reply: each whose latest review requests changes.
+    /// Bots are never asked, and each login is listed once.
+    static func rerequestLogins(reviews: [ReviewInfo], reviewers: [String]) -> [String] {
         var latest: [String: String] = [:]
-        for review in pr.reviews { latest[review.author] = review.state }
+        for review in reviews { latest[review.author] = review.state }
         var out: [String] = []
-        for ask in asks where posted.contains(ask.id) {
-            let reviewer = ask.kind == "review" ? ask.author : (ask.kind == "thread" ? ask.thread.first?.author : nil)
-            guard let login = reviewer, latest[login] == "CHANGES_REQUESTED", !Threads.isBot(login),
-                  !out.contains(login) else { continue }
+        for login in reviewers where latest[login] == "CHANGES_REQUESTED" && !Threads.isBot(login) && !out.contains(login) {
             out.append(login)
         }
         return out
+    }
+
+    /// "1 thread" or "2 threads".
+    static func plural(_ n: Int, _ one: String, _ many: String) -> String {
+        "\(n) \(n == 1 ? one : many)"
+    }
+
+    /// "1 needs you" or "2 need you".
+    static func needsYou(_ n: Int) -> String {
+        n == 1 ? "1 needs you" : "\(n) need you"
     }
 
     /// The flags every model call of the tend code shares: no tools, no MCP servers, the user's settings only, a
@@ -1208,7 +1284,18 @@ final class Tender {
         let data: Body
     }
 
-    private struct Login: Decodable { let login: String? }
+    private struct Login: Decodable {
+        let login: String?
+        let typename: String?
+
+        enum CodingKeys: String, CodingKey { case login, typename = "__typename" }
+
+        /// The login. GraphQL leaves `[bot]` off an app's login, so a bot's gets it back here.
+        var name: String {
+            guard let login else { return "" }
+            return typename == "Bot" && !login.lowercased().hasSuffix("[bot]") ? login + "[bot]" : login
+        }
+    }
     private struct Nodes<T: Decodable>: Decodable { let nodes: [T] }
 
     private struct PRNode: Decodable {
@@ -1296,18 +1383,18 @@ final class Tender {
                 checks: checks,
                 threads: reviewThreads.nodes.map { t in
                     ReviewThread(id: t.id, isResolved: t.isResolved, comments: t.comments.nodes.map { c in
-                        ThreadComment(id: c.id, databaseId: c.databaseId, author: c.author?.login ?? "", body: c.body,
+                        ThreadComment(id: c.id, databaseId: c.databaseId, author: c.author?.name ?? "", body: c.body,
                                       path: c.path, line: c.line)
                     })
                 },
                 reviews: reviews.nodes.map {
-                    ReviewInfo(id: $0.id, author: $0.author?.login ?? "", state: $0.state, body: $0.body ?? "",
+                    ReviewInfo(id: $0.id, author: $0.author?.name ?? "", state: $0.state, body: $0.body ?? "",
                                databaseId: $0.databaseId)
                 },
                 requested: reviewRequests.nodes.compactMap { $0.requestedReviewer.flatMap { $0.login ?? $0.name } },
                 updatedAt: updatedAt.flatMap { ISO8601DateFormatter().date(from: $0) },
                 comments: (comments?.nodes ?? []).map {
-                    PRComment(id: $0.id, databaseId: $0.databaseId, author: $0.author?.login ?? "", body: $0.body)
+                    PRComment(id: $0.id, databaseId: $0.databaseId, author: $0.author?.name ?? "", body: $0.body)
                 })
         }
     }
