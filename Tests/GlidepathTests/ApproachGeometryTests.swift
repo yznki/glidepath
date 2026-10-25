@@ -13,7 +13,21 @@ final class ApproachGeometryTests: XCTestCase {
         XCTAssertEqual(ApproachGeometry.planeX(marker: 1, phase: .waiting), 300)
         XCTAssertEqual(ApproachGeometry.planeX(marker: 3, phase: .cleared), 720)
         XCTAssertEqual(ApproachGeometry.planeX(marker: 0, phase: .taxiing), 120)
-        XCTAssertEqual(ApproachGeometry.planeX(marker: 3, phase: .landed), 880)
+        XCTAssertEqual(ApproachGeometry.planeX(marker: 3, phase: .landed), ApproachGeometry.landedX)
+    }
+
+    func testLandingGlideRunsOnceFromFirstSightingThenSits() {
+        let seen = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(ApproachGeometry.landingProgress(seen: seen, at: seen.addingTimeInterval(1.32), frozen: false),
+                       0.6, accuracy: 0.0001)
+        XCTAssertEqual(ApproachGeometry.landingProgress(seen: seen, at: seen.addingTimeInterval(9), frozen: false), 1)
+        // Reduce Motion and a plane never seen both sit on the runway.
+        XCTAssertEqual(ApproachGeometry.landingProgress(seen: seen, at: seen, frozen: true), 1)
+        XCTAssertEqual(ApproachGeometry.landingProgress(seen: nil, at: seen, frozen: false), 1)
+        // The flash is dark until 70% of the glide, full at 80%, and gone at the end.
+        XCTAssertEqual(ApproachGeometry.flashOpacity(0.6), 0)
+        XCTAssertEqual(ApproachGeometry.flashOpacity(0.8), 1, accuracy: 0.0001)
+        XCTAssertEqual(ApproachGeometry.flashOpacity(1), 0)
     }
 
     func testLaneEasesFromItsStartToTheRunwayCentreLine() {
