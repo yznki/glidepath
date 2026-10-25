@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0
+
+- Tending: Glidepath can look after your own PRs. Turn it on in Settings → Tending and pick the repos. Every 5 minutes it checks your open PRs for free; Claude runs only when something changed.
+- When CI fails it reruns flaky jobs once or fixes the code in a sandboxed worktree (only package registries reachable, no GitHub credentials), checks the change, then commits and pushes it itself. It never skips tests, touches CI config or force-pushes.
+- A new Approach section shows your PRs as planes on approach to main, a Tower log of what Glidepath did, and a drawer per PR with its gates, today's rounds and what Glidepath learned about the repo.
+- Needs you: held fixes (Hold to push, Discard) and stuck PRs (Open PR, Try again), also in Now and the popover. The menu bar icon gets an amber dot.
+- Limits: 5 rounds per PR a day, 2 tries per commit, a dollar cap per session, and a usage reserve: Glidepath never spends the last 40% of your 5-hour and weekly Claude windows. Heavy work waits for quiet hours.
+- Optional separate Claude account for Glidepath, autopilot toggle, `glidepath:hands-off` label, per-PR switch, and `glidepath teach owner/name "lesson"`.
+
 ## 1.5.0
 
 - Now shows what needs you and what each run did, in one sentence per run.
