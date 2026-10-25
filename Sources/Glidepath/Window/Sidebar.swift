@@ -90,21 +90,24 @@ struct Sidebar: View {
         return Button {
             router.section = section
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: section == .approach ? 6 : 10) {
                 Image(systemName: Self.symbol(section))
                     .font(.system(size: 15, weight: .regular))
                     .frame(width: 18)
                     .opacity(0.7)
                 Text(section.title)
                     .font(.system(size: 14, weight: .medium))
+                    .lineLimit(1)
+                    .fixedSize()
                 Spacer(minLength: 0)
                 if section == .approach {
                     // The planes tend has in the air: small and faint, not a count.
                     if inAir > 0 {
                         Text("\(inAir) in the air")
-                            .font(.system(size: 11))
+                            .font(.system(size: 10))
                             .foregroundStyle(Gotham.mute.opacity(0.7))
                             .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
                 } else if count > 0 {
                     Text("\(count)")
