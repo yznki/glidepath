@@ -47,7 +47,8 @@ struct RunDigest: Equatable {
         ownRows = own
         inFlight = running ? own.filter { $0.pr.active } : []
         reviewed = own.filter { $0.pr.verdict == .approve || $0.pr.verdict == .changes }
-        let unfinished = running ? [] : own.filter { $0.pr.verdict == nil }
+        // A tend round has no verdict by design, so it never counts as stopped.
+        let unfinished = running || run.kind == "tend" ? [] : own.filter { $0.pr.verdict == nil }
         stopped = unfinished
 
         var groups: [SkipKind: [Row]] = [:]
