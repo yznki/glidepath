@@ -167,6 +167,9 @@ struct TendStore {
 
     var dir: String { paths.stateDir + "/tend" }
 
+    /// Files in `dir` that are not one PR's state.
+    static let sharedFiles: Set<String> = ["approach.json", "landed.json"]
+
     private static let lineEncoder: JSONEncoder = {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .iso8601
@@ -201,7 +204,7 @@ struct TendStore {
     /// Every readable PR state file.
     func all() -> [TendPR] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []
-        return names.filter { $0.hasSuffix(".json") && $0 != "approach.json" }.compactMap { name in
+        return names.filter { $0.hasSuffix(".json") && !TendStore.sharedFiles.contains($0) }.compactMap { name in
             FileManager.default.contents(atPath: dir + "/" + name).flatMap { try? RunStore.decoder().decode(TendPR.self, from: $0) }
         }
     }
@@ -246,7 +249,7 @@ struct TendStore {
         }
     }
 
-    private func write(_ data: Data, to path: String) throws {
+    func write(_ data: Data, to path: String) throws {
         try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
                                                 withIntermediateDirectories: true)
         try data.write(to: URL(fileURLWithPath: path), options: .atomic)
@@ -260,15 +263,17 @@ enum Fingerprint {
         pr.head + "|" + pr.checks.map { "\($0.name)=\($0.conclusion ?? $0.status)" }.sorted().joined(separator: ",")
     }
 
-    /// The checks, then the open threads with their last comment, the reviews with their state, and the plain comments
-    /// not by `me`, each part sorted and joined by `|`. A new comment or review changes it; the order of listing does not.
+    /// The checks, then the open threads with their last comment, the reviews with their state, the plain comments
+    /// not by `me`, the base branch, the merge state and the review decision. Each part is sorted and joined by `|`. A
+    /// new comment, review, base or merge state changes it; the order of listing does not.
     static func full(_ pr: OpenPR, me: String) -> String {
         let threads = pr.threads.filter { !$0.isResolved }
             .map { "\($0.id):\($0.comments.last?.id ?? "")" }.sorted().joined(separator: ",")
         let reviews = pr.reviews.map { "\($0.id):\($0.state)" }.sorted().joined(separator: ",")
         let comments = pr.comments.filter { $0.author.caseInsensitiveCompare(me) != .orderedSame }
             .map(\.id).sorted().joined(separator: ",")
-        return [ci(pr), threads, reviews, comments].joined(separator: "|")
+        return [ci(pr), threads, reviews, comments, pr.base, pr.mergeStateStatus ?? "", pr.reviewDecision ?? ""]
+            .joined(separator: "|")
     }
 }
 
@@ -295,17 +300,19 @@ enum TendDecision: Equatable {
     case idle
     case round(WorkClass)
 
-    /// A round when CI failed or a thread, review or comment asks for an answer, and the PR's full fingerprint is new.
-    /// Pending CI waits. The round is urgent only when the PR is approved and CI failed.
+    /// A round when CI failed, a thread, review or comment asks for an answer, or the PR conflicts with its base, and the
+    /// PR's full fingerprint is new. Pending CI waits. The round is urgent only when the PR is approved and CI failed or
+    /// it conflicts.
     static func decide(_ pr: OpenPR, state: TendPR, me: String) -> TendDecision {
         if pr.isFork { return .skip("fork") }
         if !Approach.tendable(pr, state) { return .skip("hands off") }
         if state.held != nil { return .idle }
         guard pr.ciStatus != .pending else { return .idle }
+        let conflicts = pr.mergeStateStatus == "DIRTY"
         let asks = Threads.actionable(pr, me: me, answered: Set(state.answered), handled: state.handled)
-        guard pr.ciStatus == .failed || !asks.isEmpty else { return .idle }
+        guard pr.ciStatus == .failed || conflicts || !asks.isEmpty else { return .idle }
         guard state.fingerprint != Fingerprint.full(pr, me: me) else { return .idle }
-        return .round(pr.approved && pr.ciStatus == .failed ? .urgent : .normal)
+        return .round(pr.approved && (pr.ciStatus == .failed || conflicts) ? .urgent : .normal)
     }
 
     /// True when the PR has a new head since its stuck mark was set, so the mark goes.

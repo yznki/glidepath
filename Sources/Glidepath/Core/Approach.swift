@@ -16,6 +16,8 @@ struct OpenPR: Codable, Equatable {
     var branch = ""
     var head = ""
     var base = ""
+    /// The repo's default branch, what `base` must be for the PR to land. "" when GitHub did not say.
+    var defaultBranch = ""
     var additions = 0
     var deletions = 0
     var checks: [CheckState] = []
@@ -129,6 +131,8 @@ struct ApproachPlane: Codable, Equatable {
     var off: Bool
     var gates: [Gate]
     var ci: String
+    /// When a landed PR merged. nil for a PR that has not landed (and for files from before 1.8).
+    var landedAt: Date?
 }
 
 /// A thing the user must decide: a held fix, or a stuck PR. `kind` is "held" or "stuck".
@@ -293,7 +297,9 @@ enum Approach {
 
     /// The Needs items for a PR: a held fix or a stuck PR first, then one per comment the user must answer. Empty when
     /// none.
-    static func needs(_ slug: String, _ pr: OpenPR, state: TendPR?) -> [NeedsItem] {
+    /// `landable` is set when the PR is ready and the merge setting is `ask`; `prs` names the stack above it.
+    static func needs(_ slug: String, _ pr: OpenPR, state: TendPR?, landable: Bool = false,
+                      prs: [OpenPR] = []) -> [NeedsItem] {
         func item(_ id: String, _ kind: String, _ detail: String) -> NeedsItem {
             NeedsItem(id: "\(slug)#\(pr.n)/\(id)", slug: slug, n: pr.n, title: pr.title, kind: kind, detail: detail)
         }
@@ -306,6 +312,9 @@ enum Approach {
         for call in state?.calls ?? [] {
             let detail = "Your call · \(call.author): \"\(call.quote)\"" + (call.draft != nil ? " · draft reply ready" : "")
             items.append(item(call.id, "call", detail))
+        }
+        if landable {
+            items.append(item("land", "land", Landing.detail(pr, prs)))
         }
         return items
     }

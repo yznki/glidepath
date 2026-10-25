@@ -1125,6 +1125,7 @@ final class Tender {
     static let query = """
     query($q: String!) { search(query: $q, type: ISSUE, first: 30) { nodes { ... on PullRequest {
       number title body url isDraft isCrossRepository headRefName headRefOid baseRefName additions deletions
+      baseRepository { defaultBranchRef { name } }
       mergeable mergeStateStatus reviewDecision updatedAt author { login }
       labels(first: 20) { nodes { name } }
       reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { name } } } }
@@ -1349,6 +1350,7 @@ final class Tender {
         let headRefName: String
         let headRefOid: String
         let baseRefName: String
+        let baseRepository: BaseRepo?
         let additions: Int
         let deletions: Int
         let mergeable: String?
@@ -1364,6 +1366,7 @@ final class Tender {
         let commits: Nodes<Commit>
 
         struct Named: Decodable { let name: String }
+        struct BaseRepo: Decodable { let defaultBranchRef: Named? }
 
         var openPR: OpenPR {
             let checks: [CheckState] = (commits.nodes.first?.commit.statusCheckRollup?.contexts.nodes ?? []).compactMap { c in
@@ -1379,7 +1382,8 @@ final class Tender {
                 n: number, title: title, body: body ?? "", url: url, author: author?.login ?? "",
                 isDraft: isDraft, isFork: isCrossRepository, labels: labels.nodes.map(\.name),
                 reviewDecision: reviewDecision, mergeable: mergeable, mergeStateStatus: mergeStateStatus,
-                branch: headRefName, head: headRefOid, base: baseRefName, additions: additions, deletions: deletions,
+                branch: headRefName, head: headRefOid, base: baseRefName, defaultBranch: baseRepository?.defaultBranchRef?.name ?? "",
+                additions: additions, deletions: deletions,
                 checks: checks,
                 threads: reviewThreads.nodes.map { t in
                     ReviewThread(id: t.id, isResolved: t.isResolved, comments: t.comments.nodes.map { c in
