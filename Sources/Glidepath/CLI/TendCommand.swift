@@ -1012,7 +1012,7 @@ final class Tender {
                        now: Date) throws -> (RoundOutcome, Int) {
         let base = pr.base
         let (clean, conflicts) = try locked(repo.slug) { () throws -> (Bool, [String]) in
-            let r = git(["-C", wt, "merge", "--no-edit", "origin/\(base)"])
+            let r = git(["-C", wt, "merge", "--no-edit", "-m", "Merge branch '\(base)' into \(pr.branch)", "origin/\(base)"])
             let files = Tender.conflictFiles(git(["-C", wt, "diff", "--name-only", "--diff-filter=U"]).stdout)
             if !r.ok && files.isEmpty {
                 throw RunError("merge of \(base) failed: \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
@@ -1365,6 +1365,10 @@ final class Tender {
             else {
                 throw RunError("no broken landing of #\(n) in \(repo.slug) to revert")
             }
+            guard repo.mergeMethod != .rebase else {
+                tower(repo.slug, n, "revert not opened · #\(n) was rebase-merged; revert it by hand", amber: true)
+                throw RunError("#\(n) was rebase-merged; revert it by hand")
+            }
             guard let branch = syncDefault(repo) else { throw RunError("could not read the default branch of \(repo.slug)") }
             guard openRevert(&records[i], repo, branch: branch, now: Date()) else { throw RunError("the revert PR was not opened") }
             try store.saveLanded(records)
@@ -1373,15 +1377,33 @@ final class Tender {
     }
 
     /// Opens the revert PR of a landed PR: a revert commit on a fresh branch from the default branch, pushed and opened.
-    /// The record takes the new PR's number and status "reverted". Returns false, with the reason in the tower, when any
-    /// step fails. The worktree is removed either way.
+    /// The record takes the new PR's number and status "reverted". A revert branch already on the remote is never
+    /// force-pushed: its open PR is adopted, or the revert goes on a branch named with the time. A rebase-merged PR is
+    /// not reverted here. Returns false, with the reason in the tower, when any step fails. The worktree is removed either way.
     @discardableResult
     private func openRevert(_ record: inout TendLanded, _ repo: RepoConfig, branch: String, now: Date) -> Bool {
         let n = record.n
+        if repo.mergeMethod == .rebase {
+            tower(repo.slug, n, "revert not opened · #\(n) was rebase-merged; revert it by hand", amber: true, now: now)
+            return false
+        }
         let dir = store.revertDir(repo.slug, n)
-        let head = "revert-\(n)"
         defer { try? locked(repo.slug) { removeWorktree(repo, dir) } }
         do {
+            var head = "revert-\(n)"
+            if Shell.run("gh", ["api", "repos/\(repo.slug)/branches/\(head)"], env: env, timeout: 120).ok {
+                let open = Shell.run("gh", ["pr", "list", "-R", repo.slug, "--state", "open", "--head", head, "--json", "number",
+                                            "-q", ".[0].number // empty"], env: env, timeout: 120)
+                if let number = Int(open.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    record.revert = number
+                    record.status = "reverted"
+                    tower(repo.slug, n, "revert PR #\(number) already open", amber: false, now: now)
+                    return true
+                }
+                let stamp = DateFormatter()
+                stamp.dateFormat = "yyyyMMddHHmm"
+                head += "-" + stamp.string(from: now)
+            }
             try locked(repo.slug) {
                 removeWorktree(repo, dir)
                 try FileManager.default.createDirectory(atPath: store.dir + "/wt", withIntermediateDirectories: true)
@@ -1457,7 +1479,9 @@ final class Tender {
             guard try gitOK(["-C", wt, "rev-parse", "HEAD"]) == held.commit else {
                 throw RunError("the worktree is not at the held commit; discard the fix instead")
             }
-            let head = try locked(repo.slug) { try pushBranch(repo, branch: try branch(repo.slug, n), wt: wt) }
+            // A conflict merge (two parents) is pushed as it is: a rebase would rewrite the merge the user reviewed.
+            let parents = try gitOK(["-C", wt, "rev-list", "--parents", "-n", "1", held.commit]).split(separator: " ").count - 1
+            let head = try locked(repo.slug) { try pushBranch(repo, branch: try branch(repo.slug, n), wt: wt, rebase: parents < 2) }
             s.held = nil
             s.pendingRan = held.ran ?? []
             s.pendingRanHead = head
