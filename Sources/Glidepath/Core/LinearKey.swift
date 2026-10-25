@@ -1,44 +1,43 @@
 import Foundation
-import Security
 
-/// The Linear API key, in the login Keychain. The key never goes on a command line.
+/// The Linear API key, in the login Keychain as a generic password. It is written and read through `/usr/bin/security`,
+/// so that tool is on the item's access list and the launchd job reads it without a prompt. The key never goes on a
+/// command line: `save` sends it to `security -i` on stdin.
 enum LinearKey {
     static let service = "dev.glidepath.linear"
     static let account = "linear"
+    static let security = "/usr/bin/security"
 
-    private static func query() -> [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service,
-         kSecAttrAccount as String: account]
+    /// The stored key, trimmed. Nil when there is none or `security` cannot read it.
+    static func read() -> String? {
+        let r = Shell.run(security, ["find-generic-password", "-s", service, "-a", account, "-w"])
+        guard r.ok else { return nil }
+        let key = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return key.isEmpty ? nil : key
     }
 
-    static func read() -> String? {
-        var q = query()
-        q[kSecReturnData as String] = true
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &item) == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+    /// A key Linear issues: 8 to 200 letters, digits, `-` or `_`. Anything else never reaches the Keychain.
+    static func valid(_ key: String) -> Bool {
+        key.range(of: "^[A-Za-z0-9_-]{8,200}$", options: .regularExpression) != nil
     }
 
     static func save(_ key: String) throws {
-        let update = [kSecValueData as String: Data(key.utf8)] as CFDictionary
-        var status = SecItemUpdate(query() as CFDictionary, update)
-        if status == errSecItemNotFound {
-            var add = query()
-            add[kSecValueData as String] = Data(key.utf8)
-            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-            status = SecItemAdd(add as CFDictionary, nil)
+        guard valid(key) else {
+            throw LinearKeyError(message: "A Linear key is 8 to 200 letters, digits, - or _.")
         }
-        guard status == errSecSuccess else { throw LinearKeyError(status: status) }
+        let command = "add-generic-password -U -s \(service) -a \(account) -w \"\(key)\"\n"
+        let r = Shell.run(security, ["-i"], input: command)
+        guard r.ok else {
+            throw LinearKeyError(message: "Keychain refused the key: \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+        }
     }
 
     static func remove() {
-        _ = SecItemDelete(query() as CFDictionary)
+        _ = Shell.run(security, ["delete-generic-password", "-s", service, "-a", account])
     }
 }
 
 struct LinearKeyError: Error, CustomStringConvertible {
-    let status: OSStatus
-    var description: String { "Keychain error \(status)" }
+    let message: String
+    var description: String { message }
 }
