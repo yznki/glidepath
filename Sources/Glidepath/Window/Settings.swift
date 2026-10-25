@@ -63,10 +63,10 @@ enum SettingsCopy {
     static let reviewing = Block(id: "review", title: "Reviewing",
                                  rows: [drafts, whenReady, strictness, reviewModel, size, ownPRs, bots, authors, flags])
     // Tending. Every caption says "tend", so the search "tend" shows the whole block.
-    static let tendOn = Row(label: "Tend my PRs", caption: "Glidepath tends your open PRs: it fixes CI and answers review threads.")
+    static let tendOn = Row(label: "Tend my PRs", caption: "Glidepath fixes failing CI on your open PRs in the repos switched on below.")
     static let tendRepos = Row(label: "Tended repos", caption: "Glidepath tends the PRs in the repos switched on here.")
     static let tendPush = Row(label: "Approved fixes", caption: "Push anyway pushes a tended fix at once. Hold the fix keeps it for you.")
-    static let tendRounds = Row(label: "Rounds a day", caption: "Tending rounds across all your PRs.")
+    static let tendRounds = Row(label: "Rounds per PR a day", caption: "Each PR gets at most this many rounds a day.")
     static let tendAutopilot = Row(label: "Autopilot", caption: "Tending merges, replies and resolves without asking. Hard stops still come to you.")
     static let tendAccount = Row(label: "Claude account", caption: "Tending and reviews sign in as this account.")
     static let tendReserve = Row(label: "Usage reserve", caption: "Tending never spends the last share of your 5-hour and weekly windows.")
@@ -412,9 +412,8 @@ struct SettingsView: View {
                     }
                 }
                 if model.matches(SettingsCopy.tendRepos) {
-                    ForEach(Array(repos.enumerated()), id: \.offset) { i, repo in
-                        SettingItem(label: repo.slug, caption: i == 0 ? SettingsCopy.tendRepos.caption : "",
-                                    error: model.rowErrors["tendRepo-\(repo.slug)"]) {
+                    ForEach(repos, id: \.slug) { repo in
+                        SettingItem(label: repo.slug, error: model.rowErrors["tendRepo-\(repo.slug)"]) {
                             SettingSwitch(isOn: repo.tend, label: "Tend \(repo.slug)") {
                                 model.commit("tendRepo-\(repo.slug)", store: store) {
                                     try ConfigEditor.setRepoTend($0, slug: repo.slug, !repo.tend)
@@ -444,18 +443,17 @@ struct SettingsView: View {
                 if model.matches(SettingsCopy.tendAccount) {
                     let separate = config?.claudeConfigDir != nil
                     SettingItem(label: SettingsCopy.tendAccount.label, caption: model.accountStatus ?? "Checking…",
-                                error: model.rowErrors["account"], stacked: true) {
+                                error: model.rowErrors["account"]) {
                         HStack(spacing: 8) {
+                            if separate {
+                                SettingButton(title: "Sign in…") { model.signIn(store) }
+                            }
                             SettingSegmented(
                                 options: [(value: false, label: "Same as my claude"), (value: true, label: "Separate account")],
                                 selected: separate) { choice in
                                     model.chooseAccount(separate: choice, store: store)
                                 }
-                            if separate {
-                                SettingButton(title: "Sign in…") { model.signIn(store) }
-                            }
                         }
-                        .padding(.bottom, 6)
                     }
                 }
                 if model.matches(SettingsCopy.tendReserve) {

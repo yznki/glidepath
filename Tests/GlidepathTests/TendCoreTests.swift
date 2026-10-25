@@ -305,6 +305,74 @@ final class TendCoreTests: XCTestCase {
         XCTAssertEqual(planes[0].ci, "passed")
     }
 
+    func testGateStatesAndWords() {
+        func gate(_ pr: OpenPR, _ i: Int, state: TendPR? = nil) -> Gate { Approach.gates(pr, state: state)[i] }
+        let pass = CheckState(name: "test", status: "COMPLETED", conclusion: "SUCCESS")
+        let skip = CheckState(name: "docs", status: "COMPLETED", conclusion: "SKIPPED")
+        let lint = CheckState(name: "lint", status: "COMPLETED", conclusion: "FAILURE")
+        let unit = CheckState(name: "unit", status: "COMPLETED", conclusion: "FAILURE")
+        let e2e = CheckState(name: "e2e", status: "IN_PROGRESS", conclusion: nil)
+        let thread = ReviewThread(id: "t1", isResolved: false,
+                                  comments: [ThreadComment(id: "c1", databaseId: nil, author: "gadi", body: "", path: nil, line: nil)])
+
+        // Passed: green counts skipped checks too; threads, approval and readiness all pass.
+        let green = openPR(1, branch: "a", base: "main", checks: [pass, skip], approved: true, clean: true)
+        XCTAssertEqual(gate(green, 0), Gate(name: "CI", state: .ok, detail: "2 of 2 checks green"))
+        XCTAssertEqual(gate(green, 1), Gate(name: "Threads", state: .ok, detail: "All resolved"))
+        XCTAssertEqual(gate(green, 2), Gate(name: "Approval", state: .ok, detail: "Approved"))
+        XCTAssertEqual(gate(green, 3), Gate(name: "Ready", state: .ok, detail: "No conflicts with main"))
+
+        XCTAssertEqual(gate(openPR(2, branch: "b", base: "main", checks: []), 0), Gate(name: "CI", state: .none, detail: "No checks"))
+
+        // Running: a person is not waiting, so the gate is amber without a name.
+        var running = openPR(3, branch: "c", base: "main", checks: [e2e, pass])
+        running.mergeStateStatus = "UNSTABLE"
+        XCTAssertEqual(gate(running, 0), Gate(name: "CI", state: .wait, detail: "1 running"))
+        XCTAssertEqual(gate(running, 3), Gate(name: "Ready", state: .wait, detail: "Checks not all green"))
+
+        // Failing on a PR tend may act on: Glidepath is working, unless the PR is stuck or held.
+        let failing = openPR(4, branch: "d", base: "main", checks: [lint, unit, pass])
+        XCTAssertEqual(gate(failing, 0), Gate(name: "CI", state: .work, detail: "lint, unit failing", who: "Glidepath"))
+        var held = TendPR(slug: "acme/api", n: 4)
+        held.held = TendHeld(commit: "abc123", summary: "approved, pushing cancels it", at: at(26, 9))
+        XCTAssertEqual(gate(failing, 0, state: held), Gate(name: "CI", state: .wait, detail: "lint, unit failing", who: "you"))
+        var stuck = TendPR(slug: "acme/api", n: 4)
+        stuck.stuck = "Unit Tests failed twice on this head"
+        XCTAssertEqual(gate(failing, 0, state: stuck), Gate(name: "CI", state: .wait, detail: "lint, unit failing", who: "you"))
+        var handsOff = failing
+        handsOff.labels = [Approach.handsOffLabel]
+        XCTAssertEqual(gate(handsOff, 0), Gate(name: "CI", state: .wait, detail: "lint, unit failing", who: "you"))
+
+        // Threads: open ones wait on the reviewer who opened them.
+        var threads = openPR(5, branch: "e", base: "main", approved: true, clean: true)
+        threads.threads = [thread, ReviewThread(id: "t2", isResolved: false, comments: [])]
+        XCTAssertEqual(gate(threads, 1), Gate(name: "Threads", state: .wait, detail: "2 open", who: "gadi"))
+        XCTAssertEqual(gate(threads, 1, state: held), Gate(name: "Threads", state: .wait, detail: "2 open", who: "you"))
+
+        // Approval: changes requested name the reviewer; otherwise the requested reviewers, or no review yet.
+        var changes = openPR(6, branch: "f", base: "main", requested: ["alice"])
+        changes.reviews = [ReviewInfo(id: "r1", author: "gadi", state: "CHANGES_REQUESTED")]
+        XCTAssertEqual(gate(changes, 2), Gate(name: "Approval", state: .wait, detail: "Changes requested by gadi", who: "gadi"))
+        let asked = openPR(7, branch: "g", base: "main", requested: ["alice", "bob"])
+        XCTAssertEqual(gate(asked, 2), Gate(name: "Approval", state: .wait, detail: "Waiting on alice, bob", who: "alice, bob"))
+        XCTAssertEqual(gate(openPR(8, branch: "h", base: "main"), 2), Gate(name: "Approval", state: .wait, detail: "No review yet"))
+
+        // Readiness follows mergeStateStatus, and a draft is not reached.
+        func ready(_ merge: String, draft: Bool = false, base: String = "main") -> Gate {
+            var pr = openPR(9, branch: "i", base: base, draft: draft)
+            pr.mergeStateStatus = merge
+            return gate(pr, 3)
+        }
+        XCTAssertEqual(ready("CLEAN", base: "release"), Gate(name: "Ready", state: .ok, detail: "No conflicts with release"))
+        XCTAssertEqual(ready("DIRTY"), Gate(name: "Ready", state: .wait, detail: "Conflicts with main"))
+        XCTAssertEqual(ready("BEHIND"), Gate(name: "Ready", state: .wait, detail: "Behind main"))
+        XCTAssertEqual(ready("BLOCKED"), Gate(name: "Ready", state: .wait, detail: "Blocked by branch rules"))
+        XCTAssertEqual(ready("UNSTABLE"), Gate(name: "Ready", state: .wait, detail: "Checks not all green"))
+        XCTAssertEqual(ready("UNKNOWN"), Gate(name: "Ready", state: .wait, detail: "Waiting on GitHub"))
+        XCTAssertEqual(ready("CLEAN", draft: true), Gate(name: "Ready", state: .none, detail: "Draft"))
+        XCTAssertEqual(ready("DRAFT"), Gate(name: "Ready", state: .none, detail: "Draft"))
+    }
+
     func testHeldFixIsNeedsItemAndHolds() {
         let a = openPR(1, branch: "a", base: "main", approved: true, clean: true)
         var held = TendPR(slug: "acme/api", n: 1)

@@ -14,6 +14,8 @@ struct HoldButton: View {
     let doneTitle: String
     let tint: Color
     var duration: Double = 0.9
+    /// The small form for rows: 28 points tall, 12 point type, sized to its title.
+    var compact = false
     let action: () -> Void
 
     @StateObject private var model = HoldModel()
@@ -25,11 +27,13 @@ struct HoldButton: View {
                 .fill(LinearGradient(colors: [.white.opacity(0.15), tint], startPoint: .leading, endPoint: .trailing))
                 .scaleEffect(x: model.fired ? 1 : model.level, anchor: .leading)
             Text(model.fired ? doneTitle : title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: compact ? 12 : 14, weight: .semibold))
                 .foregroundStyle(model.fired ? Color(hex: "050506") : Gotham.fg)
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, compact ? 14 : 0)
+                .frame(maxWidth: compact ? nil : .infinity)
         }
-        .frame(height: 44)
+        .frame(height: compact ? 28 : 44)
+        .fixedSize(horizontal: compact, vertical: false)
         .clipShape(Capsule())
         .contentShape(Capsule())
         .gesture(DragGesture(minimumDistance: 0)

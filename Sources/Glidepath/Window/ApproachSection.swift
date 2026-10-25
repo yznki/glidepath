@@ -403,12 +403,11 @@ struct TendNeedRow: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Gotham.mute)
                     .padding(.horizontal, 10)
-                    .frame(height: 44)
-                HoldButton(title: "Hold to push", doneTitle: "Pushing…", tint: signal) {
+                    .frame(height: 28)
+                HoldButton(title: "Hold to push", doneTitle: "Pushing…", tint: signal, compact: true) {
                     store.tendCommand(["push", item.slug, "\(item.n)"])
                 }
                 .id(item.id)
-                .frame(width: 150)
             }
         } else {
             HStack(spacing: 8) {
@@ -531,13 +530,13 @@ struct ApproachDrawer: View {
             }
             ForEach(runs, id: \.id) { run in
                 VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text(HeaderCopy.clock(run.started))
-                            .font(.system(size: 12, weight: .semibold))
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(RunDigest.title(for: run))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Gotham.fg)
                         Spacer(minLength: 8)
-                        Text("\(compactTokens(run.tokens)) tokens")
-                            .font(.system(size: 12))
+                        Text("\(HeaderCopy.clock(run.started)) · \(compactTokens(run.tokens)) tokens")
+                            .font(.system(size: 11.5))
                             .foregroundStyle(Gotham.mute)
                     }
                     Text(roundSummary(run))
@@ -650,11 +649,12 @@ struct ApproachDrawer: View {
     }
 }
 
-/// The gate's mark: a dot when it passes, a ring in the signal colour when it waits on someone, a ring that is part
-/// open when work is under way, and a faint ring when it does not apply.
+/// The gate's mark: a dot when it passes, a ring in the signal colour when it waits on someone, a spinning arc when
+/// Glidepath is working on it, and a faint ring when it is not reached. The spinner holds still under Reduce Motion.
 private struct GateMark: View {
     let state: GateState
     let colour: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -665,8 +665,11 @@ private struct GateMark: View {
                 Circle().strokeBorder(colour, lineWidth: 1.5).frame(width: 14, height: 14)
                     .shadow(color: colour.opacity(0.4), radius: 3)
             case .work:
-                Circle().trim(from: 0.25, to: 1).stroke(Gotham.fg, lineWidth: 1.5).frame(width: 14, height: 14)
-                    .rotationEffect(.degrees(-90))
+                SnapshotTimeline(schedule: .animation(minimumInterval: 1.0 / 30, paused: Motion.reduced(reduceMotion))) { date in
+                    let turn = Motion.reduced(reduceMotion) ? 0 : date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1)
+                    Circle().trim(from: 0.25, to: 1).stroke(Gotham.fg, lineWidth: 1.5).frame(width: 14, height: 14)
+                        .rotationEffect(.degrees(-90 + 360 * turn))
+                }
             case .none:
                 Circle().strokeBorder(approachFaint, lineWidth: 1.5).frame(width: 14, height: 14)
             }
