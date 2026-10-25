@@ -14,6 +14,9 @@ under `scratch=` only.
 You orchestrate. The `gatherer` agent gathers, the `reviewer` agent reviews, and the `checker` agent checks.
 You do not review code yourself.
 
+Never end your final message while any gatherer, reviewer or checker you started is still running. Wait for every
+agent's result first. A session that ends early has its agents stopped, and their PRs are dropped.
+
 ## The only tools you may use
 
 - `glidepath pr info --repo <slug> --pr <n> [--out NAME]`: title, author, head SHA, files, body (JSON)

@@ -277,7 +277,7 @@ struct NowView: View {
         .opacity(queued ? 0.4 : 1)
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .onTapGesture {
-            if s.verdict != nil { router.openReview(s.id) }
+            if s.verdict != nil || !running { router.openReview(s.id) }
         }
     }
 

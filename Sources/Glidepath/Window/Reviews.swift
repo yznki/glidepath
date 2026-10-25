@@ -121,7 +121,7 @@ struct ReviewsView: View {
     private func takeFocus() {
         guard let id = WindowRouter.shared.reviewFocus else { return }
         WindowRouter.shared.reviewFocus = nil
-        model.highlight = id
+        model.focus(id)
     }
 
     /// The filter shortcuts (View menu) set the filter. Other actions belong to the sheet.
@@ -423,6 +423,7 @@ struct ReviewDetail: View {
         switch row.verdict {
         case .changes: return "Changes requested"
         case .approve: return "Approved"
+        case nil: return "No result"
         default: return "Review"
         }
     }
@@ -437,12 +438,12 @@ struct ReviewDetail: View {
     private var isCommentOnly: Bool { text?.event == "COMMENT" }
 
     private var barFill: Color {
-        if row.tooLarge || row.verdict == .skipped || isCommentOnly { return WinTheme.surface }
+        if row.tooLarge || row.verdict == nil || row.verdict == .skipped || isCommentOnly { return WinTheme.surface }
         return row.verdict == .changes ? WinTheme.amberBg : WinTheme.greenBg
     }
 
     private var barInk: Color {
-        if row.tooLarge || row.verdict == .skipped || isCommentOnly { return Gotham.fg }
+        if row.tooLarge || row.verdict == nil || row.verdict == .skipped || isCommentOnly { return Gotham.fg }
         return row.verdict == .changes ? WinTheme.amberInk : WinTheme.green
     }
 
@@ -518,6 +519,8 @@ struct ReviewDetail: View {
         } else if row.verdict == .skipped {
             // The verdict bar already says why it was skipped.
             EmptyView()
+        } else if row.verdict == nil {
+            note("The review session ended without a verdict. See the log.")
         } else {
             note("Review text not recorded (before 1.2)", faint: true)
         }
@@ -683,8 +686,8 @@ enum ReviewFilter: String, CaseIterable, Hashable {
     }
 }
 
-/// One PR's result in one sweep: a verdict, a held draft, or a skip. Carried-over rows are left out, since their
-/// sweep is listed where they were decided.
+/// One PR's result in one sweep: a verdict, a held draft, a skip, or No result (the run finished without a verdict).
+/// Carried-over rows are left out, since their sweep is listed where they were decided.
 struct ReviewRow: Identifiable {
     let runId: String
     let repo: String
@@ -801,7 +804,9 @@ struct ReviewSweep: Identifiable {
         duration = length
         rows = run.repos.flatMap { repo in
             repo.prs.compactMap { pr -> ReviewRow? in
-                guard pr.carriedFrom == nil, pr.verdict != nil || pr.draft == true || pr.skipReason != nil else {
+                // A PR a finished run left without a verdict is a No result row.
+                guard pr.carriedFrom == nil,
+                      pr.verdict != nil || pr.draft == true || pr.skipReason != nil || run.finished != nil else {
                     return nil
                 }
                 return ReviewRow(
@@ -862,6 +867,8 @@ final class ReviewsModel: ObservableObject {
     /// The selected card: a PR's `Strip.id`, set by a tap or by a Now row.
     @Published var highlight: String?
     @Published private(set) var sweeps: [ReviewSweep] = []
+    /// A Now row's PR, asked for before the sweeps finished loading. Opened when they arrive.
+    private var pendingOpen: String?
     private var loadTask: Task<Void, Never>?
 
     /// Keeps the newest 50 sweeps. Live, the run files are read off the main actor, after a 300 ms pause: a burst of
@@ -871,9 +878,9 @@ final class ReviewsModel: ObservableObject {
     func load(_ store: Store) {
         loadTask?.cancel()
         if store.isFixture {
-            sweeps = Self.sweeps(from: store.allRuns()) { runId, slug, n in
+            show(Self.sweeps(from: store.allRuns()) { runId, slug, n in
                 store.reviewText(runId: runId, slug: slug, n: n)?.postedDate
-            }
+            })
             return
         }
         let paths = store.paths
@@ -886,8 +893,40 @@ final class ReviewsModel: ObservableObject {
                 }
             }.value
             guard !Task.isCancelled else { return }
-            self?.sweeps = loaded
+            self?.show(loaded)
         }
+    }
+
+    private func show(_ loaded: [ReviewSweep]) {
+        sweeps = loaded
+        if let id = pendingOpen {
+            pendingOpen = nil
+            if let row = Self.row(stripID: id, in: loaded) { opened = row }
+        }
+    }
+
+    /// Selects a PR's card and opens its review, as a Now row's tap asks. Before the sweeps load, the open waits for them.
+    func focus(_ stripID: String) {
+        highlight = stripID
+        if sweeps.isEmpty {
+            pendingOpen = stripID
+        } else if let row = Self.row(stripID: stripID, in: sweeps) {
+            opened = row
+        }
+    }
+
+    /// The row for a PR, from the newest sweep that has one. Rows are matched by `stripID` (repo and number), so a
+    /// carried PR finds the sweep that decided it.
+    nonisolated static func row(stripID: String, in sweeps: [ReviewSweep]) -> ReviewRow? {
+        for sweep in sweeps {
+            if let row = sweep.rows.first(where: { $0.stripID == stripID }) { return row }
+        }
+        return nil
+    }
+
+    /// The newest sweep with at least one row. A run whose rows were all carried over has none, so it is skipped.
+    nonisolated static func current(in sweeps: [ReviewSweep]) -> ReviewSweep? {
+        sweeps.first { !$0.rows.isEmpty }
     }
 
     /// The newest `sweepLimit` runs as sweeps.
@@ -897,13 +936,13 @@ final class ReviewsModel: ObservableObject {
         }
     }
 
-    /// The newest sweep's reviews, as the grid shows them. Under All, every review (skips included).
+    /// The current sweep's reviews, as the grid shows them. Under All, every review (skips included).
     var grid: [ReviewRow] {
-        (sweeps.first?.rows ?? []).filter { filter == .all || filter.includes($0) }
+        (Self.current(in: sweeps)?.rows ?? []).filter { filter == .all || filter.includes($0) }
     }
 
-    /// How many of the newest sweep's reviews a tally numeral counts.
+    /// How many of the current sweep's reviews a tally numeral counts.
     func count(_ filter: ReviewFilter) -> Int {
-        (sweeps.first?.rows ?? []).filter(filter.includes).count
+        (Self.current(in: sweeps)?.rows ?? []).filter(filter.includes).count
     }
 }

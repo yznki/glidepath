@@ -216,6 +216,12 @@ final class SecurityTests: XCTestCase {
         XCTAssertNil(Claude.childEnvironment(parent: ["PATH": "/bin", "GH_TOKEN": "t"], binding: [:])["GH_TOKEN"])
     }
 
+    func testSessionWaitsForItsAgents() {
+        let env = Claude.waitingForAgents(["PATH": "/bin", "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS": "600000"])
+        XCTAssertEqual(env["CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS"], "0")
+        XCTAssertEqual(env["PATH"], "/bin")
+    }
+
     func testClonesUseHTTPS() {
         XCTAssertEqual(RepoClone.cloneURL("acme/api"), "https://github.com/acme/api.git")
     }
