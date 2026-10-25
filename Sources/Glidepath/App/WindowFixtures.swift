@@ -202,7 +202,7 @@ enum WindowFixtures {
         if name == "now-clear" {
             // Nothing held and nothing running: the newest run is the morning sweep.
             snap.run = sweepMorning(now)
-            snap.runs = [sweepMorning(now), sweepAfternoon(now)]
+            snap.runs = [sweepMorning(now)]
         }
         if name == "now-dry-run" {
             // The first sweep's dry run holds the lock. It is not the current run, so the run is nil.
