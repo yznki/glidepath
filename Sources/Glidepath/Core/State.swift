@@ -214,6 +214,15 @@ struct RunState: Codable, Equatable {
         repos[ri].prs[pi].flagged = true
     }
 
+    /// A PR in `numbers` with no verdict gets `reason`, unless the session already left one with `state set --reason`.
+    mutating func noteUnstamped(repo slug: String, numbers: Set<Int>, reason: String) {
+        guard let ri = repoIndexIfExists(slug) else { return }
+        for pi in repos[ri].prs.indices where numbers.contains(repos[ri].prs[pi].n)
+            && repos[ri].prs[pi].verdict == nil && repos[ri].prs[pi].reason == nil {
+            repos[ri].prs[pi].reason = reason
+        }
+    }
+
     mutating func setRepoError(_ slug: String, _ message: String) {
         let ri = repoIndex(slug)
         repos[ri].error = message

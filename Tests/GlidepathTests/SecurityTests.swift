@@ -90,11 +90,37 @@ final class SecurityTests: XCTestCase {
     }
 
     func testAgentsDefineThreeRolesWithModels() throws {
-        let obj = try JSONSerialization.jsonObject(with: Data(Claude.agentsJSON().utf8)) as? [String: Any]
+        let obj = try JSONSerialization.jsonObject(with: Data(Claude.agentsJSON(gitnexus: false).utf8)) as? [String: Any]
         XCTAssertEqual(Set(obj?.keys.map { $0 } ?? []), ["gatherer", "reviewer", "checker"])
         XCTAssertEqual((obj?["gatherer"] as? [String: Any])?["model"] as? String, "haiku")
         XCTAssertEqual((obj?["reviewer"] as? [String: Any])?["model"] as? String, "sonnet")
         XCTAssertEqual((obj?["checker"] as? [String: Any])?["permissionMode"] as? String, "dontAsk")
+    }
+
+    func testGathererListsGitNexusToolsOnlyWhenOn() throws {
+        func gathererTools(_ on: Bool) throws -> [String] {
+            let obj = try JSONSerialization.jsonObject(with: Data(Claude.agentsJSON(gitnexus: on).utf8)) as? [String: Any]
+            return (obj?["gatherer"] as? [String: Any])?["tools"] as? [String] ?? []
+        }
+        let on = try gathererTools(true), off = try gathererTools(false)
+        XCTAssertEqual(off, ["Read", "Edit", "Write", "Bash"])
+        XCTAssertTrue(on.contains("mcp__gitnexus__detect_changes"))
+        XCTAssertTrue(on.contains("mcp__gitnexus__impact"))
+        XCTAssertFalse(on.contains("mcp__gitnexus__cypher"), "write or cross-repo tools stay out")
+        XCTAssertEqual(on.filter { !$0.hasPrefix("mcp__") }, off)
+    }
+
+    func testFallbackDiffUsesThreeDotRangeOfFetchedRefs() {
+        XCTAssertEqual(PRCommands.fetchArguments(clone: "/c", n: 7, base: "main"),
+                       ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential",
+                        "-C", "/c", "fetch", "--quiet", "--no-tags", "origin",
+                        "+refs/pull/7/head:refs/glidepath/pr/7", "+refs/heads/main:refs/glidepath/base/7"])
+        XCTAssertEqual(PRCommands.diffArguments(clone: "/c", n: 7, head: "abc", path: nil),
+                       ["-C", "/c", "diff", "--no-color", "--no-ext-diff", "refs/glidepath/base/7...abc"])
+        XCTAssertEqual(PRCommands.diffArguments(clone: "/c", n: 7, head: "abc", path: "a.swift"),
+                       ["-C", "/c", "diff", "--no-color", "--no-ext-diff", "refs/glidepath/base/7...abc", "--", "a.swift"])
+        XCTAssertEqual(PRCommands.diffNameArguments(clone: "/c", n: 7, head: "abc"),
+                       ["-C", "/c", "diff", "--name-only", "refs/glidepath/base/7...abc"])
     }
 
     func testArgumentsCarrySkillAsSystemPromptAndNoSlashCommand() {

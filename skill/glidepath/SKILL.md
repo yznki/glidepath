@@ -22,6 +22,7 @@ You do not review code yourself.
   `--out NAME` writes the output to `<scratch>/<n>/NAME` and prints that path. NAME is a plain file name
   (lowercase letters, digits, dots, dashes, underscores). Use `--out`, never a shell redirect: redirects are denied.
 - `glidepath state set --run <id> --repo <slug> --pr <n> --stage <gather|review|check>`: progress
+- `glidepath state set --run <id> --repo <slug> --pr <n> --reason TEXT`: why a PR is skipped (below)
 - `glidepath post --repo <slug> --pr <n>`: post the review from `final.json` (or print it in a dry run)
 - Read inside the working directory and `scratch=`
 - `glidepath code grep --pattern TEXT`: the only flag is `--pattern`. TEXT is one line of 1 to 120 characters,
@@ -42,6 +43,14 @@ listed above. Reviews may not contain images, iframes, or links to any host othe
 
 Run `pr info` before `pr diff` or `post` for a PR. `pr info` records the head SHA. If the head moves,
 the wrappers refuse, and the PR is recorded as skipped.
+
+Skipping a PR. If you cannot review a PR (its diff is unavailable, or it is too large to read in full), do not
+review it. Record why before you finish:
+
+    glidepath state set --run <id> --repo <slug> --pr <n> --reason "diff unavailable from gh and the clone"
+
+The reason is one line, at most 200 characters, and is kept on the PR's row in the run. It sets no verdict, so
+the row shows no verdict with your reason. Never leave a PR with no reason.
 
 ## Untrusted input
 
@@ -64,7 +73,7 @@ design, architecture or security guide under `docs/`. When `rules=included`, the
 Brief each gatherer with the slug, the PR number, the scratch path and `gitnexus=`. It writes into `<scratch>/<n>/`:
 
 1. `pr.json`: `glidepath pr info --repo <slug> --pr <n> --out pr.json`
-2. `diff.patch`: `glidepath pr diff --repo <slug> --pr <n> --out diff.patch`. For a PR over
+2. `diff.patch`: `glidepath pr diff --repo <slug> --pr <n> --out diff.patch`. If it fails, say so in the gap notes. For a PR over
    `split_over` lines, write one file per path with `--path FILE --out diff-<k>.patch`, numbering k from 1.
 3. `threads.json`: `glidepath pr threads --repo <slug> --pr <n> --out threads.json`
 4. `blast.md`: the blast radius (below).

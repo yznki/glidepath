@@ -238,4 +238,17 @@ final class AtomicCounter: @unchecked Sendable {
         XCTAssertNil(run.repos[0].prs[0].isDraftPR)
         XCTAssertFalse(Store.strips(from: run)[0].isDraftPR)
     }
+
+    func testUnstampedKeptPRsGetAReasonUnlessTheSessionLeftOne() throws {
+        var run = RunState.new(id: "r", now: Date(timeIntervalSince1970: 1_800_000_000))
+        try run.setPR(repo: "acme/api", n: 1, stage: nil, author: nil, title: nil, verdict: nil, reason: nil)
+        try run.setPR(repo: "acme/api", n: 2, stage: nil, author: nil, title: nil, verdict: nil, reason: nil)
+        try run.setPR(repo: "acme/api", n: 3, stage: nil, author: nil, title: nil, verdict: .approve, reason: nil)
+        try run.setNote(repo: "acme/api", n: 2, note: "diff unavailable")
+        run.noteUnstamped(repo: "acme/api", numbers: [1, 2, 3], reason: "review session ended without a verdict; see the log")
+        let prs = run.repos[0].prs
+        XCTAssertEqual(prs.map(\.reason), ["review session ended without a verdict; see the log", "diff unavailable", nil])
+        XCTAssertNil(prs[0].verdict)
+        XCTAssertEqual(prs[2].verdict, .approve)
+    }
 }
