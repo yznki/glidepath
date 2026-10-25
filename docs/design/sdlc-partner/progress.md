@@ -7,7 +7,9 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | Phase | Step | Status | Commit |
 |---|---|---|---|
 | 1.6 | branch sdlc-1.6, build design `notes/1.6.md` | done | |
-| 1.6 | H1 core: config, usage guard, push guard, approach, tend state, autopilot, playbook + tests | in progress | |
+| 1.6 | H1 core: config, usage guard, push guard, approach, tend state, autopilot, playbook + tests (423 pass) | done | 323f278 25b745c |
+| 1.6 | H2 CLI: tend command, rounds, launchd job, review stream-json | in progress | |
+| 1.6 | H3 App: Approach section, chart, drawer, popover, settings (isolated worktree) | in progress | |
 
 ## Decisions (Yazan should know)
 
