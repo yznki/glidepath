@@ -111,6 +111,14 @@ struct Playbook: Equatable {
         return out
     }
 
+    /// Drops the lessons older than `days`. Commands are kept.
+    func dropStale(now: Date, days: Int) -> Playbook {
+        let cutoff = now.addingTimeInterval(-Double(days) * 86_400)
+        var out = self
+        out.lessons = lessons.filter { $0.date >= cutoff }
+        return out
+    }
+
     func remove(_ lesson: Lesson) -> Playbook {
         var out = self
         out.lessons.removeAll { $0 == lesson }

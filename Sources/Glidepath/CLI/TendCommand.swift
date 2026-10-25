@@ -1701,6 +1701,7 @@ final class Tender {
       mergeable mergeStateStatus reviewDecision updatedAt author { login }
       labels(first: 20) { nodes { name } }
       reviewRequests(first: 10) { nodes { requestedReviewer { ... on User { login } ... on Team { name } } } }
+      timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 20) { nodes { ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } } } }
       reviews(last: 20) { nodes { id databaseId state body author { __typename login } } }
       comments(last: 30) { nodes { id databaseId body author { __typename login } } }
       reviewThreads(first: 50) { nodes { id isResolved comments(last: 10) { nodes { id databaseId body path line author { __typename login } } } } }
@@ -1930,6 +1931,8 @@ final class Tender {
     private struct PRNode: Decodable {
         struct Reviewer: Decodable { let login: String?; let name: String? }
         struct Request: Decodable { let requestedReviewer: Reviewer? }
+        struct ReviewRequested: Decodable { let createdAt: String?; let requestedReviewer: Reviewer? }
+        struct TimelineEvents: Decodable { let nodes: [ReviewRequested?] }
         struct Review: Decodable {
             let id: String
             let databaseId: Int?
@@ -1992,6 +1995,7 @@ final class Tender {
         let comments: Nodes<PlainComment>?
         let reviewThreads: Nodes<Thread>
         let commits: Nodes<Commit>
+        let timelineItems: TimelineEvents?
 
         struct Named: Decodable { let name: String }
         struct BaseRepo: Decodable { let defaultBranchRef: Named? }
@@ -2006,6 +2010,14 @@ final class Tender {
                 return CheckState(name: name, status: pending ? "IN_PROGRESS" : "COMPLETED",
                                   conclusion: pending ? nil : state, url: c.targetUrl)
             }
+            let requested = reviewRequests.nodes.compactMap { $0.requestedReviewer.flatMap { $0.login ?? $0.name } }
+            var requestedAt: [String: Date] = [:]
+            for event in timelineItems?.nodes ?? [] {
+                guard let event, let login = event.requestedReviewer?.login,
+                      let at = event.createdAt.flatMap({ ISO8601DateFormatter().date(from: $0) }) else { continue }
+                requestedAt[login] = max(requestedAt[login] ?? at, at)
+            }
+            requestedAt = requestedAt.filter { requested.contains($0.key) }
             return OpenPR(
                 n: number, title: title, body: body ?? "", url: url, author: author?.login ?? "",
                 isDraft: isDraft, isFork: isCrossRepository, labels: labels.nodes.map(\.name),
@@ -2023,11 +2035,11 @@ final class Tender {
                     ReviewInfo(id: $0.id, author: $0.author?.name ?? "", state: $0.state, body: $0.body ?? "",
                                databaseId: $0.databaseId)
                 },
-                requested: reviewRequests.nodes.compactMap { $0.requestedReviewer.flatMap { $0.login ?? $0.name } },
+                requested: requested,
                 updatedAt: updatedAt.flatMap { ISO8601DateFormatter().date(from: $0) },
                 comments: (comments?.nodes ?? []).map {
                     PRComment(id: $0.id, databaseId: $0.databaseId, author: $0.author?.name ?? "", body: $0.body)
-                })
+                }, requestedAt: requestedAt)
         }
     }
 }

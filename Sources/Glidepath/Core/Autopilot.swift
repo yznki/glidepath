@@ -23,6 +23,8 @@ enum TendAction: Equatable {
     case conflict
     /// Reverting a landed PR that broke main.
     case revert
+    /// A reviewer who has waited past `nudge_hours`: a polite ping.
+    case nudge
 }
 
 enum Autopilot {
@@ -45,6 +47,7 @@ enum Autopilot {
         case .land:
             return (autopilot || merge == .auto) ? .act : .you
         case .conflict, .revert: return autopilot ? .council : .you
+        case .nudge: return autopilot ? .act : .you
         }
     }
 }

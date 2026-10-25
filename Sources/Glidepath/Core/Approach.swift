@@ -27,6 +27,8 @@ struct OpenPR: Codable, Equatable {
     var updatedAt: Date?
     /// Plain PR comments (issue comments), not review threads.
     var comments: [PRComment] = []
+    /// When each requested reviewer was asked, by login. Only for logins in `requested`.
+    var requestedAt: [String: Date] = [:]
 }
 
 /// A plain comment on the PR conversation.
@@ -133,6 +135,8 @@ struct ApproachPlane: Codable, Equatable {
     var ci: String
     /// When a landed PR merged. nil for a PR that has not landed (and for files from before 1.8).
     var landedAt: Date?
+    /// The self-review line the approach view shows. nil when Glidepath has not reviewed the head.
+    var selfReview: String?
 }
 
 /// A thing the user must decide: a held fix, or a stuck PR. `kind` is "held" or "stuck".
@@ -288,19 +292,29 @@ enum Approach {
     }
 
     static func plane(_ pr: OpenPR, slug: String, state: TendPR?, working: Bool, lane: Int, stackIndex: Int?,
-                      triesPerHead: Int = TendConfig().triesPerHead) -> ApproachPlane {
+                      triesPerHead: Int = TendConfig().triesPerHead, selfReview: SelfReview? = nil) -> ApproachPlane {
         ApproachPlane(slug: slug, n: pr.n, title: pr.title, url: pr.url,
                       phase: phase(pr, state: state, working: working), marker: marker(pr),
                       label: label(pr, state: state, working: working, triesPerHead: triesPerHead),
                       waitingOn: waitingOn(pr), lane: lane, stackIndex: stackIndex,
-                      off: !tendable(pr, state), gates: gates(pr, state: state), ci: pr.ciStatus.rawValue)
+                      off: !tendable(pr, state), gates: gates(pr, state: state), ci: pr.ciStatus.rawValue,
+                      selfReview: selfReview.map(Approach.selfReviewLine))
+    }
+
+    /// The self-review line for a PR: the finding count when the review asked for changes, else clean.
+    static func selfReviewLine(_ review: SelfReview) -> String {
+        let k = review.findings.count
+        if review.verdict == "changes" && k > 0 {
+            return "Self-review: \(k) \(k == 1 ? "finding" : "findings")"
+        }
+        return "Self-review: clean"
     }
 
     /// The Needs items for a PR: a held fix or a stuck PR first, then one per comment the user must answer. Empty when
     /// none.
     /// `landable` is set when the PR is ready and the merge setting is `ask`; `prs` names the stack above it.
     static func needs(_ slug: String, _ pr: OpenPR, state: TendPR?, landable: Bool = false,
-                      prs: [OpenPR] = []) -> [NeedsItem] {
+                      prs: [OpenPR] = [], nudges: [(login: String, hours: Int)] = []) -> [NeedsItem] {
         func item(_ id: String, _ kind: String, _ detail: String) -> NeedsItem {
             NeedsItem(id: "\(slug)#\(pr.n)/\(id)", slug: slug, n: pr.n, title: pr.title, kind: kind, detail: detail)
         }
@@ -313,6 +327,9 @@ enum Approach {
         for call in state?.calls ?? [] {
             let detail = "Your call · \(call.author): \"\(call.quote)\"" + (call.draft != nil ? " · draft reply ready" : "")
             items.append(item(call.id, "call", detail))
+        }
+        for nudge in nudges {
+            items.append(item("wait-\(nudge.login)", "blocked", "Waiting \(nudge.hours) h on \(nudge.login)"))
         }
         if landable {
             items.append(item("land", "land", Landing.detail(pr, prs)))

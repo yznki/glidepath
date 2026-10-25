@@ -157,6 +157,12 @@ struct TendConfig: Equatable {
     /// Percent of the Claude usage window kept back for the user. 0 to 90.
     var usageReserve = 40
     var quietHours = QuietHours.parse("22:00-07:00,sat,sun")!
+    /// Whether the PR's author gets a self-review of each head: Glidepath's own read of the diff before a reviewer's.
+    var selfReview = false
+    /// Weekday hours a reviewer may take before a polite ping.
+    var nudgeHours = 24
+    /// When the morning briefing is due, on the days the sweeps run.
+    var briefingTime = ScheduleTime("08:00")!
     /// Keys this version does not know, kept as they were read so a save does not drop them.
     var extras: [String: TOMLValue] = [:]
 }
@@ -362,9 +368,18 @@ struct Config: Equatable {
             }
             tend.quietHours = quiet
         }
+        tend.selfReview = try bool(t["self_review"], key: "self_review") ?? tend.selfReview
+        tend.nudgeHours = try positiveInt(t["nudge_hours"], key: "nudge_hours") ?? tend.nudgeHours
+        if let text = try string(t["briefing_time"], key: "briefing_time") {
+            guard let time = ScheduleTime(text) else {
+                throw ConfigError(message: "briefing_time \"\(text)\" must look like 08:00")
+            }
+            tend.briefingTime = time
+        }
         tend.extras = extraKeys(t, allowed: ["enabled", "push", "merge", "rounds_per_day", "tries_per_head", "max_fix_lines",
                                              "autopilot", "advisor", "disagree", "max_usd_per_session", "council_per_day",
-                                             "registries", "usage_reserve", "quiet_hours"])
+                                             "registries", "usage_reserve", "quiet_hours", "self_review", "nudge_hours",
+                                             "briefing_time"])
         return tend
     }
 
@@ -510,6 +525,9 @@ struct Config: Equatable {
             }
             if tend.usageReserve != d.usageReserve { out += "usage_reserve = \(tend.usageReserve)\n" }
             if tend.quietHours != d.quietHours { out += "quiet_hours = \(tomlQuoted(tend.quietHours.text))\n" }
+            if tend.selfReview != d.selfReview { out += "self_review = \(tend.selfReview)\n" }
+            if tend.nudgeHours != d.nudgeHours { out += "nudge_hours = \(tend.nudgeHours)\n" }
+            if tend.briefingTime != d.briefingTime { out += "briefing_time = \(tomlQuoted(tend.briefingTime.text))\n" }
             out += tomlLines(tend.extras)
         }
         for r in repos {
