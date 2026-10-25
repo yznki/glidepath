@@ -66,7 +66,7 @@ struct TendPR: Codable, Equatable {
     var resolvedByUs: [String] = []
     /// Asks waiting for the user.
     var calls: [YourCall] = []
-    /// Reviewers asked to review again this head, so each is asked once.
+    /// Reviewers asked to review again in the last round.
     var rereq: [String] = []
 
     init(slug: String, n: Int) {
