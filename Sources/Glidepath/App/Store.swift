@@ -177,6 +177,8 @@ final class Store: ObservableObject {
     /// count gives the row's hold button a new identity, so it starts again.
     @Published private(set) var tendFailures: [String: Int] = [:]
     @Published private(set) var tendErrors: [String: String] = [:]
+    /// The Needs items whose tend command is running. Their buttons stay disabled until it finishes.
+    @Published private(set) var tendBusy: Set<String> = []
     /// Tokens so far in the live sweep's session, read from its transcript every 2 s while the sweep runs. Zero otherwise.
     @Published private(set) var liveTokens: (total: Int, byPR: [Int: Int]) = (0, [:])
     private var liveTokenTask: Task<Void, Never>?
@@ -694,9 +696,18 @@ final class Store: ObservableObject {
             onDone?(false)
             return
         }
+        // One command at a time per item: a second click while one runs does nothing.
+        if let item {
+            guard !tendBusy.contains(item) else {
+                onDone?(false)
+                return
+            }
+            tendBusy.insert(item)
+        }
         let env = Runner.environment(paths)
         Task {
             let result = await Task.detached { Shell.run(binary, ["tend"] + args, env: env) }.value
+            if let item { tendBusy.remove(item) }
             if result.ok {
                 actionError = nil
                 if let item { tendErrors[item] = nil }
