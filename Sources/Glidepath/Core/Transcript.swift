@@ -9,9 +9,11 @@ enum Transcript {
         var byPR: [Int: Int] = [:]
     }
 
-    static func projectDir(paths: Paths, cwd: String) -> String {
+    /// The folder Claude keeps a clone's session transcripts in. `claudeDir` is the config folder a session ran with
+    /// (`CLAUDE_CONFIG_DIR`); nil means the user's own `~/.claude`.
+    static func projectDir(paths: Paths, cwd: String, claudeDir: String? = nil) -> String {
         let encoded = String(cwd.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" })
-        return paths.claudeProjectsDir + "/" + encoded
+        return (claudeDir.map { $0 + "/projects" } ?? paths.claudeProjectsDir) + "/" + encoded
     }
 
     /// Sums usage over distinct assistant messages. A streamed message is written as several lines
@@ -74,8 +76,8 @@ enum Transcript {
 
     /// Total for the main session plus its subagents. A subagent's tokens are split among the PRs its
     /// brief names (see `split`); the main session's tokens stay in the run total only.
-    static func usage(paths: Paths, cwd: String, sessionId: String, keptPRs: Set<Int>) -> Usage {
-        let dir = projectDir(paths: paths, cwd: cwd)
+    static func usage(paths: Paths, cwd: String, sessionId: String, keptPRs: Set<Int>, claudeDir: String? = nil) -> Usage {
+        let dir = projectDir(paths: paths, cwd: cwd, claudeDir: claudeDir)
         let fm = FileManager.default
         var usage = Usage()
         let main = dir + "/" + sessionId + ".jsonl"

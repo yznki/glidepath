@@ -333,6 +333,7 @@ enum Uninstall {
 
         _ = Shell.run("launchctl", ["bootout", "gui/\(uid)/\(Launchd.label)"])
         remove(paths.plistFile, "scheduled job")
+        TendJob.remove(paths: paths)
         remove(paths.skillDir, "skill")
         remove(paths.appLink, "app link")
 

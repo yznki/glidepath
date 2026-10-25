@@ -43,10 +43,18 @@ struct Paths {
     var appLink: String { appsDir + "/Glidepath.app" }
     var agentsDir: String { home + "/Library/LaunchAgents" }
     var plistFile: String { agentsDir + "/\(Launchd.label).plist" }
+    var tendPlistFile: String { agentsDir + "/\(Launchd.tendLabel).plist" }
     var logFile: String { home + "/Library/Logs/glidepath.log" }
+    var tendLogFile: String { home + "/Library/Logs/glidepath-tend.log" }
     var claudeProjectsDir: String { home + "/.claude/projects" }
 
     func runFile(_ id: String) -> String { runsDir + "/\(id).json" }
+
+    /// The lock every git command that changes one clone or its worktrees takes, so a review and a tend round never
+    /// run git in the same clone at once.
+    func cloneLock(_ slug: String) -> String {
+        stateDir + "/clone-" + slug.replacingOccurrences(of: "/", with: "-") + ".lock"
+    }
 
     /// Expands a leading `~/` against `home`.
     func expand(_ path: String) -> String {

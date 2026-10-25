@@ -277,7 +277,7 @@ enum InitCommand {
     static func installSkill(from source: String, to dest: String) throws {
         let fm = FileManager.default
         try fm.createDirectory(atPath: dest, withIntermediateDirectories: true)
-        for file in ["SKILL.md", "rubric.md"] {
+        for file in ["SKILL.md", "rubric.md", "tend.md"] {
             let target = dest + "/" + file
             try? fm.removeItem(atPath: target)
             try fm.copyItem(atPath: source + "/" + file, toPath: target)
@@ -303,13 +303,18 @@ enum InitCommand {
         let data = try Launchd.data(binary: binary, schedule: config.schedule, days: config.days, path: path,
                                          logFile: paths.logFile)
         try data.write(to: URL(fileURLWithPath: paths.plistFile), options: .atomic)
+        try loadJob(label: Launchd.label, plist: paths.plistFile)
+    }
+
+    /// Boots a job out, then back in from its plist. Error 5 (I/O error) right after a bootout is a race with launchd,
+    /// so it gets one retry after a second.
+    static func loadJob(label: String, plist: String) throws {
         let uid = getuid()
-        _ = Shell.run("launchctl", ["bootout", "gui/\(uid)/\(Launchd.label)"])
-        var boot = Shell.run("launchctl", ["bootstrap", "gui/\(uid)", paths.plistFile])
-        // Error 5 (I/O error) right after a bootout is a race with launchd. One retry after a second.
+        _ = Shell.run("launchctl", ["bootout", "gui/\(uid)/\(label)"])
+        var boot = Shell.run("launchctl", ["bootstrap", "gui/\(uid)", plist])
         if boot.status == 5 {
             sleep(1)
-            boot = Shell.run("launchctl", ["bootstrap", "gui/\(uid)", paths.plistFile])
+            boot = Shell.run("launchctl", ["bootstrap", "gui/\(uid)", plist])
         }
         guard boot.ok else { throw StateError("launchctl bootstrap failed: \(boot.stderr)") }
     }

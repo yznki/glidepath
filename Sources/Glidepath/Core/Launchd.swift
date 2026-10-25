@@ -37,6 +37,21 @@ enum Launchd {
             fromPropertyList: plist(binary: binary, schedule: schedule, days: days, path: path, logFile: logFile),
             format: .xml, options: 0)
     }
+
+    static let tendLabel = "dev.glidepath.tend"
+
+    /// The tend job: one `glidepath tend` check every five minutes. Installed only while tending is on.
+    static func tendPlist(binary: String, path: String, logFile: String) -> [String: Any] {
+        [
+            "Label": tendLabel,
+            "ProgramArguments": [binary, "tend"],
+            "StartInterval": 300,
+            "EnvironmentVariables": ["PATH": path],
+            "StandardOutPath": logFile,
+            "StandardErrorPath": logFile,
+            "RunAtLoad": false,
+        ]
+    }
 }
 
 /// Finds gitnexus for the launchd job. A job does not inherit the shell's PATH, so the directory it lives in is added
