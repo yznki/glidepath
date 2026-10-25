@@ -100,6 +100,24 @@ final class TendCommentsTests: XCTestCase {
         XCTAssertEqual(Threads.actionable(chat, me: "dev", answered: ["p1"]).map(\.id), ["p4"])
     }
 
+    // MARK: Teammate Glidepath
+
+    func testMarkerMakesABotAndPayloadsCarryIt() throws {
+        XCTAssertTrue(Threads.isBot("alice", body: "Fine.\n\n" + ReviewValidator.marker))
+        XCTAssertFalse(Threads.isBot("alice", body: "Fine."))
+
+        // A bot's plain summary does not start a round; its thread does.
+        let botThread = thread("t9", [comment("c9", "coderabbitai", "nit: typo")])
+        let summary = pr(threads: [botThread], comments: [plain("p9", "coderabbitai", "Summary: 3 files reviewed")])
+        XCTAssertEqual(Threads.actionable(summary, me: "dev", answered: []).map(\.id), ["t9"])
+
+        let d = Draft(verdict: "changes", reason: "missing test", body: "Add a test.",
+                      comments: [DraftComment(path: "Sources/a.swift", line: 3, side: nil, body: "here")])
+        let p = try ReviewValidator.validate(d, files: ["Sources/a.swift"], posting: .review, head: "sha7")
+        XCTAssertTrue(p.body.hasSuffix("\n\n" + ReviewValidator.marker))
+        XCTAssertTrue(p.comments[0].body.hasSuffix("\n\n" + ReviewValidator.marker))
+    }
+
     // MARK: ReplyGuard
 
     func testReplyGuard() {

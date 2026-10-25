@@ -42,6 +42,10 @@ enum ReviewValidator {
     static let maxCommentBody = 1500
     static let maxComments = 5
     static let maxReason = 60
+    /// Appended to every posted review body and inline comment, so a teammate's Glidepath is known by its text.
+    static let marker = "<!-- glidepath:review -->"
+    /// Room the blank line and marker add to a body. Length checks run before the marker is added and allow this after.
+    static let markerRoom = marker.count + 2
 
     /// Reviews are text. Images, iframes and links to other hosts can carry tracking pixels or
     /// lure readers, so they are refused before anything is posted.
@@ -103,9 +107,12 @@ enum ReviewValidator {
         guard d.comments.count <= maxComments else {
             throw CommandError("\(d.comments.count) comments; the limit is \(maxComments)")
         }
+        let stamp = "\n\n" + marker
         var comments: [PayloadComment] = []
         for c in d.comments {
-            comments.append(try checkComment(c.path, c.line, c.side, c.body, files: files))
+            var checked = try checkComment(c.path, c.line, c.side, c.body, files: files)
+            checked.body += stamp
+            comments.append(checked)
         }
 
         let payload: ReviewPayload
@@ -114,10 +121,10 @@ enum ReviewValidator {
             // COMMENT reviews carry the verdict in the first line of the body.
             let verdictLine = d.verdict == "approve" ? "Verdict: approve" : "Verdict: changes"
             payload = ReviewPayload(commit_id: head, event: "COMMENT",
-                                    body: verdictLine + "\n\n" + body, comments: comments)
+                                    body: verdictLine + "\n\n" + body + stamp, comments: comments)
         case .review, .draft:
             let event = d.verdict == "approve" ? "APPROVE" : "REQUEST_CHANGES"
-            payload = ReviewPayload(commit_id: head, event: event, body: body, comments: comments)
+            payload = ReviewPayload(commit_id: head, event: event, body: body + stamp, comments: comments)
         }
         try checkPayload(payload, files: files, own: own)
         return payload
@@ -133,7 +140,7 @@ enum ReviewValidator {
             throw CommandError("event must be APPROVE, REQUEST_CHANGES or COMMENT")
         }
         if own, p.event != "COMMENT" { throw CommandError("your own PR takes only COMMENT reviews") }
-        guard !p.body.isEmpty, p.body.count <= maxBody + verdictLineRoom else {
+        guard !p.body.isEmpty, p.body.count <= maxBody + verdictLineRoom + markerRoom else {
             throw CommandError("body is \(p.body.count) characters; limit is \(maxBody)")
         }
         try checkContent(p.body)
@@ -141,17 +148,18 @@ enum ReviewValidator {
             throw CommandError("\(p.comments.count) comments; the limit is \(maxComments)")
         }
         for c in p.comments {
-            _ = try checkComment(c.path, c.line, c.side, c.body, files: files)
+            _ = try checkComment(c.path, c.line, c.side, c.body, files: files, room: markerRoom)
         }
     }
 
     /// One inline comment: a file in the PR, a line from 1, side RIGHT only, and a bounded body of plain text.
-    static func checkComment(_ path: String, _ line: Int, _ side: String?, _ body: String, files: Set<String>) throws -> PayloadComment {
+    static func checkComment(_ path: String, _ line: Int, _ side: String?, _ body: String, files: Set<String>,
+                             room: Int = 0) throws -> PayloadComment {
         guard files.contains(path) else { throw CommandError("comment path \(path) is not a file in this PR") }
         guard line >= 1 else { throw CommandError("comment on \(path) has line \(line)") }
         let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { throw CommandError("comment on \(path):\(line) is empty") }
-        guard text.count <= maxCommentBody else {
+        guard text.count <= maxCommentBody + room else {
             throw CommandError("comment on \(path):\(line) is \(text.count) characters; limit is \(maxCommentBody)")
         }
         try checkContent(text)

@@ -52,7 +52,7 @@ final class DraftTests: XCTestCase {
         refused(payload(event: "APPROVE"), own: true, "own PR with a real review event")
         refused(payload(body: "<script>alert(1)</script>"), "markup in the body")
         refused(payload(body: "![x](https://github.com/a/b.png)"), "image in the body")
-        refused(payload(body: String(repeating: "x", count: ReviewValidator.maxBody + ReviewValidator.verdictLineRoom + 1)), "body too long")
+        refused(payload(body: String(repeating: "x", count: ReviewValidator.maxBody + ReviewValidator.verdictLineRoom + ReviewValidator.markerRoom + 1)), "body too long")
         refused(payload(comments: [PayloadComment(path: "../secret", line: 1, side: "RIGHT", body: "x")]), "path outside the PR")
         refused(payload(comments: [PayloadComment(path: "a.swift", line: 0, side: "RIGHT", body: "x")]), "line zero")
         refused(payload(comments: [PayloadComment(path: "a.swift", line: 1, side: "LEFT", body: "x")]), "left side")
