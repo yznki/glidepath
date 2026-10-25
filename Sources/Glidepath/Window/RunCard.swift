@@ -18,8 +18,6 @@ struct RunCard: View {
     let run: RunState
     /// Whether this run is the one going now.
     let running: Bool
-    /// The run's loaded reviews, which say whether each PR was posted. Nil until they load.
-    let sweep: ReviewSweep?
     @ObservedObject var store: Store
     let open: (String) -> Void
 
@@ -99,7 +97,7 @@ struct RunCard: View {
     private func sentence(_ d: RunDigest) -> some View {
         (Text(d.lead)
             .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(Gotham.fg)
+            .foregroundStyle(d.failed != nil ? signal : Gotham.fg)
          + Text(d.rest.isEmpty ? "" : " " + d.rest)
             .font(.system(size: 13))
             .foregroundStyle(Gotham.mute))
@@ -125,7 +123,7 @@ struct RunCard: View {
     // MARK: Rows
 
     private func inFlightRow(_ row: RunDigest.Row) -> some View {
-        line(row, sub: Text("\(row.slug) #\(row.pr.n)")) {
+        line(row, sub: Text(verbatim: "\(row.slug) #\(String(row.pr.n))")) {
             HStack(spacing: 4) {
                 ForEach(0..<4, id: \.self) { i in
                     if i < row.pr.stage.rank {
@@ -144,7 +142,7 @@ struct RunCard: View {
         }
     }
 
-    /// The first `folds.more` reviewed rows, then a fold for the rest.
+    /// The first five reviewed rows, then a fold for the rest.
     @ViewBuilder
     private func reviewedRows(_ d: RunDigest) -> some View {
         let expanded = folds.open.contains(.more)
@@ -155,14 +153,16 @@ struct RunCard: View {
         }
     }
 
+    /// "held" for a draft, "posted" when the review is on GitHub, else "not posted". A repo that posts reviews
+    /// directly counts as posted: the run wrote the review itself.
     private func reviewedRow(_ row: RunDigest.Row) -> some View {
         let verdict = row.pr.verdict == .changes ? "Changes" : "Approved"
         let colour = row.pr.verdict == .changes ? signal : Gotham.fg
-        let posted = sweep?.rows.first { $0.stripID == row.stripID }?.postedAt != nil
-        let state = row.pr.draft == true ? "held" : posted ? "posted" : "not posted"
+        let postsDirectly = store.snap.config?.repos.first { $0.slug == row.slug }?.posting == .review
+        let state = row.pr.draft == true ? "held" : (row.pr.posted != nil || postsDirectly) ? "posted" : "not posted"
         var sub = Text(verdict).foregroundStyle(colour).fontWeight(.semibold)
         if let reason = PRFilter.displayReason(row.pr.reason) { sub = sub + Text(" · \(reason)") }
-        sub = sub + Text(" · #\(row.pr.n)")
+        sub = sub + Text(verbatim: " · #\(String(row.pr.n))")
         return Button { open(row.stripID) } label: {
             line(row, sub: sub) {
                 Text(state)
@@ -173,16 +173,28 @@ struct RunCard: View {
         .buttonStyle(.plain)
     }
 
+    /// A PR the run stopped before a verdict. Review again goes through the same confirm as the Review menu. A
+    /// failed attempt shows its error under the row.
     private func stoppedRow(_ row: RunDigest.Row) -> some View {
+        let strip = Strip(repo: row.slug, number: row.pr.n, author: row.pr.author, title: row.pr.title,
+                          reason: row.pr.reason, stage: row.pr.stage.rank + 1, active: false, verdict: nil,
+                          tokens: row.pr.tokens, skipReason: row.pr.skipReason, changedLines: row.pr.changedLines)
         let sub = Text("Stopped in \(Self.stageWord(row.pr.stage).lowercased())")
             .foregroundStyle(Gotham.mute)
-            + Text(" · no result · #\(row.pr.n)")
-        return line(row, sub: sub) {
-            WinButton(title: "Review again", style: .link, small: true) {
-                store.reviewPR(Strip(repo: row.slug, number: row.pr.n, author: row.pr.author, title: row.pr.title,
-                                     reason: row.pr.reason, stage: row.pr.stage.rank + 1, active: false, verdict: nil,
-                                     tokens: row.pr.tokens, skipReason: row.pr.skipReason,
-                                     changedLines: row.pr.changedLines))
+            + Text(verbatim: " · no result · #\(String(row.pr.n))")
+        return VStack(alignment: .leading, spacing: 4) {
+            line(row, sub: sub) {
+                WinButton(title: "Review again", style: .outline, small: true) {
+                    Confirm.review(store, .prs([PRRef(slug: row.slug, n: row.pr.n)]))
+                }
+                .disabled(store.snap.running)
+            }
+            if let error = store.draftErrors[strip.id] {
+                Text(error)
+                    .font(.system(size: 11))
+                    .foregroundStyle(signal)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
             }
         }
     }
@@ -192,7 +204,7 @@ struct RunCard: View {
     private func skippedFolds(_ d: RunDigest) -> some View {
         let already = d.skipped[.alreadyReviewed] ?? []
         if !already.isEmpty {
-            fold(.already, "\(already.count) already reviewed by you", chips: already.map { "#\($0.pr.n)" })
+            fold(.already, "\(already.count) already reviewed by you", chips: already.map { "#\(String($0.pr.n))" })
         }
         let groups = RunDigest.SkipKind.allCases.filter { $0 != .alreadyReviewed }.compactMap { kind -> (RunDigest.SkipKind, [RunDigest.Row])? in
             guard let rows = d.skipped[kind], !rows.isEmpty else { return nil }
@@ -202,7 +214,7 @@ struct RunCard: View {
         if count > 0 {
             let chips = groups.map { kind, rows -> String in
                 let text = kind == .own ? "\(rows.count) your own" : RunDigest.groupText(kind, rows.count)
-                return rows.count == 1 ? "\(text) · #\(rows[0].pr.n)" : text
+                return rows.count == 1 ? "\(text) · #\(String(rows[0].pr.n))" : text
             }
             fold(.skipped, "\(count) skipped", chips: chips)
         }
@@ -254,7 +266,7 @@ struct RunCard: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 60), spacing: 6, alignment: .leading)],
                           alignment: .leading, spacing: 6) {
                     ForEach(chips, id: \.self) { chip in
-                        Text(chip)
+                        Text(verbatim: chip)
                             .font(.system(size: 11))
                             .foregroundStyle(Gotham.mute)
                             .padding(.horizontal, 8)

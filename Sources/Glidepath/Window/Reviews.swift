@@ -16,24 +16,26 @@ struct HistoryView: View {
                 .padding(.bottom, WinMetrics.s16)
             WinScroll {
                 VStack(alignment: .leading, spacing: 0) {
-                if model.runs.isEmpty {
-                    Text("No reviews to show.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Gotham.mute)
-                        .padding(.top, WinMetrics.s8)
-                } else {
-                    ForEach(model.days) { group in
-                        capLabel(ReviewsModel.dayTitle(group.day))
+                    if model.runs.isEmpty {
+                        Text("No reviews to show.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Gotham.mute)
                             .padding(.top, WinMetrics.s8)
-                            .padding(.bottom, 10)
-                        ForEach(group.runs, id: \.id) { run in
-                            RunCard(run: run, running: store.snap.running && run.id == store.snap.run?.id,
-                                    sweep: model.sweep(for: run.id), store: store) { stripID in
-                                model.open(runID: run.id, stripID: stripID)
+                    } else {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(model.days(live: store.snap.run)) { group in
+                                capLabel(ReviewsModel.dayTitle(group.day))
+                                    .padding(.top, WinMetrics.s8)
+                                    .padding(.bottom, 10)
+                                ForEach(group.runs, id: \.id) { run in
+                                    RunCard(run: run, running: store.snap.running && run.id == store.snap.run?.id,
+                                            store: store) { stripID in
+                                        model.open(runID: run.id, stripID: stripID, store: store)
+                                    }
+                                }
                             }
                         }
                     }
-                }
                 }
             }
         }
@@ -44,14 +46,12 @@ struct HistoryView: View {
             model.load(store)
             takeFocus()
         }
-        .onReceive(store.$snap) { _ in model.load(store) }
+        .onChange(of: RunsKey(store.snap)) { _, _ in model.load(store) }
         .onReceive(WindowRouter.shared.$reviewFocus.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
             takeFocus()
         }
-        // The open sheet's draft flag can change without its id changing (a post or discard reloads the sweeps).
-        .onChange(of: model.opened?.id) { _ in ShortcutContext.shared.setReview(model.opened) }
-        .onChange(of: model.opened?.draft) { _ in ShortcutContext.shared.setReview(model.opened) }
-        .onReceive(model.$sweeps) { _ in ShortcutContext.shared.setReview(model.opened) }
+        .onChange(of: model.opened?.id) { _, _ in ShortcutContext.shared.setReview(model.opened) }
+        .onChange(of: model.opened?.draft) { _, _ in ShortcutContext.shared.setReview(model.opened) }
         .onDisappear { ShortcutContext.shared.setReview(nil) }
         .sheet(item: $model.opened) { row in
             ReviewSheet(row: row, text: store.reviewText(runId: row.runId, slug: row.repo, n: row.number), store: store) {
@@ -64,7 +64,24 @@ struct HistoryView: View {
     private func takeFocus() {
         guard let id = WindowRouter.shared.reviewFocus else { return }
         WindowRouter.shared.reviewFocus = nil
-        model.focus(id)
+        model.focus(id, store: store)
+    }
+}
+
+/// What the run lists are read for. History and Now reload when this changes, not on every store update: the current
+/// run's identity, whether it has finished, whether it is going, and how many drafts are held (a post or discard
+/// changes an older run's card).
+struct RunsKey: Equatable {
+    let id: String?
+    let finished: Date?
+    let running: Bool
+    let held: Int
+
+    init(_ snap: Snapshot) {
+        id = snap.run?.id
+        finished = snap.run?.finished
+        running = snap.running
+        held = snap.run.map { $0.repos.flatMap(\.prs).filter { $0.draft == true }.count } ?? 0
     }
 }
 
@@ -86,8 +103,8 @@ struct ReviewRow: Identifiable {
     let tokens: Int
     /// The run's length, from its start to its finish. nil while it runs.
     let duration: TimeInterval?
-    /// When the review was posted, from its text record. nil while it is a draft, and for reviews from before 1.2.
-    let postedAt: Date?
+    /// When the review was posted, from its text record. Read only when the row opens, so a list costs no file reads.
+    var postedAt: Date?
     /// How far the PR got in its run: gather, review, check or post.
     let stage: Stage
 
@@ -118,7 +135,7 @@ struct ReviewRow: Identifiable {
     }
 }
 
-/// One run with its rows, as the History and Now sections read them. Carried-over rows are left out.
+/// One run with its rows, as History and the run lists read them. Carried-over rows are left out.
 struct ReviewSweep: Identifiable {
     let id: String
     let started: Date
@@ -127,9 +144,7 @@ struct ReviewSweep: Identifiable {
     /// The rows, in run order.
     var rows: [ReviewRow]
 
-    /// `posted` gives when a PR's review was posted, from its text record: the text store in the app, the fixture in
-    /// snapshots. The text itself is not kept here.
-    init(run: RunState, posted: (_ slug: String, _ n: Int) -> Date?) {
+    init(run: RunState) {
         let length = run.finished.map { $0.timeIntervalSince(run.started) }
         id = run.id
         started = run.started
@@ -146,8 +161,7 @@ struct ReviewSweep: Identifiable {
                     runId: run.id, repo: repo.slug, number: pr.n, author: pr.author, title: pr.title,
                     reason: PRFilter.displayReason(pr.reason), verdict: pr.verdict, draft: pr.draft == true, skipReason: pr.skipReason,
                     changedLines: pr.changedLines, head: pr.head, flagged: pr.flagged == true, tokens: pr.tokens,
-                    duration: length,
-                    postedAt: posted(repo.slug, pr.n), stage: pr.stage)
+                    duration: length, postedAt: nil, stage: pr.stage)
             }
         }
     }
@@ -161,8 +175,7 @@ struct DayRuns: Identifiable {
     var id: Date { day }
 }
 
-/// Loads the newest runs from disk and holds the sheet's open review. Runs are kept newest first, and their reviews
-/// are read with them.
+/// Loads the newest runs from disk and holds the sheet's open review. Runs are kept newest first.
 @MainActor
 final class ReviewsModel: ObservableObject {
     nonisolated static let sweepLimit = 50
@@ -175,62 +188,62 @@ final class ReviewsModel: ObservableObject {
     /// A PR asked for before the runs loaded, opened when they arrive. The run id is nil when any run will do.
     private var pendingOpen: (runID: String?, stripID: String)?
     private var loadTask: Task<Void, Never>?
+    /// The store the open review's text is read from. Set by `load`.
+    private weak var store: Store?
 
     /// Keeps the newest 50 runs. Live, the run files are read off the main actor, after a 300 ms pause: a burst of
     /// store changes costs one read, and a read still waiting when the next change lands is cancelled. Fixtures load at
     /// once, since snapshot rendering reads them synchronously.
     /// ponytail: decodes every run file on each load; index the runs if the folder grows large.
     func load(_ store: Store) {
+        self.store = store
         loadTask?.cancel()
         if store.isFixture {
-            let newest = Self.newest(store.allRuns())
-            show(newest, Self.sweeps(from: newest) { runId, slug, n in
-                store.reviewText(runId: runId, slug: slug, n: n)?.postedDate
-            })
+            show(Self.newest(store.allRuns()))
             return
         }
         let paths = store.paths
         loadTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !Task.isCancelled else { return }
-            let loaded = await Task.detached(priority: .utility) { () -> ([RunState], [ReviewSweep]) in
-                let newest = Self.newest(RunStore(paths: paths).loadAll())
-                return (newest, Self.sweeps(from: newest) { runId, slug, n in
-                    ReviewText.read(paths, runId: runId, slug: slug, n: n)?.postedDate
-                })
+            let newest = await Task.detached(priority: .utility) {
+                Self.newest(RunStore(paths: paths).loadAll())
             }.value
             guard !Task.isCancelled else { return }
-            self?.show(loaded.0, loaded.1)
+            self?.show(newest)
         }
     }
 
-    private func show(_ newest: [RunState], _ loaded: [ReviewSweep]) {
+    private func show(_ newest: [RunState]) {
         runs = newest
-        sweeps = loaded
-        if let pending = pendingOpen, !loaded.isEmpty {
+        sweeps = newest.map { ReviewSweep(run: $0) }
+        if let pending = pendingOpen, !sweeps.isEmpty {
             pendingOpen = nil
-            opened = Self.row(runID: pending.runID, stripID: pending.stripID, in: loaded)
+            opened = withPosted(Self.row(runID: pending.runID, stripID: pending.stripID, in: sweeps))
         }
     }
 
     /// Opens a PR's review as a run card asks: the card's own run first, else the newest run that has the PR. Before
     /// the runs load, the open waits for them.
-    func open(runID: String?, stripID: String) {
+    func open(runID: String?, stripID: String, store: Store) {
+        self.store = store
         guard !sweeps.isEmpty else {
             pendingOpen = (runID, stripID)
             return
         }
-        opened = Self.row(runID: runID, stripID: stripID, in: sweeps)
+        opened = withPosted(Self.row(runID: runID, stripID: stripID, in: sweeps))
     }
 
     /// Opens a PR from the newest run that has it, as the popover and Now's held drafts ask.
-    func focus(_ stripID: String) {
-        open(runID: nil, stripID: stripID)
+    func focus(_ stripID: String, store: Store) {
+        open(runID: nil, stripID: stripID, store: store)
     }
 
-    /// The loaded reviews of one run, when they have loaded.
-    func sweep(for runID: String) -> ReviewSweep? {
-        sweeps.first { $0.id == runID }
+    /// The row with its posted time read from its text record. Only the open row pays for that read.
+    private func withPosted(_ row: ReviewRow?) -> ReviewRow? {
+        guard var row else { return nil }
+        row.postedAt = store?.reviewText(runId: row.runId, slug: row.repo, n: row.number)?.postedDate
+        return row
     }
 
     /// The row for a PR: the run's own row when `runID` names a run that has it, else the newest run's row.
@@ -246,14 +259,12 @@ final class ReviewsModel: ObservableObject {
         Array(runs.sorted { $0.started > $1.started }.prefix(sweepLimit))
     }
 
-    nonisolated static func sweeps(from runs: [RunState], posted: (_ runId: String, _ slug: String, _ n: Int) -> Date?) -> [ReviewSweep] {
-        runs.map { run in ReviewSweep(run: run) { slug, n in posted(run.id, slug, n) } }
-    }
-
-    /// The runs grouped by the day they started, newest day first.
-    var days: [DayRuns] {
+    /// The runs grouped by the day they started, newest day first. The current run comes from `live`, so its card is
+    /// as live as the store, not as old as the last read.
+    func days(live: RunState?) -> [DayRuns] {
+        let current = runs.map { run in run.id == live?.id ? (live ?? run) : run }
         let calendar = Calendar.current
-        let groups = Dictionary(grouping: runs) { calendar.startOfDay(for: $0.started) }
+        let groups = Dictionary(grouping: current) { calendar.startOfDay(for: $0.started) }
         return groups.keys.sorted(by: >).map { DayRuns(day: $0, runs: groups[$0] ?? []) }
     }
 

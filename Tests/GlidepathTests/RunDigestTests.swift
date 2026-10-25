@@ -49,6 +49,21 @@ final class RunDigestTests: XCTestCase {
         XCTAssertEqual(digest.rest, "You'd already reviewed the other 21, and nothing changed since.")
     }
 
+    func testAllAlreadyReviewedWithNothingReviewed() {
+        let rows = (10..<13).map { pr($0, .skipped, reason: alreadyReviewed) }
+        let digest = RunDigest(run: run(kind: "review", target: "author:eleyy", repos: [("lumen/web", rows)]),
+                               running: false)
+        XCTAssertEqual(digest.lead, "Nothing reviewed.")
+        XCTAssertEqual(digest.rest, "You'd already reviewed all 3, and nothing changed since.")
+    }
+
+    func testOneAlreadyReviewedReadsAsTheOtherOne() {
+        let rows = [pr(1, .approve), pr(2, .skipped, reason: alreadyReviewed)]
+        let digest = RunDigest(run: run(kind: "review", target: "author:eleyy", repos: [("lumen/web", rows)]),
+                               running: false)
+        XCTAssertEqual(digest.rest, "You'd already reviewed the other one, and nothing changed since.")
+    }
+
     func testMixedSweepGroupsSkips() {
         var rows = (1...5).map { pr($0, .approve) }
         rows += [pr(6, nil), pr(7, nil)]
@@ -64,6 +79,12 @@ final class RunDigestTests: XCTestCase {
                        "22 skipped: 11 yours, 7 bots, 2 already reviewed, 1 draft, 1 too large.")
     }
 
+    func testStoppedOnlyLeadHasNoReviewedCount() {
+        let rows = [pr(1, nil), pr(2, nil)]
+        let digest = RunDigest(run: run(kind: nil, target: nil, repos: [("lumen/api", rows)]), running: false)
+        XCTAssertEqual(digest.lead, "2 stopped.")
+    }
+
     func testOlderSizeSkipCountsAsTooLarge() {
         let rows = [pr(1, .approve), pr(2, .skipped, reason: "something else", skipReason: "size")]
         let digest = RunDigest(run: run(kind: nil, target: nil, repos: [("lumen/api", rows)]), running: false)
@@ -75,11 +96,37 @@ final class RunDigestTests: XCTestCase {
         rows += (10..<31).map { pr($0, .skipped, reason: alreadyReviewed) }
         let digest = RunDigest(run: run(kind: "review", target: "author:eleyy", repos: [("lumen/web", rows)],
                                         finished: false), running: true)
-        XCTAssertEqual(digest.lead, "1 of 4 reviewed")
+        XCTAssertEqual(digest.lead, "1 of 4 reviewed.")
         XCTAssertEqual(digest.inFlight.map(\.pr.n), [2, 3])
         XCTAssertEqual(digest.stopped, [])
         XCTAssertEqual(digest.done, 1)
         XCTAssertEqual(digest.toReview, 4)
+    }
+
+    func testDeadRunShowsStoppedRowsNotInFlight() {
+        let rows = [pr(1, .approve), pr(2, nil, active: true), pr(3, nil, active: true)]
+        let digest = RunDigest(run: run(kind: nil, target: nil, repos: [("lumen/api", rows)], finished: false),
+                               running: false)
+        XCTAssertEqual(digest.inFlight, [])
+        XCTAssertEqual(digest.stopped.map(\.pr.n), [2, 3])
+        XCTAssertEqual(digest.lead, "Reviewed 1, 2 stopped.")
+    }
+
+    func testRunErrorReadsAsFailed() {
+        var r = run(kind: nil, target: nil, repos: [("lumen/api", [pr(1, .approve)])])
+        r.error = "claude exited 1: boom"
+        let digest = RunDigest(run: r, running: false)
+        XCTAssertEqual(digest.failed, "claude exited 1: boom")
+        XCTAssertEqual(digest.lead, "Failed.")
+        XCTAssertEqual(digest.rest, "claude exited 1: boom")
+    }
+
+    func testRepoErrorReadsAsFailed() {
+        var r = run(kind: nil, target: nil, repos: [("lumen/api", [pr(1, .approve)])])
+        r.repos[0].error = "gh timed out"
+        let digest = RunDigest(run: r, running: false)
+        XCTAssertEqual(digest.failed, "gh timed out")
+        XCTAssertEqual(digest.lead, "Failed.")
     }
 
     func testNothingReviewedWhenNothingStoppedOrDone() {

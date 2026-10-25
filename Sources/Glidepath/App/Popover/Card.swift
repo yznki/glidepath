@@ -35,7 +35,7 @@ struct OpenCardHeightKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-/// The closed strip under a capped stack: "+N more" and "Open window". Tap opens Reviews, with any header filter kept.
+/// The closed strip under a capped stack: "+N more" and "Open window". Tap opens History.
 struct StackMoreStrip: View {
     let count: Int
 

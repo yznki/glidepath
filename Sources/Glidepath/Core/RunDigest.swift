@@ -19,10 +19,14 @@ struct RunDigest: Equatable {
     var running: Bool
     /// This run's own rows. Rows carried over from an earlier run belong to that run and are left out.
     var ownRows: [Row]
+    /// Rows still in flight. Only a run that is going has any; a run that died leaves its rows as stopped.
     var inFlight: [Row]
     var reviewed: [Row]
+    /// Rows with no verdict once the run is not going: the review was stopped or died before it reached one.
     var stopped: [Row]
     var skipped: [SkipKind: [Row]]
+    /// The run's error, or its first repo error. nil when the run had none.
+    var failed: String?
     /// The bold part of the sentence, such as "Reviewed 4 of 25.".
     var lead: String
     /// The muted part of the sentence, such as "You'd already reviewed the other 21, and nothing changed since.".
@@ -37,41 +41,40 @@ struct RunDigest: Equatable {
     init(run: RunState, running: Bool) {
         self.running = running
         title = RunDigest.title(for: run)
-        ownRows = run.repos.flatMap { repo in
+        let own = run.repos.flatMap { repo in
             repo.prs.filter { $0.carriedFrom == nil }.map { Row(slug: repo.slug, pr: $0) }
         }
-        inFlight = ownRows.filter { $0.pr.active }
-        reviewed = ownRows.filter { $0.pr.verdict == .approve || $0.pr.verdict == .changes }
-        stopped = running ? [] : ownRows.filter { !$0.pr.active && $0.pr.verdict == nil }
+        ownRows = own
+        inFlight = running ? own.filter { $0.pr.active } : []
+        reviewed = own.filter { $0.pr.verdict == .approve || $0.pr.verdict == .changes }
+        let unfinished = running ? [] : own.filter { $0.pr.verdict == nil }
+        stopped = unfinished
 
         var groups: [SkipKind: [Row]] = [:]
-        for row in ownRows where row.pr.verdict == .skipped {
+        for row in own where row.pr.verdict == .skipped {
             groups[RunDigest.skipKind(row.pr), default: []].append(row)
         }
         skipped = groups
         let skipCount = groups.values.reduce(0) { $0 + $1.count }
+        failed = Presentation.failureMessage(run)
 
-        if running {
-            let toReviewCount = ownRows.filter { $0.pr.verdict != .skipped }.count
-            lead = "\(reviewed.count) of \(toReviewCount) reviewed"
-        } else if !stopped.isEmpty {
-            lead = "Reviewed \(reviewed.count), \(stopped.count) stopped."
-        } else if reviewed.isEmpty {
-            lead = "Nothing reviewed."
+        if let failed {
+            lead = "Failed."
+            rest = failed
         } else {
-            lead = "Reviewed \(reviewed.count) of \(ownRows.count)."
-        }
-
-        if skipCount == 0 {
-            rest = ""
-        } else if groups.keys.allSatisfy({ $0 == .alreadyReviewed }) {
-            rest = "You'd already reviewed the other \(skipCount), and nothing changed since."
-        } else {
-            let parts = SkipKind.allCases.compactMap { kind -> String? in
-                guard let n = groups[kind]?.count else { return nil }
-                return RunDigest.groupText(kind, n)
+            if running {
+                let toReviewCount = own.filter { $0.pr.verdict != .skipped }.count
+                lead = "\(reviewed.count) of \(toReviewCount) reviewed."
+            } else if !unfinished.isEmpty && reviewed.isEmpty {
+                lead = "\(unfinished.count) stopped."
+            } else if !unfinished.isEmpty {
+                lead = "Reviewed \(reviewed.count), \(unfinished.count) stopped."
+            } else if reviewed.isEmpty {
+                lead = "Nothing reviewed."
+            } else {
+                lead = "Reviewed \(reviewed.count) of \(own.count)."
             }
-            rest = "\(skipCount) skipped: " + parts.joined(separator: ", ") + "."
+            rest = RunDigest.skipSentence(groups: groups, count: skipCount, reviewed: reviewed.count)
         }
     }
 
@@ -108,5 +111,23 @@ struct RunDigest: Equatable {
         case .tooLarge: return "\(n) too large"
         case .other: return "\(n) other"
         }
+    }
+
+    /// The muted sentence about skips. When every skip was already reviewed, it says so; otherwise it groups them.
+    private static func skipSentence(groups: [SkipKind: [Row]], count: Int, reviewed: Int) -> String {
+        guard count > 0 else { return "" }
+        if groups.keys.allSatisfy({ $0 == .alreadyReviewed }) {
+            if reviewed == 0 {
+                let what = count == 1 ? "the one PR" : "all \(count)"
+                return "You'd already reviewed \(what), and nothing changed since."
+            }
+            let what = count == 1 ? "the other one" : "the other \(count)"
+            return "You'd already reviewed \(what), and nothing changed since."
+        }
+        let parts = SkipKind.allCases.compactMap { kind -> String? in
+            guard let n = groups[kind]?.count else { return nil }
+            return groupText(kind, n)
+        }
+        return "\(count) skipped: " + parts.joined(separator: ", ") + "."
     }
 }
