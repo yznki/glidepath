@@ -282,6 +282,7 @@ final class Tender {
             eprint("\(error)")
             return 1
         }
+        seedLandable()
         // Pass one reads every repo, so the snapshot written during a round covers all of them.
         for repo in tended {
             do {
@@ -1120,37 +1121,63 @@ final class Tender {
 
     // MARK: Landing
 
+    /// The PRs the last snapshot offered for landing, so a publish during this check keeps them until `landStep` decides
+    /// again.
+    private func seedLandable() {
+        for need in store.loadApproach()?.needs ?? [] where need.kind == "land" {
+            landable.insert("\(need.slug)#\(need.n)")
+        }
+    }
+
     /// The landing step for one repo: the lowest-numbered ready PR that had no round this check. With autopilot or
-    /// `merge = auto` it lands; with `ask` it is offered to the user as the repo's landable PR.
+    /// `merge = auto` it lands; with `ask` it is offered to the user as the repo's landable PR. It lands or is offered
+    /// only when it is still ready as GitHub has it now.
     private func landStep(_ i: Int, now: Date) {
-        let (repo, prs) = fetched[i]
+        let (repo, _) = fetched[i]
+        // Decided again below, so a PR that is no longer ready drops out of the offer.
+        landable = landable.filter { !$0.hasPrefix("\(repo.slug)#") }
         guard config.tend.merge != .off || config.tend.autopilot else { return }
-        let candidates = prs.filter { !rounded.contains("\(repo.slug)#\($0.n)") }
+        let candidates = fetched[i].prs.filter { !rounded.contains("\(repo.slug)#\($0.n)") }
         let byN = Dictionary(uniqueKeysWithValues: candidates.compactMap { pr in
             states["\(repo.slug)#\(pr.n)"].map { (pr.n, $0) }
         })
-        guard let pr = Landing.next(candidates, states: byN) else { return }
+        guard let next = Landing.next(candidates, states: byN), let ready = readyNow(repo, next.n, now: now) else { return }
         switch Autopilot.actor(.land, autopilot: config.tend.autopilot, push: config.tend.push, merge: config.tend.merge) {
         case .act:
-            if land(repo, pr, prs, now: now) == nil { fetched[i].prs.removeAll { $0.n == pr.n } }
+            if land(repo, ready.pr, ready.prs, now: now) == .landed { fetched[i].prs.removeAll { $0.n == next.n } }
         case .you:
-            landable.insert("\(repo.slug)#\(pr.n)")
+            landable.insert("\(repo.slug)#\(next.n)")
         case .council:
             break
         }
     }
 
-    /// Merges a ready PR, then: its children retargeted to the default branch; its branch deleted (kept when a child
-    /// could not be retargeted, since GitHub would close that child); its state forgotten; and the merge recorded for
-    /// the watch. Returns the failure, or nil when it landed. A failed merge leaves the PR stuck.
-    @discardableResult
-    private func land(_ repo: RepoConfig, _ pr: OpenPR, _ prs: [OpenPR], now: Date) -> String? {
+    /// The PR as GitHub has it now, read just before it is merged or offered: with its fresh list of open PRs, when it is
+    /// still ready to land and tend has no round and no ask left on it. Nil otherwise, and when GitHub cannot be asked.
+    private func readyNow(_ repo: RepoConfig, _ n: Int, now: Date) -> (pr: OpenPR, prs: [OpenPR])? {
+        guard let prs = try? fetchOpen(repo.slug), let pr = prs.first(where: { $0.n == n }) else { return nil }
+        let state = freshState(repo.slug, pr, now)
+        guard Landing.ready(pr, state), TendDecision.decide(pr, state: state, me: me) == .idle,
+              Threads.actionable(pr, me: me, answered: Set(state.answered), handled: state.handled).isEmpty else { return nil }
+        return (pr, prs)
+    }
+
+    private enum LandResult: Equatable { case landed, queued, failed(String) }
+
+    /// Merges a ready PR. Once GitHub reads it as merged, then: its children retargeted to the default branch; its branch
+    /// deleted, unless kept; its state forgotten; and the merge recorded for the watch. A failed merge leaves the PR stuck.
+    /// A merge GitHub does not show as done (a merge queue) waits for the next check, and nothing else is done.
+    private func land(_ repo: RepoConfig, _ pr: OpenPR, _ prs: [OpenPR], now: Date) -> LandResult {
         let merge = Shell.run("gh", Tender.mergeArguments(slug: repo.slug, n: pr.n, method: repo.mergeMethod, head: pr.head),
                               env: env, timeout: 120)
         guard merge.ok else {
             let why = "Merge failed: \(merge.stderr.trimmingCharacters(in: .whitespacesAndNewlines))"
             stuckOnDisk(repo, pr, why, now: now)
-            return why
+            return .failed(why)
+        }
+        guard isMerged(repo, pr.n) else {
+            tower(repo.slug, pr.n, "queued to merge", amber: false, now: now)
+            return .queued
         }
         var retargeted = true
         for child in Landing.children(of: pr, in: prs) {
@@ -1161,8 +1188,13 @@ final class Tender {
                   amber: !r.ok, now: now)
         }
         if retargeted {
-            _ = Shell.run("gh", ["api", "-X", "DELETE", "repos/\(repo.slug)/git/refs/heads/\(pr.branch)"], env: env, timeout: 120)
+            if let why = keepReason(repo, pr) {
+                tower(repo.slug, pr.n, "kept branch \(pr.branch): \(why)", amber: false, now: now)
+            } else {
+                _ = Shell.run("gh", ["api", "-X", "DELETE", "repos/\(repo.slug)/git/refs/heads/\(pr.branch)"], env: env, timeout: 120)
+            }
         }
+        landable.remove("\(repo.slug)#\(pr.n)")
         forget(repo, pr.n)
 
         let sha = Shell.run("gh", ["pr", "view", String(pr.n), "-R", repo.slug, "--json", "mergeCommit", "-q", ".mergeCommit.oid"],
@@ -1178,6 +1210,37 @@ final class Tender {
         tower(repo.slug, pr.n, watching ? "landed · \(sha.prefix(7))" : "landed · main not watched", amber: false, now: now)
         try? saveRun(Runner.makeID(now), now: now, repo: repo, pr: pr, summary: "Landed on \(pr.defaultBranch)",
                      action: "landed", check: nil, tokens: 0)
+        return .landed
+    }
+
+    /// Whether GitHub reads the PR as merged. Asked up to three times, two seconds apart, since a merge can take a moment
+    /// to show.
+    private func isMerged(_ repo: RepoConfig, _ n: Int) -> Bool {
+        for attempt in 0..<3 {
+            if attempt > 0 { Thread.sleep(forTimeInterval: 2) }
+            let state = Shell.run("gh", ["pr", "view", String(n), "-R", repo.slug, "--json", "state", "-q", ".state"],
+                                  env: env, timeout: 120).stdout
+            if state.trimmingCharacters(in: .whitespacesAndNewlines) == "MERGED" { return true }
+        }
+        return false
+    }
+
+    /// Why a landed PR's branch is kept rather than deleted, or nil when it may go: it is a fork's, the default branch, or
+    /// protected, or an open PR still has it as base or head. A branch GitHub cannot be asked about is kept.
+    private func keepReason(_ repo: RepoConfig, _ pr: OpenPR) -> String? {
+        if pr.isFork { return "it comes from a fork" }
+        if pr.branch == pr.defaultBranch { return "it is the default branch" }
+        let protected = Shell.run("gh", ["api", "repos/\(repo.slug)/branches/\(pr.branch)", "-q", ".protected"], env: env, timeout: 120)
+        guard protected.ok else { return "GitHub could not read the branch" }
+        if protected.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "true" { return "it is protected" }
+        for (flag, why) in [("--base", "an open PR is based on it"), ("--head", "an open PR comes from it")] {
+            let r = Shell.run("gh", ["pr", "list", "-R", repo.slug, "--state", "open", flag, pr.branch, "--json", "number", "-q", "length"],
+                              env: env, timeout: 120)
+            guard r.ok, let count = Int(r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                return "GitHub could not list the open PRs"
+            }
+            if count > 0 { return why }
+        }
         return nil
     }
 
@@ -1196,6 +1259,7 @@ final class Tender {
         let lock = try RunLock.acquire(paths.stateDir + "/tend.lock", wait: true)
         try withExtendedLifetime(lock) {
             me = try login()
+            seedLandable()
             let prs = try fetchOpen(repo.slug)
             guard let pr = prs.first(where: { $0.n == n }) else {
                 throw RunError("#\(n) is not an open PR of yours in \(repo.slug)")
@@ -1204,7 +1268,11 @@ final class Tender {
             guard Landing.ready(pr, state) else { throw RunError("not ready: \(Tender.notReady(pr, state))") }
             fetched = [(repo, prs)]
             let now = Date()
-            if let why = land(repo, pr, prs, now: now) { throw RunError(why) }
+            switch land(repo, pr, prs, now: now) {
+            case .landed: fetched[0].prs.removeAll { $0.n == n }
+            case .queued: break
+            case .failed(let why): throw RunError(why)
+            }
             publish(now)
         }
     }
