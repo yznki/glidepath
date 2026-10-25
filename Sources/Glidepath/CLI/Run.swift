@@ -619,15 +619,30 @@ final class Runner {
         let r = Shell.run("gitnexus", ["analyze", "--index-only"], cwd: repo.clone, env: env, timeout: 600)
         let output = (r.stdout + r.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
         if r.ok {
-            // The JSON log lines are most of the output and say nothing a reader needs. Keep the last few others.
-            let lines = output.split(separator: "\n").map(String.init)
-                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && !$0.hasPrefix("{\"level\"") }
-            if !lines.isEmpty { print(lines.suffix(8).joined(separator: "\n")) }
+            let kept = Self.gitNexusLogLines(output)
+            if !kept.isEmpty { print(kept.joined(separator: "\n")) }
             return true
         }
         if !output.isEmpty { print(output) }
         print("\(repo.slug): gitnexus refresh failed (exit \(r.status)); reviewing this repo without GitNexus")
         return false
+    }
+
+    /// On success: the warn and error JSON log lines (at most the last 20), and the last 8 other lines. Routine JSON
+    /// log lines say nothing a reader needs. Kept lines stay in their original order.
+    static func gitNexusLogLines(_ output: String) -> [String] {
+        let lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        func isJSON(_ line: String) -> Bool { line.hasPrefix("{\"level\"") }
+        func isWarning(_ line: String) -> Bool {
+            guard let r = line.range(of: #""level":\d+"#, options: .regularExpression),
+                  let level = Int(line[r].dropFirst(#""level":"#.count)) else { return false }
+            return level >= 40
+        }
+        let warnings = lines.indices.filter { isJSON(lines[$0]) && isWarning(lines[$0]) }.suffix(20)
+        let text = lines.indices.filter { !isJSON(lines[$0]) }.suffix(8)
+        let keep = Set(warnings).union(text)
+        return lines.indices.filter { keep.contains($0) }.map { lines[$0] }
     }
 
     /// The PRs whose changed files start with a `flag_paths` prefix. The file list comes from gh, never the model.

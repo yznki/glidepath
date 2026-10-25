@@ -116,11 +116,14 @@ final class SecurityTests: XCTestCase {
                         "-C", "/c", "fetch", "--quiet", "--no-tags", "origin",
                         "+refs/pull/7/head:refs/glidepath/pr/7", "+refs/heads/main:refs/glidepath/base/7"])
         XCTAssertEqual(PRCommands.diffArguments(clone: "/c", n: 7, head: "abc", path: nil),
-                       ["-C", "/c", "diff", "--no-color", "--no-ext-diff", "refs/glidepath/base/7...abc"])
+                       ["-C", "/c", "--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--no-renames",
+                        "refs/glidepath/base/7...abc"])
         XCTAssertEqual(PRCommands.diffArguments(clone: "/c", n: 7, head: "abc", path: "a.swift"),
-                       ["-C", "/c", "diff", "--no-color", "--no-ext-diff", "refs/glidepath/base/7...abc", "--", "a.swift"])
+                       ["-C", "/c", "--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--no-renames",
+                        "refs/glidepath/base/7...abc", "--", "a.swift"])
         XCTAssertEqual(PRCommands.diffNameArguments(clone: "/c", n: 7, head: "abc"),
-                       ["-C", "/c", "diff", "--name-only", "-z", "refs/glidepath/base/7...abc"])
+                       ["-C", "/c", "--literal-pathspecs", "diff", "--name-only", "-z", "--no-renames",
+                        "refs/glidepath/base/7...abc"])
     }
 
     func testArgumentsCarrySkillAsSystemPromptAndNoSlashCommand() {
