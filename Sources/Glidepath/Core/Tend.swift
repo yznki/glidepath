@@ -193,7 +193,8 @@ struct TendStore {
     var dir: String { paths.stateDir + "/tend" }
 
     /// Files in `dir` that are not one PR's state.
-    static let sharedFiles: Set<String> = ["approach.json", "landed.json", "briefing.json", "lessons.json"]
+    static let sharedFiles: Set<String> = ["approach.json", "landed.json", "briefing.json", "lessons.json",
+                                           "council.json", "queue.json"]
 
     private static let lineEncoder: JSONEncoder = {
         let e = JSONEncoder()
