@@ -23,6 +23,16 @@ struct OpenPR: Codable, Equatable {
     var reviews: [ReviewInfo] = []
     var requested: [String] = []
     var updatedAt: Date?
+    /// Plain PR comments (issue comments), not review threads.
+    var comments: [PRComment] = []
+}
+
+/// A plain comment on the PR conversation.
+struct PRComment: Codable, Equatable {
+    var id: String
+    var databaseId: Int?
+    var author: String
+    var body: String
 }
 
 /// One check run or commit status. `conclusion` is nil while the check runs.
@@ -53,6 +63,8 @@ struct ReviewInfo: Codable, Equatable {
     var author: String
     /// APPROVED, CHANGES_REQUESTED, COMMENTED or DISMISSED.
     var state: String
+    var body: String = ""
+    var databaseId: Int?
 }
 
 enum CIStatus: String, Codable, Equatable { case none, pending, failed, passed }
@@ -185,9 +197,17 @@ enum Approach {
             }
         }
         let open = pr.threads.filter { !$0.isResolved }
-        let threads = open.isEmpty ? Gate(name: "Threads", state: .ok, detail: "All resolved")
-            : Gate(name: "Threads", state: .wait, detail: "\(open.count) open",
-                   who: person(open.first?.comments.first?.author))
+        let calls = state?.calls ?? []
+        let threads: Gate
+        if !calls.isEmpty {
+            threads = Gate(name: "Threads", state: .wait, detail: "\(open.count) open · \(calls.count) need your call",
+                           who: "you")
+        } else if open.isEmpty {
+            threads = Gate(name: "Threads", state: .ok, detail: "All resolved")
+        } else {
+            threads = Gate(name: "Threads", state: .wait, detail: "\(open.count) open",
+                           who: person(open.first?.comments.first?.author))
+        }
         let approval: Gate
         if pr.approved {
             approval = Gate(name: "Approval", state: .ok, detail: "Approved")
@@ -271,14 +291,23 @@ enum Approach {
                       off: !tendable(pr, state), gates: gates(pr, state: state), ci: pr.ciStatus.rawValue)
     }
 
-    /// The Needs item for a PR: a held fix, or a stuck PR. A held fix is listed first. Nil when neither.
-    static func needs(_ slug: String, _ pr: OpenPR, state: TendPR?) -> NeedsItem? {
-        func item(_ kind: String, _ detail: String) -> NeedsItem {
-            NeedsItem(id: "\(slug)#\(pr.n)/\(kind)", slug: slug, n: pr.n, title: pr.title, kind: kind, detail: detail)
+    /// The Needs items for a PR: a held fix or a stuck PR first, then one per comment the user must answer. Empty when
+    /// none.
+    static func needs(_ slug: String, _ pr: OpenPR, state: TendPR?) -> [NeedsItem] {
+        func item(_ id: String, _ kind: String, _ detail: String) -> NeedsItem {
+            NeedsItem(id: "\(slug)#\(pr.n)/\(id)", slug: slug, n: pr.n, title: pr.title, kind: kind, detail: detail)
         }
-        if let held = state?.held { return item("held", "Fix held · \(held.summary)") }
-        if let stuck = state?.stuck { return item("stuck", stuck) }
-        return nil
+        var items: [NeedsItem] = []
+        if let held = state?.held {
+            items.append(item("held", "held", "Fix held · \(held.summary)"))
+        } else if let stuck = state?.stuck {
+            items.append(item("stuck", "stuck", stuck))
+        }
+        for call in state?.calls ?? [] {
+            let detail = "Your call · \(call.author): \"\(call.quote)\"" + (call.draft != nil ? " · draft reply ready" : "")
+            items.append(item(call.id, "call", detail))
+        }
+        return items
     }
 
     /// Tending may act on the PR: it is not switched off and not marked hands-off.

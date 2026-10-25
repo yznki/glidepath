@@ -44,6 +44,17 @@ struct RepoState: Codable, Equatable {
     var error: String?
 }
 
+/// What a tend round decided about one ask. `verdict` is agree, disagree or unclear. `reply` is the text drafted or
+/// posted; `posted` says it went out.
+struct ThreadVerdict: Codable, Equatable {
+    var id: String
+    var author: String
+    var quote: String
+    var verdict: String
+    var reply: String?
+    var posted: Bool
+}
+
 /// `~/.local/state/glidepath/runs/<id>.json`. The CLI owns this schema; the model only calls
 /// `glidepath state set`, which goes through the transitions below.
 struct RunState: Codable, Equatable {
@@ -71,6 +82,10 @@ struct RunState: Codable, Equatable {
     var tendAction: String? = nil
     /// For a tend run that reran: the check it reran. Optional so older run files decode.
     var tendCheck: String? = nil
+    /// For a tend run that read threads: one verdict per ask. Optional so older run files decode.
+    var tendThreads: [ThreadVerdict]? = nil
+    /// For a tend run that held a council sitting: one record per sitting. Optional so older run files decode.
+    var council: [CouncilRecord]? = nil
 
     static func new(id: String, now: Date, kind: String? = nil, target: String? = nil) -> RunState {
         RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil, kind: kind, target: target)

@@ -222,9 +222,9 @@ final class Tender {
 
     /// A round's decision for one PR: stuck when a limit is hit, queued when usage or quiet hours say wait, or a round.
     private func decide(_ repo: RepoConfig, _ pr: OpenPR, _ s: inout TendPR, _ now: Date) throws {
-        guard case .round(let cls) = TendDecision.decide(pr, state: s) else { return }
+        guard case .round(let cls) = TendDecision.decide(pr, state: s, me: me) else { return }
         if let why = TendLimits.blocked(s, head: pr.head, config.tend) {
-            s.fingerprint = Fingerprint.ci(pr)
+            s.fingerprint = Fingerprint.full(pr, me: me)
             markStuck(&s, repo, pr, why, now: now)
             return
         }
@@ -237,7 +237,7 @@ final class Tender {
             queue.append(TendQueueItem(slug: repo.slug, n: pr.n, cls: cls, until: until, reason: reason))
             print("\(repo.slug) #\(pr.n): \(reason)")
         case .stop(let reason):
-            s.fingerprint = Fingerprint.ci(pr)
+            s.fingerprint = Fingerprint.full(pr, me: me)
             markStuck(&s, repo, pr, reason, now: now)
         }
     }
@@ -304,7 +304,7 @@ final class Tender {
         }
 
         // After a rerun the checks are running again, so no fingerprint: a red result after it gets its own round.
-        s.fingerprint = outcome.action == "reran" ? nil : Fingerprint.ci(pr)
+        s.fingerprint = outcome.action == "reran" ? nil : Fingerprint.full(pr, me: me)
         // The app or `act` may have switched the PR off during the session. Keep that.
         s.off = store.load(repo.slug, pr.n)?.off ?? s.off
         try store.save(s)
@@ -543,7 +543,7 @@ final class Tender {
                     planes.append(Approach.plane(pr, slug: repo.slug, state: s, working: working?.key == key, lane: lane,
                                                  stackIndex: chain.count > 1 ? k + 1 : nil,
                                                  triesPerHead: config.tend.triesPerHead))
-                    if let need = Approach.needs(repo.slug, pr, state: s) { needs.append(need) }
+                    needs += Approach.needs(repo.slug, pr, state: s)
                 }
                 lane += 1
             }

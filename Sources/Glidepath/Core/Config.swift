@@ -124,6 +124,10 @@ enum TendPush: String, CaseIterable, Equatable { case always, untilApproved = "u
 /// The second-opinion model for stuck fixes. `off` (the default) leaves it out.
 enum TendAdvisor: String, CaseIterable, Equatable { case opus, off }
 
+/// What happens when Glidepath disagrees with a reviewer. `draft` (the default) leaves the reply for the user to send;
+/// `reply_resolve` posts it and resolves the thread.
+enum TendDisagree: String, CaseIterable, Equatable { case draft, replyResolve = "reply_resolve" }
+
 /// The `[tend]` table: Glidepath fixing the user's own PRs. A config without the table keeps tending off.
 struct TendConfig: Equatable {
     var enabled = false
@@ -136,6 +140,7 @@ struct TendConfig: Equatable {
     var maxFixLines = 400
     var autopilot = false
     var advisor: TendAdvisor = .off
+    var disagree: TendDisagree = .draft
     /// Dollars one fix session may spend. Whole dollars: the TOML reader has no floats.
     var maxUsdPerSession = 2
     /// Second-opinion reviews a day. 0 means none.
@@ -331,6 +336,7 @@ struct Config: Equatable {
         tend.maxFixLines = try nonNegativeInt(t["max_fix_lines"], key: "max_fix_lines") ?? tend.maxFixLines
         tend.autopilot = try bool(t["autopilot"], key: "autopilot") ?? tend.autopilot
         tend.advisor = try choice(t["advisor"], key: "advisor") ?? tend.advisor
+        tend.disagree = try choice(t["disagree"], key: "disagree") ?? tend.disagree
         tend.maxUsdPerSession = try positiveInt(t["max_usd_per_session"], key: "max_usd_per_session") ?? tend.maxUsdPerSession
         tend.councilPerDay = try nonNegativeInt(t["council_per_day"], key: "council_per_day") ?? tend.councilPerDay
         tend.registries = try strings(t["registries"], key: "registries") ?? tend.registries
@@ -347,7 +353,7 @@ struct Config: Equatable {
             tend.quietHours = quiet
         }
         tend.extras = extraKeys(t, allowed: ["enabled", "push", "rounds_per_day", "tries_per_head", "max_fix_lines",
-                                             "autopilot", "advisor", "max_usd_per_session", "council_per_day",
+                                             "autopilot", "advisor", "disagree", "max_usd_per_session", "council_per_day",
                                              "registries", "usage_reserve", "quiet_hours"])
         return tend
     }
@@ -484,6 +490,7 @@ struct Config: Equatable {
             if tend.maxFixLines != d.maxFixLines { out += "max_fix_lines = \(tend.maxFixLines)\n" }
             if tend.autopilot != d.autopilot { out += "autopilot = \(tend.autopilot)\n" }
             if tend.advisor != d.advisor { out += "advisor = \(tomlQuoted(tend.advisor.rawValue))\n" }
+            if tend.disagree != d.disagree { out += "disagree = \(tomlQuoted(tend.disagree.rawValue))\n" }
             if tend.maxUsdPerSession != d.maxUsdPerSession { out += "max_usd_per_session = \(tend.maxUsdPerSession)\n" }
             if tend.councilPerDay != d.councilPerDay { out += "council_per_day = \(tend.councilPerDay)\n" }
             if tend.registries != d.registries {
