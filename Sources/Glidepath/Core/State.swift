@@ -64,9 +64,12 @@ struct RunState: Codable, Equatable {
     /// The directory claude ran in (the repo's clone). With `sessionId` it locates the session transcript.
     /// Optional so older run files decode.
     var sessionCwd: String? = nil
+    /// What a by-hand review asked for: "author:<login>" or "prs:owner/name#n,...". nil for a sweep and for older run
+    /// files. The run digest titles the run with it.
+    var target: String? = nil
 
-    static func new(id: String, now: Date, kind: String? = nil) -> RunState {
-        RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil, kind: kind)
+    static func new(id: String, now: Date, kind: String? = nil, target: String? = nil) -> RunState {
+        RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil, kind: kind, target: target)
     }
 
     /// A review run starts from the rows of the run it replaces, so the popover keeps the last sweep's results.
