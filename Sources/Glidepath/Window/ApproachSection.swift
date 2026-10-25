@@ -434,7 +434,8 @@ struct TendNeedRow: View {
                  + Text(verbatim: rest + " · \(item.slug) #\(item.n)")
                     .foregroundStyle(Gotham.mute))
                     .font(.system(size: 12))
-                    .lineLimit(1)
+                    // A ready PR's detail names the stack above it, so it may wrap rather than cut that off.
+                    .lineLimit(land ? 2 : 1)
                 if let error = store.tendErrors[item.id] {
                     Text(error)
                         .font(.system(size: 11.5))
