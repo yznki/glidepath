@@ -1,8 +1,8 @@
 class Glidepath < Formula
   desc "PRs reviewed before you're back: scheduled Claude Code reviews for GitHub PRs, with a menu bar app"
   homepage "https://github.com/yznki/glidepath"
-  url "https://github.com/yznki/glidepath/archive/refs/tags/v1.3.6.tar.gz"
-  sha256 "0f8f76fa604774b773a0d0605245b906cf7b96404ecc85e0ed755e60ce49d249"
+  url "https://github.com/yznki/glidepath/archive/refs/tags/v1.3.7.tar.gz"
+  sha256 "c0b2c13a2742d98f3d7e0d87ea7fc4697c402d6291f90f4745c8046f37ecbfb6"
   license "MIT"
   head "https://github.com/yznki/glidepath.git", branch: "main"
 
