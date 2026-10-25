@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.0
+
+- Landing: with `merge = "ask"` (what Settings writes when you turn tending on) a PR that is approved, green, clean and has no open threads shows "Ready to land" with Hold to land. `merge = "auto"` or autopilot lands it on the next check. The merge method is set per repo with `merge_method`.
+- Stacks land bottom-up: after a PR merges, the PRs stacked on it are retargeted to main, then its branch is deleted (kept while any other open PR still uses it).
+- Conflicts with main: Glidepath merges main into the branch (never rebases). A sandboxed session resolves conflicts; it gives up when both sides changed the same logic.
+- After a merge Glidepath watches main for an hour. If a check fails on the merge commit that passed before it, you get "Main broke after #n" and an Open revert PR button. With autopilot, a council decides whether to open it.
+- The Approach chart shows the landing, the landed plane on the runway, and the markers each PR has passed.
+
 ## 1.7.0
 
 - Review comments: tending now reads review threads, "changes requested" reviews and plain comments on your PRs. Glidepath fixes what it agrees with in the same commit as any CI fix, replies "Fixed in `abc1234`: …", resolves the thread, and asks the reviewer to look again.
