@@ -10,7 +10,7 @@
 - `glidepath init` ends by saying where reviews go for your posting mode.
 - The allowlist and disallowed lines print only when output is not a terminal, so the scheduled log keeps them.
 - Install notes for Xcode's license and version, in the README and the Homebrew caveats.
-- `glidepath init` and `doctor` tell you to run `claude update` when Claude Code is too old.
+- `glidepath init` and `doctor` tell you to run `claude update` (or `brew upgrade --cask claude-code`) when Claude Code is too old.
 
 ## 1.3.3
 

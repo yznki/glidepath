@@ -189,7 +189,7 @@ enum Checks {
         let reported = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         let ok = r.ok && Claude.isVersion(reported, atLeast: Claude.minimumVersion)
         return Item(name: "claude version \(Claude.minimumVersion) or later (found \(reported.isEmpty ? "none" : reported))",
-                    ok: ok, fix: "claude update")
+                    ok: ok, fix: "claude update (Homebrew cask: brew upgrade --cask claude-code)")
     }
 
     /// Private repos need the `repo` scope. A token that does not list scopes (fine-grained) is flagged too.

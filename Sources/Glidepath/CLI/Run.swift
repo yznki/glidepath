@@ -658,7 +658,7 @@ final class Runner {
             }
         }
         let rows = run.repos.flatMap(\.prs)
-        if rows.isEmpty {
+        if rows.isEmpty && run.repos.allSatisfy({ $0.error == nil }) {
             print("no open PRs to review")
         } else if !rows.contains(where: { $0.verdict == .approve || $0.verdict == .changes }) {
             print("0 PRs reviewed (\(rows.filter { $0.verdict == .skipped }.count) skipped)")
