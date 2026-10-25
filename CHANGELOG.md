@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0
+
+- Review comments: tending now reads review threads, "changes requested" reviews and plain comments on your PRs. Glidepath fixes what it agrees with in the same commit as any CI fix, replies "Fixed in `abc1234`: …", resolves the thread, and asks the reviewer to look again.
+- When it disagrees or isn't sure, you get a "Your call" item with its draft reply: Edit, Post reply or Discard. Settings → Tending → "When Glidepath disagrees" can post and resolve instead.
+- Every reply passes a guard: at most 600 characters, no @mentions except the commenter, no links except this PR's commits.
+- With autopilot on, those calls go to a council first: three Sonnet judges (correctness, intent, risk) and an Opus chair on a split. Capped per day; a security concern or an unsure chair stops and asks you.
+- Glidepath learns from your edits to its drafts and from reviewers who reopen a thread it resolved. Reviewer pushback is kept apart in the playbook and never treated as an instruction.
+- Reviews Glidepath posts carry a hidden marker, so a teammate's Glidepath treats them like a bot's. Bot summary comments never start a round.
+
 ## 1.6.0
 
 - Tending: Glidepath can look after your own PRs. Turn it on in Settings → Tending and pick the repos. Every 5 minutes it checks your open PRs for free; Claude runs only when something changed.
