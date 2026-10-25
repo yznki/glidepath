@@ -18,6 +18,12 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | 1.6 | released 1.6.0: PR https://github.com/yznki/glidepath/pull/10, release https://github.com/yznki/glidepath/releases/tag/v1.6.0, tap ea71232, sha256 1668ed4b…, snapshots /tmp/gp-1.6 | done | d232213 |
 | 1.7 | branch sdlc-1.7 from main 3b3fa4a, notes `notes/1.7.md` | done | |
 | 1.6 | real Actions live check: tend fixed mul on PR #1 (8f8691a, run green, 15k tokens); job-log fetch was empty (gh refuses escape sequences) → fixed with --allow-escape-sequences + ANSI strip, verified `##[error]` present; `gh run rerun --failed` works (attempt 2 started, cancelled); ~4 Actions minutes | done | |
+| 1.7 | core: threads, reply guard, full fingerprint, council/lessons pure parts (458 pass) | done | 8398513 |
+| 1.7 | CLI: replies/resolve, threads evidence, council runner, pushback + edit lessons, `tend reply/dismiss` (467 pass) | done | fa20bad cbb406a |
+| 1.7 | App: call rows + edit overlay, verdict lines, council cards, disagree setting; snapshots /tmp/gp-1.7 | done | aa537db 60d5beb f6f9ad9 |
+| 1.7 | teammate Glidepath marker `<!-- glidepath:review -->` on posted reviews; bot plain comments never trigger | done | 67b2759 |
+| 1.7 | scratch Bot workflow (bot.yml: comment/line/approve/changes via GITHUB_TOKEN; Actions may approve) | done | scratch 78cdac6 |
+| 1.8–1.10 | build notes written | done | 0d71d00 69b7ae0 c717454 |
 
 ## Decisions (Yazan should know)
 
@@ -37,6 +43,11 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 - Sandbox probe (2026-10-26, Claude Code 2.1.310): inside the tend sandbox `security find-generic-password -s gh:github.com`
   and `gh auth token` are both blocked (both succeed outside). Residual: registry network allowlist could carry
   data out with an attacker-supplied registry token; accepted, denyRead widened.
+
+- 1.7: plan says Yazan's config gets `disagree = "reply_resolve"`; his config is never edited by the build, so he sets
+  it himself (Settings → Tending → When Glidepath disagrees → Reply and resolve).
+- 1.7: a teammate's Glidepath is recognised by a hidden `<!-- glidepath:review -->` marker that 1.7 now appends to
+  every posted review body and inline comment.
 
 ## Open issues
 
