@@ -1300,7 +1300,14 @@ final class Tender {
                 _ = try gitOK(["-C", repo.clone, "worktree", "add", "-B", head, "--quiet", dir, "origin/\(branch)"])
                 let listed = try gitOK(["-C", repo.clone, "rev-list", "--parents", "-n", "1", record.sha])
                 let parents = max(listed.split(separator: " ").count - 1, 1)
-                _ = try gitOK(["-C", dir] + Tender.revertArguments(sha: record.sha, parents: parents))
+                let reverted = git(["-C", dir] + Tender.revertArguments(sha: record.sha, parents: parents))
+                if !reverted.ok {
+                    _ = git(["-C", dir, "revert", "--abort"])
+                    if reverted.stderr.contains("could not revert") {
+                        throw RunError("Revert of #\(n) conflicts with later changes on \(branch)")
+                    }
+                    throw RunError("git failed: \(reverted.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+                }
                 _ = try pushBranch(repo, branch: head, wt: dir, rebase: false)
             }
             let created = Shell.run("gh", ["pr", "create", "-R", repo.slug, "--base", branch, "--head", head,
