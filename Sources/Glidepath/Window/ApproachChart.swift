@@ -12,16 +12,42 @@ enum ApproachGeometry {
     /// The x of each marker: outer (CI), middle (review), inner (ready). A plane at marker 0 has not passed the outer one.
     static let markerX: [CGFloat] = [130, 300, 520, 720]
     static let taxiX: CGFloat = 120
+    /// Where a landed plane rests: on the runway, past its approach lights.
+    static let landedX: CGFloat = 920
     /// How far a stack's follower trails the one ahead of it.
     static let trail: CGFloat = 90
     static let laneCount = 5
+    /// The landing glide, from the inner marker to the runway, in seconds.
+    static let landingDuration: Double = 2.2
 
     /// The x of a plane: the furthest marker it has passed. Taxiing planes stand before the outer marker.
     static func planeX(marker: Int, phase: ApproachPhase) -> CGFloat {
         switch phase {
         case .taxiing: return taxiX
-        case .landed: return runwayX
+        case .landed: return landedX
         default: return markerX[min(max(marker, 0), markerX.count - 1)]
+        }
+    }
+
+    /// How far a landed plane's glide has got, 0 at the inner marker and 1 on the runway. A plane first seen at `seen`
+    /// glides for `landingDuration`, then sits. Frozen (Reduce Motion) or never seen, it is already on the runway.
+    static func landingProgress(seen: Date?, at date: Date, frozen: Bool) -> Double {
+        guard let seen, !frozen else { return 1 }
+        return min(max(date.timeIntervalSince(seen) / landingDuration, 0), 1)
+    }
+
+    /// The glide's ease: quick off the marker, settling on the runway.
+    static func landingEase(_ progress: Double) -> CGFloat {
+        CGFloat(1 - pow(1 - min(max(progress, 0), 1), 3))
+    }
+
+    /// The runway flash as the plane touches down: dark until 70% of the glide, full at 80%, gone by the end.
+    static func flashOpacity(_ progress: Double) -> Double {
+        switch progress {
+        case ..<0.7: return 0
+        case ..<0.8: return (progress - 0.7) / 0.1
+        case ..<1: return (1 - progress) / 0.2
+        default: return 0
         }
     }
 
@@ -92,6 +118,8 @@ struct ApproachChart: View {
     var compact = false
     /// Called with the plane's id when a glyph is tapped (full chart only).
     var onTap: (String) -> Void = { _ in }
+    /// When the app first saw each landed plane, by id. A plane seen within the last glide duration glides in.
+    var landedSeen: [String: Date] = [:]
 
     @Environment(\.offscreenRender) private var offscreen
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -99,12 +127,18 @@ struct ApproachChart: View {
     @AppStorage("signalColour") private var signalKey = "amber"
 
     var body: some View {
-        let still = offscreen || Motion.reduced(reduceMotion)
+        let frozen = Motion.reduced(reduceMotion)
+        let still = offscreen || frozen
         let aspect = compact ? 360.0 / 84.0 : ApproachGeometry.width / ApproachGeometry.height
         SnapshotTimeline(schedule: .animation(minimumInterval: 1.0 / 30, paused: still)) { date in
             Canvas { ctx, size in
+                // Snapshots read the fixture clock, so a glide renders at its fixture's progress.
+                var glide: [String: Double] = [:]
+                for plane in planes where plane.phase == .landed {
+                    glide[plane.id] = ApproachGeometry.landingProgress(seen: landedSeen[plane.id], at: date, frozen: frozen)
+                }
                 let painter = ApproachPainter(planes: planes, frame: ApproachFrame(size: size, compact: compact),
-                                              signal: Gotham.signal(signalKey), still: still)
+                                              signal: Gotham.signal(signalKey), still: still, glide: glide)
                 painter.paint(&ctx, t: still ? 0 : date.timeIntervalSinceReferenceDate)
             }
         }
@@ -143,6 +177,8 @@ struct ApproachPainter {
     let frame: ApproachFrame
     let signal: Color
     let still: Bool
+    /// Each landed plane's glide progress, by id: 1 when it sits on the runway.
+    var glide: [String: Double] = [:]
 
     private static let ink = Color.white
     private static let mute = Gotham.mute
@@ -152,8 +188,9 @@ struct ApproachPainter {
         fan(&ctx)
         markers(&ctx)
         runway(&ctx, t: t)
+        if !still, let progress = glide.values.min(), progress < 1 { flash(&ctx, progress: progress) }
         let positions = ApproachGeometry.positions(planes)
-        let order: [ApproachPhase] = [.taxiing, .waiting, .cleared, .flying, .holding]
+        let order: [ApproachPhase] = [.taxiing, .waiting, .cleared, .flying, .holding, .landed]
         for phase in order {
             for plane in planes where plane.phase == phase {
                 guard let p = positions[plane.id] else { continue }
@@ -217,6 +254,18 @@ struct ApproachPainter {
         label(&ctx, "MAIN", at: frame.point(CGPoint(x: 902, y: 200)), size: 10, mono: true, color: Self.faint)
     }
 
+    /// The glow on the runway where a plane touches down.
+    private func flash(_ ctx: inout GraphicsContext, progress: Double) {
+        let opacity = ApproachGeometry.flashOpacity(progress)
+        guard opacity > 0 else { return }
+        let c = frame.point(CGPoint(x: ApproachGeometry.landedX, y: ApproachGeometry.runwayY))
+        let r = frame.dx(40)
+        let glow = GraphicsContext.Shading.radialGradient(
+            Gradient(colors: [.white.opacity(0.5 * opacity), .white.opacity(0)]),
+            center: c, startRadius: 0, endRadius: r)
+        ctx.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)), with: glow)
+    }
+
     /// The radar sweep: a soft band that crosses the chart every 7 s.
     private func sweep(_ ctx: inout GraphicsContext, t: Double) {
         let w = frame.size.width
@@ -233,7 +282,25 @@ struct ApproachPainter {
 
     // MARK: Planes
 
+    /// A landed plane: the glyph glides from the inner marker onto the runway, shrinking and fading to its resting
+    /// level, and its name shows as it lands. `end` is the runway point it rests on.
+    private func landed(_ ctx: inout GraphicsContext, _ plane: ApproachPlane, at end: CGPoint) {
+        let e = ApproachGeometry.landingEase(glide[plane.id] ?? 1)
+        let inner = ApproachGeometry.markerX[3]
+        let start = CGPoint(x: inner, y: ApproachGeometry.laneY(lane: plane.lane, x: inner))
+        let at = CGPoint(x: start.x + (end.x - start.x) * e, y: start.y + (end.y - start.y) * e)
+        ctx.fill(jet(at: frame.point(at), angle: ApproachGeometry.heading(at), scale: frame.glyph * (1 - 0.45 * e)),
+                 with: .color(Self.ink.opacity(1 - 0.65 * e)))
+        guard !frame.compact else { return }
+        label(&ctx, "#\(plane.n) · landed", at: frame.point(CGPoint(x: ApproachGeometry.runwayX, y: 128)), size: 12,
+              weight: .semibold, color: Self.mute.opacity(Double(e)))
+    }
+
     private func glyph(_ ctx: inout GraphicsContext, _ plane: ApproachPlane, at p: CGPoint, t: Double) {
+        if plane.phase == .landed {
+            landed(&ctx, plane, at: p)
+            return
+        }
         var at = p
         var angle = ApproachGeometry.heading(p)
         var colour = Self.ink

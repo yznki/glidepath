@@ -122,7 +122,7 @@ struct ApproachSectionView: View {
 
     private var chartCard: some View {
         ZStack(alignment: .bottomLeading) {
-            ApproachChart(planes: approach?.planes ?? [], onTap: { model.opened = $0 })
+            ApproachChart(planes: approach?.planes ?? [], onTap: { model.opened = $0 }, landedSeen: store.snap.landedSeen)
             legend
                 .padding(.leading, 16)
                 .padding(.bottom, 12)
@@ -279,7 +279,7 @@ struct ApproachPopoverBlock: View {
     var body: some View {
         if store.snap.tendOn, let approach = store.snap.approach {
             VStack(alignment: .leading, spacing: 0) {
-                ApproachChart(planes: approach.planes, compact: true)
+                ApproachChart(planes: approach.planes, compact: true, landedSeen: store.snap.landedSeen)
                     .frame(maxWidth: .infinity)
                     .background(Color(hex: "060608"))
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -347,7 +347,7 @@ struct ApproachPopoverBlock: View {
             if land || revert {
                 // Landing and the revert merge or open a PR, so they take a hold, as the Needs rows do.
                 HoldButton(title: land ? "Hold to land" : "Open revert PR", doneTitle: land ? "Landing…" : "Opening…",
-                           tint: signal, compact: true) {
+                           tint: Gotham.signal(signalKey), compact: true) {
                     store.tendCommand([land ? "land" : "revert", item.slug, "\(item.n)"], item: item.id)
                 }
                 .id("\(item.id)#\(store.tendFailures[item.id] ?? 0)")
