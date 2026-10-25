@@ -19,9 +19,10 @@ enum Threads {
     static let bots = ["coderabbitai", "copilot-pull-request-reviewer", "github-actions"]
     static let praise: Set<String> = ["lgtm", "looks", "good", "approved", "+1", "👍", "🚀"]
 
-    static func isBot(_ login: String) -> Bool {
+    /// A bot by login, or a review or comment that carries the Glidepath marker: a teammate's Glidepath is a bot too.
+    static func isBot(_ login: String, body: String = "") -> Bool {
         let lower = login.lowercased()
-        return lower.hasSuffix("[bot]") || bots.contains(lower)
+        return lower.hasSuffix("[bot]") || bots.contains(lower) || body.contains(ReviewValidator.marker)
     }
 
     /// A comment that only says the change is fine: at most three words, all praise.
@@ -33,25 +34,26 @@ enum Threads {
 
     /// What still asks for an answer from someone other than `me`. A thread is open when it is unresolved and its
     /// last comment is not `me`'s. A review counts when it requests changes with a body. A plain comment counts unless
-    /// it is noise. Reviews and comments drop out once their id is in `answered`.
+    /// it is noise or from a bot, so bot summaries never start a round. Reviews and comments drop out once their id is
+    /// in `answered`.
     static func actionable(_ pr: OpenPR, me: String, answered: Set<String>) -> [Ask] {
         func mine(_ login: String) -> Bool { login.caseInsensitiveCompare(me) == .orderedSame }
         var asks: [Ask] = []
         for thread in pr.threads where !thread.isResolved {
             guard let last = thread.comments.last, !mine(last.author) else { continue }
             let first = thread.comments[0]
-            asks.append(Ask(id: thread.id, kind: "thread", author: last.author, isBot: isBot(last.author),
+            asks.append(Ask(id: thread.id, kind: "thread", author: last.author, isBot: isBot(last.author, body: last.body),
                             body: last.body, path: first.path, line: first.line, databaseId: last.databaseId,
                             thread: thread.comments))
         }
         for review in pr.reviews where review.state == "CHANGES_REQUESTED" && !review.body.isEmpty
             && !mine(review.author) && !answered.contains(review.id) {
-            asks.append(Ask(id: review.id, kind: "review", author: review.author, isBot: isBot(review.author),
+            asks.append(Ask(id: review.id, kind: "review", author: review.author, isBot: isBot(review.author, body: review.body),
                             body: review.body, path: nil, line: nil, databaseId: review.databaseId))
         }
         for comment in pr.comments where !mine(comment.author) && !answered.contains(comment.id)
-            && !isNoise(comment.body) {
-            asks.append(Ask(id: comment.id, kind: "comment", author: comment.author, isBot: isBot(comment.author),
+            && !isNoise(comment.body) && !isBot(comment.author, body: comment.body) {
+            asks.append(Ask(id: comment.id, kind: "comment", author: comment.author, isBot: false,
                             body: comment.body, path: nil, line: nil, databaseId: comment.databaseId))
         }
         return asks

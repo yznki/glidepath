@@ -18,7 +18,8 @@ final class ReviewValidatorTests: XCTestCase {
         XCTAssertEqual(p.event, "COMMENT")
         XCTAssertEqual(p.commit_id, "abc")
         XCTAssertTrue(p.body.hasPrefix("Verdict: changes\n\n"))
-        XCTAssertEqual(p.comments, [PayloadComment(path: "a.swift", line: 3, side: "RIGHT", body: "fix")])
+        XCTAssertEqual(p.comments, [PayloadComment(path: "a.swift", line: 3, side: "RIGHT",
+                                                   body: "fix\n\n" + ReviewValidator.marker)])
     }
 
     func testOwnPRsAlwaysGetACommentReview() throws {
