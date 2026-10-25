@@ -32,6 +32,7 @@ enum TendCommand {
            glidepath tend dismiss owner/name N CALL
            glidepath tend land owner/name N
            glidepath tend revert owner/name N
+           glidepath tend ping owner/name N login
            glidepath teach owner/name "text"
     """
     static let callUsage = """
@@ -52,6 +53,7 @@ enum TendCommand {
         if args.isEmpty { return Tender(paths: paths, config: config).check() }
         if args[0] == "reply" || args[0] == "dismiss" { return call(args, paths: paths, config: config) }
         if args[0] == "land" || args[0] == "revert" { return landing(args, paths: paths, config: config) }
+        if args[0] == "ping" { return ping(args, paths: paths, config: config) }
         guard args.count == 3, ["push", "discard", "retry", "on", "off"].contains(args[0]),
               RepoConfig.isValidSlug(args[1]), let n = Int(args[2]), n > 0 else {
             eprint(usage)
@@ -121,6 +123,26 @@ enum TendCommand {
             } else {
                 try tender.revertNow(repo, n)
             }
+            return 0
+        } catch {
+            eprint("\(error)")
+            return 1
+        }
+    }
+
+    /// `tend ping` asks one reviewer of a PR to take a look. Once per reviewer per day.
+    private static func ping(_ args: [String], paths: Paths, config: Config) -> Int32 {
+        guard args.count == 4, RepoConfig.isValidSlug(args[1]), let n = Int(args[2]), n > 0,
+              (try? ConfigEditor.validateLogin(args[3])) != nil else {
+            eprint(usage)
+            return 2
+        }
+        guard let repo = config.repos.first(where: { $0.slug == args[1] && $0.tend }) else {
+            eprint("repo \(args[1]) is not in the config, or is not tended")
+            return 1
+        }
+        do {
+            try Tender(paths: paths, config: config).ping(repo, n, login: args[3])
             return 0
         } catch {
             eprint("\(error)")
@@ -315,6 +337,11 @@ final class Tender {
                 } catch {
                     print("\(key): \(error)")
                 }
+                let waits = Nudge.waiting(pr, now: now, hours: config.tend.nudgeHours)
+                if Autopilot.actor(.nudge, autopilot: config.tend.autopilot, push: config.tend.push) == .act {
+                    autoPing(repo, pr, &s, waits: waits, now: now)
+                }
+                linearStep(repo, pr, &s, waits: waits, now: now)
                 states[key] = s
                 if s != before { try? store.save(s) }
             }
@@ -1485,6 +1512,109 @@ final class Tender {
         return r.ok ? Tender.parseCheckRuns(r.stdout) : nil
     }
 
+    // MARK: Nudges
+
+    /// Autopilot's ping: each reviewer the PR waits on gets one, under the same once-a-day rule as `tend ping`.
+    private func autoPing(_ repo: RepoConfig, _ pr: OpenPR, _ s: inout TendPR, waits: [(login: String, hours: Int)], now: Date) {
+        guard Approach.tendable(pr, s), !pr.isDraft else { return }
+        for wait in waits where Tender.canPing(s, login: wait.login, now: now) {
+            do {
+                try postPing(repo.slug, pr.n, login: wait.login)
+            } catch {
+                print("\(repo.slug) #\(pr.n): \(error)")
+                continue
+            }
+            s.pinged[wait.login] = now
+            tower(repo.slug, pr.n, "pinged \(wait.login)", amber: false, now: now)
+        }
+    }
+
+    /// `tend ping`: asks one reviewer of the PR to take a look, once per reviewer per day. The wait leaves the Needs view.
+    func ping(_ repo: RepoConfig, _ n: Int, login: String) throws {
+        let now = Date()
+        try withPRLock(repo.slug, n) {
+            var s = store.load(repo.slug, n) ?? TendPR(slug: repo.slug, n: n)
+            guard Tender.canPing(s, login: login, now: now) else { throw RunError("already pinged \(login) on #\(n) today") }
+            try postPing(repo.slug, n, login: login)
+            s.pinged[login] = now
+            try store.save(s)
+        }
+        dropNeeds(repo.slug, n, call: "wait-\(login)")
+        tower(repo.slug, n, "pinged \(login)", amber: false, now: now)
+        print("\(repo.slug) #\(n): pinged \(login)")
+    }
+
+    /// The ping comment on a PR. Throws when GitHub refuses it.
+    private func postPing(_ slug: String, _ n: Int, login: String) throws {
+        let r = Shell.run("gh", ["pr", "comment", String(n), "-R", slug, "-b", Tender.pingBody(login: login)], env: env, timeout: 120)
+        guard r.ok else { throw RunError("GitHub refused the ping on #\(n): \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))") }
+    }
+
+    // MARK: Linear
+
+    private enum LinearPost: Equatable { case posted, missing, failed(String) }
+
+    /// The Linear key, read once per check and only when a comment needs one.
+    private lazy var linearKey: String? = LinearKey.read()
+
+    /// When the PR has a Linear issue id and a key is set: each new stuck reason and each new wait is posted to the issue
+    /// once, under its reason key. An issue Linear does not know is passed over quietly. A failure gets one amber tower
+    /// line, and that reason is not tried again: tend never gets stuck over Linear.
+    private func linearStep(_ repo: RepoConfig, _ pr: OpenPR, _ s: inout TendPR, waits: [(login: String, hours: Int)], now: Date) {
+        guard let issue = Linear.issueId(title: pr.title, branch: pr.branch) else { return }
+        let fresh = Tender.linearReasons(stuck: s.stuck, waits: waits).filter { reason in
+            !s.linearPosted.contains(reason) && !s.linearPosted.contains("failed:" + reason)
+        }
+        guard !fresh.isEmpty, let key = linearKey else { return }
+        var texts: [String: String] = [:]
+        if let stuck = s.stuck { texts["stuck:" + stuck] = stuck }
+        for wait in waits { texts["wait:" + wait.login] = "waiting \(wait.hours) h on \(wait.login)" }
+        for reason in fresh {
+            let text = Linear.commentText(n: pr.n, url: pr.url, reason: texts[reason] ?? reason)
+            switch linearComment(issue, text: text, key: key) {
+            case .posted, .missing:
+                s.linearPosted.append(reason)
+            case .failed(let why):
+                tower(repo.slug, pr.n, "Linear comment on \(issue) not posted · \(why)", amber: true, now: now)
+                for rest in fresh where !s.linearPosted.contains(rest) { s.linearPosted.append("failed:" + rest) }
+                return
+            }
+        }
+    }
+
+    /// Looks up the issue and comments on it. The key goes only into a 0600 header file, which is deleted after the calls.
+    private func linearComment(_ issue: String, text: String, key: String) -> LinearPost {
+        let fm = FileManager.default
+        let dir = NSTemporaryDirectory() + "glidepath-linear-" + UUID().uuidString
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        defer { try? fm.removeItem(atPath: dir) }
+        let header = dir + "/header.txt"
+        guard fm.createFile(atPath: header, contents: Data("Authorization: \(key)\n".utf8),
+                            attributes: [.posixPermissions: 0o600]) else { return .failed("could not write the request") }
+        var why = "no answer from Linear"
+        func send(_ body: Data, _ name: String) -> (body: Data, status: Int)? {
+            let path = dir + "/" + name
+            guard fm.createFile(atPath: path, contents: body, attributes: [.posixPermissions: 0o600]) else { return nil }
+            let r = Shell.run("/usr/bin/curl", ["-sS", "--max-time", "20", "-H", "@" + header,
+                                                "-H", "Content-Type: application/json", "--data-binary", "@" + path,
+                                                "-w", "\n%{http_code}", "https://api.linear.app/graphql"], env: env, timeout: 30)
+            let err = r.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard r.ok, let parts = Linear.splitStatus(r.stdout) else {
+                if !err.isEmpty { why = err }
+                return nil
+            }
+            return parts
+        }
+        guard let lookup = send(Linear.lookupBody(id: issue), "lookup.json") else { return .failed(why) }
+        guard lookup.status == 200 else {
+            return .failed(lookup.status == 401 || lookup.status == 403 ? "Linear rejected the key" : "HTTP \(lookup.status)")
+        }
+        guard let uuid = Linear.parseIssueUUID(lookup.body) else { return .missing }
+        guard let made = send(Linear.commentBody(issueUUID: uuid, body: text), "comment.json") else { return .failed(why) }
+        guard made.status == 200 else { return .failed("HTTP \(made.status)") }
+        return Linear.commentPosted(made.body) ? .posted : .failed("Linear did not confirm the comment")
+    }
+
     // MARK: Self-review
 
     /// Glidepath's own review of a PR, once per ready transition: a dry run of `glidepath review` on the PR's head, which
@@ -1661,10 +1791,14 @@ final class Tender {
                     // The PR being worked on has the state the round holds. Every other PR is read from disk, so a switch
                     // or hold written during the check is kept.
                     let s = working?.key == key ? states[key] : (store.load(repo.slug, pr.n) ?? states[key])
+                    // A reviewer already pinged today is not offered again until tomorrow.
+                    let state = s ?? TendPR(slug: repo.slug, n: pr.n)
+                    let waits = Nudge.waiting(pr, now: now, hours: config.tend.nudgeHours)
+                        .filter { Tender.canPing(state, login: $0.login, now: now) }
                     planes.append(Approach.plane(pr, slug: repo.slug, state: s, working: working?.key == key, lane: lane,
                                                  stackIndex: chain.count > 1 ? k + 1 : nil,
-                                                 triesPerHead: config.tend.triesPerHead))
-                    needs += Approach.needs(repo.slug, pr, state: s, landable: landable.contains(key), prs: prs)
+                                                 triesPerHead: config.tend.triesPerHead, selfReview: state.selfReview))
+                    needs += Approach.needs(repo.slug, pr, state: s, landable: landable.contains(key), prs: prs, nudges: waits)
                 }
                 lane += 1
             }
@@ -1942,6 +2076,28 @@ final class Tender {
     /// "1 thread" or "2 threads".
     static func plural(_ n: Int, _ one: String, _ many: String) -> String {
         "\(n) \(n == 1 ? one : many)"
+    }
+
+    /// The body of a ping: a short, polite request to one reviewer.
+    static func pingBody(login: String) -> String {
+        "@\(login), could you take a look when you get a chance? Thanks."
+    }
+
+    /// Whether a reviewer may be pinged now: not yet today, on the calendar's day.
+    static func canPing(_ s: TendPR, login: String, now: Date, calendar: Calendar = .current) -> Bool {
+        guard let last = s.pinged[login] else { return true }
+        return !calendar.isDate(last, inSameDayAs: now)
+    }
+
+    /// The reason keys a PR's Linear comments are posted under: one per stuck reason, one per reviewer it waits on.
+    static func linearReasons(stuck: String?, waits: [(login: String, hours: Int)]) -> [String] {
+        (stuck.map { ["stuck:" + $0] } ?? []) + waits.map { "wait:" + $0.login }
+    }
+
+    /// Whether the weekly lesson consolidation is due: never run, or last run a week ago or more.
+    static func lessonsDue(last: Date?, now: Date) -> Bool {
+        guard let last else { return true }
+        return now.timeIntervalSince(last) >= 7 * 86_400
     }
 
     /// "1 needs you" or "2 need you".

@@ -41,6 +41,42 @@ final class ExtrasCLITests: XCTestCase {
         XCTAssertEqual(Approach.selfReviewLine(failed), "Self-review: did not run")
     }
 
+    // MARK: Nudges and Linear
+
+    func testPingBodyNamesTheReviewer() {
+        XCTAssertEqual(Tender.pingBody(login: "gadi"), "@gadi, could you take a look when you get a chance? Thanks.")
+    }
+
+    func testCanPingOncePerDay() {
+        var s = TendPR(slug: "o/r", n: 3)
+        XCTAssertTrue(Tender.canPing(s, login: "gadi", now: at(26, 9), calendar: utc))
+        s.pinged["gadi"] = at(26, 8)
+        XCTAssertFalse(Tender.canPing(s, login: "gadi", now: at(26, 17), calendar: utc))
+        XCTAssertTrue(Tender.canPing(s, login: "ana", now: at(26, 17), calendar: utc))
+        XCTAssertTrue(Tender.canPing(s, login: "gadi", now: at(27, 9), calendar: utc))
+    }
+
+    func testLinearReasonKeys() {
+        XCTAssertEqual(Tender.linearReasons(stuck: nil, waits: []), [])
+        XCTAssertEqual(Tender.linearReasons(stuck: "Session ended", waits: [(login: "gadi", hours: 26)]),
+                       ["stuck:Session ended", "wait:gadi"])
+        XCTAssertEqual(Tender.linearReasons(stuck: nil, waits: [(login: "ana", hours: 30), (login: "gadi", hours: 26)]),
+                       ["wait:ana", "wait:gadi"])
+    }
+
+    func testSplitStatusReadsTheTrailingCode() throws {
+        let parts = try XCTUnwrap(Linear.splitStatus("{\"data\":null}\n200"))
+        XCTAssertEqual(parts.status, 200)
+        XCTAssertEqual(String(decoding: parts.body, as: UTF8.self), "{\"data\":null}")
+        XCTAssertNil(Linear.splitStatus("no code here"))
+    }
+
+    func testLessonsDueEverySevenDays() {
+        XCTAssertTrue(Tender.lessonsDue(last: nil, now: at(26, 9)))
+        XCTAssertFalse(Tender.lessonsDue(last: at(20, 9), now: at(26, 9)))
+        XCTAssertTrue(Tender.lessonsDue(last: at(19, 9), now: at(26, 9)))
+    }
+
     // MARK: Linear key
 
     func testLinearKeyShape() {
