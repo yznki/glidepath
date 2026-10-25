@@ -4,7 +4,7 @@
 
 - Huge PRs (over GitHub's 300-file diff limit) are reviewed: when `gh pr diff` fails, the diff is built from the run's clone, `--path` included.
 - GitNexus tools reach the gatherer subagents, so blast radius is read from the graph when GitNexus is on.
-- A PR the session leaves without a verdict says why in its row ("review session ended without a verdict; see the log"), and a reason the session left on it is kept.
+- A PR the session leaves without a verdict says why in its row ("review session ended without a verdict; see the log"). A PR the session skips with `state set --verdict skipped --reason` shows as Skipped with the session's reason.
 - The GitNexus index refresh prints a short summary on success, not its whole log.
 
 ## 1.3.6

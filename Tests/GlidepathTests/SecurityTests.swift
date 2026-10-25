@@ -120,7 +120,7 @@ final class SecurityTests: XCTestCase {
         XCTAssertEqual(PRCommands.diffArguments(clone: "/c", n: 7, head: "abc", path: "a.swift"),
                        ["-C", "/c", "diff", "--no-color", "--no-ext-diff", "refs/glidepath/base/7...abc", "--", "a.swift"])
         XCTAssertEqual(PRCommands.diffNameArguments(clone: "/c", n: 7, head: "abc"),
-                       ["-C", "/c", "diff", "--name-only", "refs/glidepath/base/7...abc"])
+                       ["-C", "/c", "diff", "--name-only", "-z", "refs/glidepath/base/7...abc"])
     }
 
     func testArgumentsCarrySkillAsSystemPromptAndNoSlashCommand() {

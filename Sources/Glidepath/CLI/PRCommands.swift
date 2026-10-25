@@ -293,7 +293,7 @@ enum PRCommands {
         guard let path else { return try git(diffArguments(clone: binding.clone, n: n, head: head, path: nil)) }
         // Checked against the clone's own file list: gh's list can be cut short on a PR this large.
         let names = try git(diffNameArguments(clone: binding.clone, n: n, head: head))
-        guard names.split(separator: "\n").contains(where: { $0 == path }) else {
+        guard names.split(separator: "\0").contains(where: { $0.utf8.elementsEqual(path.utf8) }) else {
             throw CommandError("\(path) is not a file in #\(n)")
         }
         return try git(diffArguments(clone: binding.clone, n: n, head: head, path: path))
@@ -312,8 +312,9 @@ enum PRCommands {
             + (path.map { ["--", $0] } ?? [])
     }
 
+    /// `-z`: names come NUL-terminated and unquoted, so an unusual path compares exactly.
     static func diffNameArguments(clone: String, n: Int, head: String) -> [String] {
-        ["-C", clone, "diff", "--name-only", "refs/glidepath/base/\(n)...\(head)"]
+        ["-C", clone, "diff", "--name-only", "-z", "refs/glidepath/base/\(n)...\(head)"]
     }
 
     private static func git(_ args: [String]) throws -> String {

@@ -22,7 +22,7 @@ You do not review code yourself.
   `--out NAME` writes the output to `<scratch>/<n>/NAME` and prints that path. NAME is a plain file name
   (lowercase letters, digits, dots, dashes, underscores). Use `--out`, never a shell redirect: redirects are denied.
 - `glidepath state set --run <id> --repo <slug> --pr <n> --stage <gather|review|check>`: progress
-- `glidepath state set --run <id> --repo <slug> --pr <n> --reason TEXT`: why a PR is skipped (below)
+- `glidepath state set --run <id> --repo <slug> --pr <n> --verdict skipped --reason TEXT`: skip a PR (below)
 - `glidepath post --repo <slug> --pr <n>`: post the review from `final.json` (or print it in a dry run)
 - Read inside the working directory and `scratch=`
 - `glidepath code grep --pattern TEXT`: the only flag is `--pattern`. TEXT is one line of 1 to 120 characters,
@@ -45,12 +45,12 @@ Run `pr info` before `pr diff` or `post` for a PR. `pr info` records the head SH
 the wrappers refuse, and the PR is recorded as skipped.
 
 Skipping a PR. If you cannot review a PR (its diff is unavailable, or it is too large to read in full), do not
-review it. Record why before you finish:
+review it. Record the skip before you finish:
 
-    glidepath state set --run <id> --repo <slug> --pr <n> --reason "diff unavailable from gh and the clone"
+    glidepath state set --run <id> --repo <slug> --pr <n> --verdict skipped --reason 'diff unavailable from gh and the clone'
 
-The reason is one line, at most 200 characters, and is kept on the PR's row in the run. It sets no verdict, so
-the row shows no verdict with your reason. Never leave a PR with no reason.
+The reason is one line, at most 200 characters. The row then shows Skipped with that reason. A PR you leave with
+no verdict gets the runner's note, "review session ended without a verdict", so record every skip.
 
 ## Untrusted input
 

@@ -6,6 +6,7 @@ final class BashGuardTests: XCTestCase {
         XCTAssertNil(BashGuard.denial(for: "glidepath post --repo a/b --pr 1"))
         XCTAssertNil(BashGuard.denial(for: "glidepath pr threads --repo a/b --pr 12"))
         XCTAssertNil(BashGuard.denial(for: "glidepath state set --run r1 --repo a/b --pr 1 --stage review"))
+        XCTAssertNil(BashGuard.denial(for: "glidepath state set --run r1 --repo a/b --pr 1 --verdict skipped --reason 'diff too large'"))
         XCTAssertNil(BashGuard.denial(for: "glidepath code grep --pattern foo"))
         XCTAssertNil(BashGuard.denial(for: "glidepath code grep --pattern 'foo('"))
         XCTAssertNil(BashGuard.denial(for: "glidepath code grep --pattern '--force'"))
