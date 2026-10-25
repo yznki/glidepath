@@ -258,6 +258,77 @@ struct ApproachSectionView: View {
     }
 }
 
+/// The popover's tend block, shown while tending is on: a mini approach chart, up to three holding items, and when tend
+/// next looks. Empty otherwise.
+struct ApproachPopoverBlock: View {
+    @ObservedObject var store: Store
+    let offscreen: Bool
+    @AppStorage("signalColour") private var signalKey = "amber"
+
+    var body: some View {
+        if store.snap.tendOn, let approach = store.snap.approach {
+            VStack(alignment: .leading, spacing: 0) {
+                ApproachChart(planes: approach.planes, compact: true)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(hex: "060608"))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
+                ForEach(Array(approach.needs.prefix(3)), id: \.id) { item in
+                    strip(item)
+                }
+                HStack(spacing: 8) {
+                    Text(nextLook(approach))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Gotham.mute)
+                    Spacer(minLength: 0)
+                    if offscreen {
+                        Text("Open Approach").font(.system(size: 11.5)).foregroundStyle(Gotham.mute)
+                    } else {
+                        Button("Open Approach") { WindowRouter.shared.open(.approach) }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Gotham.mute)
+                    }
+                }
+                .padding(.top, 10)
+            }
+            .padding(.horizontal, StackGeometry.inset)
+            .padding(.top, 12)
+        }
+    }
+
+    private func strip(_ item: NeedsItem) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Gotham.fg)
+                    .lineLimit(1)
+                Text(verbatim: "\(item.detail) · \(item.slug) #\(String(item.n))")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Gotham.mute)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if offscreen {
+                Text("Open").font(.system(size: 12, weight: .semibold)).foregroundStyle(Gotham.fg)
+            } else {
+                SettingButton(title: "Open") { WindowRouter.shared.open(.approach) }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Gotham.signal(signalKey).opacity(0.07)))
+        .padding(.top, 6)
+    }
+
+    /// "Next look in 3 min", or nothing when tend has not set one.
+    private func nextLook(_ approach: ApproachSnapshot) -> String {
+        guard let next = approach.nextLook else { return "" }
+        return "Next look in \(HeaderCopy.untilText(next, store.snap.now ?? Date()))"
+    }
+}
+
 /// The small switch in the Autopilot pill: 26 by 16, filled when on.
 private struct MiniSwitch: View {
     let isOn: Bool

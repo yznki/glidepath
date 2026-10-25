@@ -22,7 +22,10 @@ struct NowView: View {
     /// The newest run's own PRs skipped for size: each waits for Review anyway.
     private var tooLarge: [Strip] { store.strips.filter { $0.offersReview && $0.carriedFrom == nil } }
 
-    private var needsCount: Int { held.count + tooLarge.count }
+    /// Tend's held fixes and stuck PRs, the same items the Approach section lists.
+    private var tendNeeds: [NeedsItem] { snap.approach?.needs ?? [] }
+
+    private var needsCount: Int { held.count + tooLarge.count + tendNeeds.count }
 
     /// True when the newest run finished with no error and no stopped PR: then the all-clear line can promise that
     /// every open PR is reviewed.
@@ -165,6 +168,9 @@ struct NowView: View {
             VStack(spacing: 6) {
                 ForEach(held) { strip in heldRow(strip) }
                 ForEach(tooLarge) { strip in tooLargeRow(strip) }
+                ForEach(tendNeeds, id: \.id) { item in
+                    TendNeedRow(item: item, url: store.approachPlane(item.slug, item.n)?.url ?? "", store: store)
+                }
             }
         }
     }
