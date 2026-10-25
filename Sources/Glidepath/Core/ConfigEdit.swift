@@ -215,6 +215,70 @@ enum ConfigEditor {
         return out
     }
 
+    // MARK: Tending
+
+    /// The "Tend my PRs" switch. Turning it on also sets `advisor = "opus"`, the recommended setting.
+    static func setTendEnabled(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.tend.enabled = on
+        if on { out.tend.advisor = .opus }
+        return out
+    }
+
+    static func setTendPush(_ config: Config, _ push: TendPush) -> Config {
+        var out = config
+        out.tend.push = push
+        return out
+    }
+
+    static func setTendRoundsPerDay(_ config: Config, _ rounds: Int) throws -> Config {
+        guard rounds > 0 else { throw ConfigError(message: "Rounds per day must be 1 or more.") }
+        var out = config
+        out.tend.roundsPerDay = rounds
+        return out
+    }
+
+    static func setAutopilot(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.tend.autopilot = on
+        return out
+    }
+
+    static func setUsageReserve(_ config: Config, _ percent: Int) throws -> Config {
+        guard (0...90).contains(percent) else { throw ConfigError(message: "The usage reserve must be from 0 to 90.") }
+        var out = config
+        out.tend.usageReserve = percent
+        return out
+    }
+
+    /// Quiet hours as config.toml writes them, such as "22:00-07:00,sat,sun". The text must read first.
+    static func setQuietHours(_ config: Config, _ text: String) throws -> Config {
+        guard let quiet = QuietHours.parse(text) else {
+            throw ConfigError(message: "Quiet hours must look like 22:00-07:00,sat,sun.")
+        }
+        var out = config
+        out.tend.quietHours = quiet
+        return out
+    }
+
+    static func setRepoTend(_ config: Config, slug: String, _ on: Bool) throws -> Config {
+        try edit(config, slug) { $0.tend = on }
+    }
+
+    /// Which account the fix sessions use. A separate account gets its own sign-in folder and no usage reserve, since
+    /// its usage is not the user's. The same account clears the folder and restores the default reserve.
+    static func setClaudeAccount(_ config: Config, separate: Bool, home: String) -> Config {
+        var out = config
+        if separate {
+            out.claudeConfigDir = home + "/.config/glidepath/claude"
+            out.tend.usageReserve = 0
+        } else {
+            out.claudeConfigDir = nil
+            out.tend.usageReserve = TendConfig().usageReserve
+        }
+        return out
+    }
+
     static func addRepo(_ config: Config, _ repo: RepoConfig) throws -> Config {
         try validateRepo(repo)
         guard !config.repos.contains(where: { $0.slug == repo.slug }) else {
