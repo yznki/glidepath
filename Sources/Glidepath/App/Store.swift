@@ -107,6 +107,11 @@ struct Snapshot {
     var calls: [String: YourCall] = [:]
     /// Tend rounds started today, from the run files.
     var tendRounds: [RunState] = []
+    /// The PRs tend landed, from `tend/landed.json`: watched, ok, broke or reverted.
+    var landed: [TendLanded] = []
+    /// When the app first saw each landed PR, by `ApproachPlane.id`. The chart glides a plane in once, from its first
+    /// sighting. Snapshot rendering sets it directly.
+    var landedSeen: [String: Date] = [:]
     /// Snapshot rendering only: the playbooks by repo, in place of reading them.
     var playbooks: [String: Playbook] = [:]
 }
@@ -202,6 +207,8 @@ final class Store: ObservableObject {
     @Published private(set) var jobError: String?
     /// The tend needs seen by the last load, by id. Nil until the first load, which notifies nothing.
     private var seenNeeds: Set<String>?
+    /// The landed PRs seen by the last load, by id. Nil until the first load, which notifies nothing.
+    private var seenLanded: Set<String>?
 
     /// `snapshot == nil` is the live app: registers at login and watches the state folders.
     /// A non-nil snapshot is fixed state for snapshot rendering.
@@ -348,6 +355,7 @@ final class Store: ObservableObject {
 
         // Held drafts are shown from disk, whichever run wrote them. Notifications above used the run alone.
         s.run?.showDrafts(Drafts.all(paths))
+        s.landedSeen = landedSeen(s, config: config)
         let landed = Set(Store.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
         if popoverOpen && !landed.isEmpty {
             justLanded = landed
@@ -358,6 +366,7 @@ final class Store: ObservableObject {
         }
         snap = s
         notifyNewNeeds(config: config)
+        notifyLanded(config: config)
         reconcileJob()
         syncLiveTokens()
         hovered = hovered.flatMap { h in Store.strips(from: s.run).contains { $0.id == h } ? h : nil }
@@ -368,6 +377,16 @@ final class Store: ObservableObject {
         let tend = TendStore(paths: paths)
         s.tendOn = config?.tend.enabled ?? false
         s.approach = tend.loadApproach()
+        s.landed = tend.loadLanded()
+        // A landed PR that broke main needs a revert. Tend writes that need too; the id keeps one copy of each.
+        if var approach = s.approach {
+            for record in s.landed {
+                if let need = Approach.revertNeed(record), !approach.needs.contains(where: { $0.id == need.id }) {
+                    approach.needs.append(need)
+                }
+            }
+            s.approach = approach
+        }
         s.tower = tend.tower(limit: 30)
         for need in s.approach?.needs ?? [] where need.kind == "call" {
             if let call = tend.load(need.slug, need.n)?.calls.first(where: { $0.id == need.callID }) {
@@ -389,10 +408,41 @@ final class Store: ObservableObject {
         defer { seenNeeds = Set(needs.map(\.id)) }
         guard let seen = seenNeeds, config?.notify ?? true else { return }
         for item in needs where !seen.contains(item.id) {
-            Notifier.post(SweepNotice(title: "#\(item.n) needs you", body: item.detail),
+            let title: String
+            switch item.kind {
+            case "land": title = "#\(item.n) is ready to land"
+            case "revert": title = "Main broke after #\(item.n)"
+            default: title = "#\(item.n) needs you"
+            }
+            Notifier.post(SweepNotice(title: title, body: item.detail),
                           runID: "tend-\(item.id)-\(Store.hash(item.detail))",
                           sound: config?.notifySound ?? .glass, respectFocus: config?.respectFocus ?? true)
         }
+    }
+
+    /// Notifies once for each landed PR the last load did not have ("#n landed"). The first load notifies nothing.
+    private func notifyLanded(config: Config?) {
+        guard !isFixture else { return }
+        let ids = snap.landed.map { "\($0.slug)#\($0.n)" }
+        defer { seenLanded = Set(ids) }
+        guard let seen = seenLanded, config?.notify ?? true else { return }
+        for record in snap.landed where !seen.contains("\(record.slug)#\(record.n)") {
+            Notifier.post(SweepNotice(title: "#\(record.n) landed", body: record.title),
+                          runID: "tend-landed-\(record.slug)#\(record.n)",
+                          sound: config?.notifySound ?? .glass, respectFocus: config?.respectFocus ?? true)
+        }
+    }
+
+    /// The first-seen times after a load: the ones already known, plus each new landed PR at now. On the first load every
+    /// PR is recorded as seen long ago, so nothing glides in at launch.
+    private func landedSeen(_ s: Snapshot, config: Config?) -> [String: Date] {
+        guard !isFixture else { return s.landedSeen }
+        var seen = snap.landedSeen
+        for record in s.landed {
+            let id = "\(record.slug)#\(record.n)"
+            if seen[id] == nil { seen[id] = seenLanded == nil ? .distantPast : Date() }
+        }
+        return seen
     }
 
     /// A stable hash of a string, for notification ids: `hashValue` changes between launches.
