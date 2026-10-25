@@ -13,8 +13,6 @@ final class PopoverModel: ObservableObject {
     @Published var openHeight = StackGeometry.open
     /// The card the pointer or the keyboard is on. It lifts, and the cards below it step down.
     @Published var highlight: String?
-    /// The header filter: only cards with this verdict show. nil shows all.
-    @Published var filter: Verdict?
     /// Horizontal drag offset of each card being swiped.
     @Published var drag: [String: CGFloat] = [:]
     /// Cards swiped off to discard: they fade before the discard runs.
@@ -60,8 +58,8 @@ enum StackGeometry {
     }
 
     /// Running first, then held drafts, changes, approved, queued while a sweep runs, and skipped last. Ties keep the
-    /// order the strips came in. Narrowed to the header filter.
-    static func ordered(_ all: [Strip], running: Bool, filter: Verdict?) -> [Strip] {
+    /// order the strips came in.
+    static func ordered(_ all: [Strip], running: Bool) -> [Strip] {
         func rank(_ s: Strip) -> Int {
             if s.active && s.verdict == nil { return 0 }
             if s.awaitsHold { return 1 }
@@ -73,7 +71,6 @@ enum StackGeometry {
             }
         }
         return all.enumerated()
-            .filter { filter == nil || $0.element.verdict == filter }
             .sorted { a, b in
                 let ra = rank(a.element), rb = rank(b.element)
                 return ra != rb ? ra < rb : a.offset < b.offset
@@ -251,9 +248,9 @@ struct PopoverView: View {
         }
     }
 
-    /// The strips in stack order, narrowed to the header filter.
+    /// The strips in stack order.
     private func ordered(_ all: [Strip]) -> [Strip] {
-        StackGeometry.ordered(all, running: store.snap.running, filter: local.filter)
+        StackGeometry.ordered(all, running: store.snap.running)
     }
 
     /// The cards on the stack: the ordered strips, capped, with the open card kept on. `more` counts the rest.
@@ -268,7 +265,7 @@ struct PopoverView: View {
     private func handleKey(_ press: KeyPress) -> KeyPress.Result {
         guard !TextFocus.isEditing || press.modifiers.contains(.command) else { return .ignored }
         let mods = ShortcutModifiers(press.modifiers)
-        let list = capped(store.strips).cards
+        let list = capped(stackStrips).cards
         if press.key == .escape, mods.isEmpty {
             if local.openID != nil {
                 local.openID = nil
@@ -306,9 +303,9 @@ struct PopoverView: View {
         return .ignored
     }
 
-    /// What the stack shows: held drafts and PRs in flight. Finished reviews are in the digest line instead.
+    /// What the stack shows: held drafts, PRs in flight, and the newest run's too-large PRs. Other finished reviews are in the digest line.
     private var stackStrips: [Strip] {
-        store.strips.filter { $0.draft || ($0.active && $0.verdict == nil) }
+        store.strips.filter { $0.draft || ($0.active && $0.verdict == nil) || ($0.offersReview && $0.carriedFrom == nil) }
     }
 
     /// The newest run's digest, from its own rows: carried rows are left out, so the counts match what the run did.
@@ -395,32 +392,21 @@ struct PopoverView: View {
         .zIndex(200)
     }
 
-    /// One verdict count: a thin numeral over its cap label. Tap filters the stack; tap again clears the filter.
+    /// One verdict count of the newest run: a thin numeral over its cap label. Plain counts, not controls.
     private func pip(_ verdict: Verdict, count: Int) -> some View {
-        let on = local.filter == verdict
         let label = verdict.word
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-        return Button {
-            local.filter = on ? nil : verdict
-            local.openID = nil
-        } label: {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(verbatim: "\(count)")
-                    .font(Gotham.numeral(26))
-                    .monospacedDigit()
-                    .foregroundStyle(pipColour(verdict))
-                Text(label).cap().lineLimit(1).fixedSize()
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(shape.fill(on ? Gotham.row : Color.clear))
-            .contentShape(shape)
+        return VStack(alignment: .leading, spacing: 5) {
+            Text(verbatim: "\(count)")
+                .font(Gotham.numeral(26))
+                .monospacedDigit()
+                .foregroundStyle(pipColour(verdict))
+            Text(label).cap().lineLimit(1).fixedSize()
         }
-        .buttonStyle(.plain)
-        .opacity(local.filter == nil || on ? 1 : 0.25)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("\(count) \(label)")
-        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func pipColour(_ verdict: Verdict) -> Color {
@@ -509,8 +495,8 @@ struct PopoverView: View {
         let drawn = Array(list.enumerated()).filter { item in
             local.openID == nil || item.element.id == local.openID || pile.contains { $0.id == item.element.id }
         }
-        // One animation for every layout change: open, highlight, filter, and the number of cards.
-        let layout = "\(local.openID ?? "")|\(hi)|\(rows)|\(local.filter?.rawValue ?? "")|\(local.openHeight)"
+        // One animation for every layout change: open, highlight, and the number of cards.
+        let layout = "\(local.openID ?? "")|\(hi)|\(rows)|\(local.openHeight)"
         ZStack(alignment: .topLeading) {
             if rows == 0 {
                 emptyState.offset(y: head)
@@ -555,14 +541,14 @@ struct PopoverView: View {
         return (head + CGFloat(i) * step + lift, 1, Double(i))
     }
 
-    /// Glider and "All clear" (or "None here" under a filter), centred in the space the cards would take.
+    /// Glider and "Nothing needs you", centred in the space the cards would take.
     private var emptyState: some View {
         VStack(spacing: 12) {
             GliderShape()
                 .fill(Gotham.mute)
                 .frame(width: 40, height: 40)
                 .opacity(0.6)
-            Text(local.filter == nil ? "Nothing needs you" : "None here")
+            Text("Nothing needs you")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Gotham.mute)
         }

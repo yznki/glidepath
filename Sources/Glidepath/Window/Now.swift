@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// The Now section: what needs you, and what the newest runs did. The header holds the status line and the Review menu.
-/// Held drafts come first, each with Discard and Hold to post. With none held and nothing running, the section says all
-/// clear. The three newest runs follow as run cards. A PR opens its flight recorder.
+/// The Now section: what needs you, and what the newest runs did. The header holds the status line and the Review menu
+/// on one row. Held drafts and the newest run's too-large PRs come first, each with its action. With none and nothing
+/// running, the section says nothing needs you. The three newest runs follow as run cards. A PR opens its flight recorder.
 struct NowView: View {
     @ObservedObject var store: Store
     @AppStorage("signalColour") private var signalKey = "amber"
@@ -19,6 +19,20 @@ struct NowView: View {
     /// Held drafts: the PRs that wait on the user to post or discard them.
     private var held: [Strip] { store.strips.filter { $0.draft && $0.verdict != nil } }
 
+    /// The newest run's own PRs skipped for size: each waits for Review anyway.
+    private var tooLarge: [Strip] { store.strips.filter { $0.offersReview && $0.carriedFrom == nil } }
+
+    private var needsCount: Int { held.count + tooLarge.count }
+
+    /// True when the newest run finished with no error and no stopped PR: then the all-clear line can promise that
+    /// every open PR is reviewed.
+    private var cleanFinish: Bool {
+        guard let run = snap.run, run.finished != nil, let digest = newest else { return false }
+        return digest.failed == nil && digest.stopped.isEmpty
+    }
+
+    private var newest: RunDigest? { snap.run.map { RunDigest(run: $0, running: running) } }
+
     /// The three newest runs. The current run comes from the store, so it is live.
     private var recent: [RunState] {
         var runs = history.runs
@@ -33,7 +47,7 @@ struct NowView: View {
             VStack(alignment: .leading, spacing: 0) {
                 header
                     .padding(.bottom, 30)
-                if !held.isEmpty {
+                if needsCount > 0 {
                     needs
                 } else if !running {
                     allClear
@@ -55,22 +69,24 @@ struct NowView: View {
             ReviewNowSheet(store: store, model: reviewModel)
         }
         .onAppear { history.load(store) }
-        .onReceive(store.$snap) { _ in history.load(store) }
+        .onChange(of: RunsKey(snap)) { _, _ in history.load(store) }
+        // The review sheet opened here takes the same shortcuts as one opened from History.
+        .onChange(of: history.opened?.id) { _, _ in ShortcutContext.shared.setReview(history.opened) }
+        .onDisappear { ShortcutContext.shared.setReview(nil) }
     }
 
     // MARK: Header
 
+    /// The title on the left; the status line and the Review menu on the right, on one row.
     private var header: some View {
-        HStack(alignment: .top, spacing: 16) {
+        HStack(alignment: .center, spacing: 16) {
             Text("Now")
                 .font(.system(size: 28, weight: .bold))
                 .tracking(-0.8)
                 .foregroundStyle(Gotham.fg)
             Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 10) {
-                statusLine
-                reviewMenu
-            }
+            statusLine
+            reviewMenu
         }
     }
 
@@ -83,10 +99,12 @@ struct NowView: View {
         }
     }
 
-    /// "Next sweep 8:00 PM · in 3 h 41 min", "Paused", or "Reviewing <run> · m:ss" while a run goes.
+    /// "Next sweep 8:00 PM · in 3 h 41 min", "Paused", "Sweeping · m:ss", or "Reviewing <run> · m:ss" for a by-hand run.
     private func statusText(at date: Date) -> String {
         if running, let run = snap.run {
-            return "Reviewing \(RunDigest.title(for: run)) · \(Self.elapsed(date.timeIntervalSince(run.started)))"
+            let elapsed = Self.elapsed(date.timeIntervalSince(run.started))
+            if run.kind == nil { return "Sweeping · \(elapsed)" }
+            return "Reviewing \(RunDigest.title(for: run)) · \(elapsed)"
         }
         if snap.paused { return "Paused" }
         guard let next = snap.nextRun else { return "No sweep scheduled" }
@@ -141,11 +159,12 @@ struct NowView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 capLabel("Needs you")
-                capLabel("\(held.count)", signal)
+                capLabel("\(needsCount)", signal)
             }
             .padding(.bottom, 10)
             VStack(spacing: 6) {
                 ForEach(held) { strip in heldRow(strip) }
+                ForEach(tooLarge) { strip in tooLargeRow(strip) }
             }
         }
     }
@@ -164,19 +183,47 @@ struct NowView: View {
                 (Text(changes ? "Changes" : "Approved")
                     .foregroundStyle(verdictColour)
                     .fontWeight(.semibold)
-                 + Text(" · \(detail)")
+                 + Text(verbatim: " · \(detail)")
                     .foregroundStyle(Gotham.mute))
                     .font(.system(size: 12))
                     .lineLimit(1)
             }
             .contentShape(Rectangle())
-            .onTapGesture { history.focus(strip.id) }
+            .onTapGesture { history.focus(strip.id, store: store) }
             Spacer(minLength: 8)
             heldActions(strip, tint: verdictColour)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 11)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(signal.opacity(0.07)))
+    }
+
+    /// A PR the newest run skipped for size. Review anyway goes through the Review confirm; the warning is its tooltip.
+    private func tooLargeRow(_ strip: Strip) -> some View {
+        let lines = (strip.changedLines ?? 0).formatted()
+        let detail = "Too large · \(lines) lines · \(strip.repo) #\(strip.number)"
+        return HStack(spacing: 12) {
+            AvatarView(login: strip.author ?? "pr", size: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(strip.title ?? "#\(strip.number)")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Gotham.fg)
+                    .lineLimit(1)
+                Text(verbatim: detail)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Gotham.mute)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            WinButton(title: "Review anyway", style: .outline, small: true) {
+                Confirm.review(store, .prs([PRRef(slug: strip.repo, n: strip.number)]))
+            }
+            .disabled(running)
+            .help(store.reviewWarning(strip))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Gotham.row))
     }
 
     /// Discard, and Hold to post: posting publishes, so it stays a hold. Shows the work in progress once one starts.
@@ -212,7 +259,7 @@ struct NowView: View {
             Text("Nothing needs you")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(Gotham.fg)
-            Text("Every open PR is reviewed at its latest commit.")
+            Text(cleanFinish ? "Every open PR is reviewed at its latest commit." : "No reviews are waiting to be posted.")
                 .font(.system(size: 13))
                 .foregroundStyle(Gotham.mute)
         }
@@ -228,9 +275,8 @@ struct NowView: View {
                 .padding(.top, 10)
                 .padding(.bottom, 10)
             ForEach(recent, id: \.id) { run in
-                RunCard(run: run, running: running && run.id == snap.run?.id, sweep: history.sweep(for: run.id),
-                        store: store) { stripID in
-                    history.open(runID: run.id, stripID: stripID)
+                RunCard(run: run, running: running && run.id == snap.run?.id, store: store) { stripID in
+                    history.open(runID: run.id, stripID: stripID, store: store)
                 }
             }
         }

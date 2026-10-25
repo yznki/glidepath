@@ -17,7 +17,7 @@ final class HistoryTests: XCTestCase {
     }
 
     private func sweepsFrom(_ runs: [RunState]) -> [ReviewSweep] {
-        ReviewsModel.sweeps(from: runs) { _, _, _ in nil }
+        runs.map { ReviewSweep(run: $0) }
     }
 
     func testFinishedRunKeepsVerdictlessRowAsNoResult() {

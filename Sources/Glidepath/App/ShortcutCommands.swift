@@ -26,7 +26,7 @@ enum ShortcutAvailability {
 
     static func enabled(_ action: ShortcutAction, _ s: ShortcutState) -> Bool {
         if s.sheetOpen && !sheetAllowed.contains(action) { return false }
-        let inReviews = !s.onboarding && s.section == .reviews && s.reviewSelected
+        let inReviews = !s.onboarding && (s.section == .now || s.section == .reviews) && s.reviewSelected
         switch action {
         case .showOverview, .showReviews, .showRepos, .showSchedule, .showSettings:
             return !s.onboarding

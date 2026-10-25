@@ -10,7 +10,7 @@ final class StackCapTests: XCTestCase {
     /// 45 PRs as in the real case: 10 running, 35 skipped.
     func testFortyFiveStripsCapAtSixWithThirtyNineMore() {
         let all = (1...10).map { strip($0, active: true) } + (11...45).map { strip($0, verdict: .skipped) }
-        let ordered = StackGeometry.ordered(all, running: true, filter: nil)
+        let ordered = StackGeometry.ordered(all, running: true)
         let shown = StackGeometry.cap(ordered)
         XCTAssertEqual(shown.cards.count, StackGeometry.maxCards)
         XCTAssertEqual(shown.more, 39)
