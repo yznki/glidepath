@@ -12,7 +12,10 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | 1.6 | live check: scratch PR #1 broken add → tend fixed + pushed ff37538, CI green, 30k tokens; rerun idle; hands-off label → no round. Found: usage events nest under unifiedWindows (fixed) | done | |
 | 1.6 | H3 App: Approach section, chart, drawer, popover, settings — merged (cherry-picked, stub dropped), 433 pass, snapshots /tmp/gp-1.6 | done | 330cfdf..931f56d |
 | 1.6 | UI polish (compact hold, gates wording, round titles, settings rows) | done | 16ba26d |
-| 1.6 | Sonnet review: 15 findings (worktree .git redirect, sandbox denyRead, toggle no-op, rerun/discard dead ends, lost updates, closed-PR cleanup, PushGuard path parse, commit attribution strip, playbook sanitize, approval w/o required reviews, hold reset, needs carry-over, run-file reads, account reselect) | fixing | |
+| 1.6 | Sonnet review: 15 findings (worktree .git redirect, sandbox denyRead, toggle no-op, rerun/discard dead ends, lost updates, closed-PR cleanup, PushGuard path parse, commit attribution strip, playbook sanitize, approval w/o required reviews, hold reset, needs carry-over, run-file reads, account reselect) | done (441 pass) | 66126de 680056f |
+| 1.6 | live re-verify after fixes: round fixed off-by-one (d958cdf), evidence has ##[error] no ANSI, .git link ok, no attribution, CI green, 18k tokens | done | |
+| 1.6 | CHANGELOG + README tending section | done | |
+| 1.6 | release 1.6.0 (notes/release.md) | in progress | |
 | 1.6 | real Actions live check: tend fixed mul on PR #1 (8f8691a, run green, 15k tokens); job-log fetch was empty (gh refuses escape sequences) → fixed with --allow-escape-sequences + ANSI strip, verified `##[error]` present; `gh run rerun --failed` works (attempt 2 started, cancelled); ~4 Actions minutes | done | |
 
 ## Decisions (Yazan should know)
