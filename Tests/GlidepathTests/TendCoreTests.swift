@@ -162,6 +162,14 @@ final class TendCoreTests: XCTestCase {
             UsageWindow(type: "five_hour", utilization: 0.72, resetsAt: Date(timeIntervalSince1970: 1_761_500_000), seen: now),
         ])
         XCTAssertEqual(UsageGuard.resultText(stream: stream), "All done.")
+        // The 2.1.310 shape: windows nested under unifiedWindows, read one per window.
+        let nested = """
+        {"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1792979400,"rateLimitType":"five_hour","unifiedWindows":{"five_hour":{"utilization":0.08,"resetsAt":1792979400,"status":"allowed"},"seven_day":{"utilization":0.5,"status":"allowed"}}}}
+        """
+        XCTAssertEqual(UsageGuard.events(stream: nested, now: now), [
+            UsageWindow(type: "five_hour", utilization: 0.08, resetsAt: Date(timeIntervalSince1970: 1_792_979_400), seen: now),
+            UsageWindow(type: "seven_day", utilization: 0.5, resetsAt: nil, seen: now),
+        ])
     }
 
     func testDecideNowWaitStopDeferredAndExpired() {

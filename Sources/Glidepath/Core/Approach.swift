@@ -194,6 +194,7 @@ enum Approach {
         }
         if marker(pr) == 3 { return "Ready to land" }
         if pr.ciStatus == .pending { return "Waiting on CI" }
+        if pr.ciStatus == .failed, !tendable(pr, state) { return "Hands off · checks failing" }
         if pr.ciStatus == .failed { return "Checks failing · \(pr.failedChecks.map(\.name).joined(separator: ", "))" }
         if let who = waitingOn(pr) { return "Waiting on \(who)" }
         return "Waiting on review"
@@ -232,7 +233,7 @@ enum Approach {
                       phase: phase(pr, state: state, working: working), marker: marker(pr),
                       label: label(pr, state: state, working: working, triesPerHead: triesPerHead),
                       waitingOn: waitingOn(pr), lane: lane, stackIndex: stackIndex,
-                      off: state?.off ?? false, gates: gates(pr, state: state), ci: pr.ciStatus.rawValue)
+                      off: !tendable(pr, state), gates: gates(pr, state: state), ci: pr.ciStatus.rawValue)
     }
 
     /// The Needs item for a PR: a held fix, or a stuck PR. A held fix is listed first. Nil when neither.
