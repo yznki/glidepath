@@ -309,6 +309,7 @@ final class Tender {
                 s.seed(pr)
                 verifyPlaybook(repo, pr, &s, now)
                 checkPushback(repo, pr, &s)
+                selfReviewStep(repo, pr, &s, now)
                 do {
                     if try decide(repo, pr, &s, now) { rounded.insert(key) }
                 } catch {
@@ -391,7 +392,7 @@ final class Tender {
         try evidence(repo, pr, wt: wt).write(toFile: scratch + "/evidence.md", atomically: true, encoding: .utf8)
         // The calls the round starts with: one the user removes during the round is not put back when it ends.
         let startCalls = Set(s.calls.map(\.id))
-        let asks = Threads.actionable(pr, me: me, answered: Set(s.answered), handled: s.handled)
+        let asks = TendDecision.pendingAsks(pr, state: s, me: me)
         if !asks.isEmpty {
             try Tender.threadsMarkdown(asks: asks, readFile: { Tender.worktreeLines(wt, $0) })
                 .write(toFile: scratch + "/threads.md", atomically: true, encoding: .utf8)
@@ -446,6 +447,10 @@ final class Tender {
         if action == "fixed", pr.failedChecks.isEmpty, !asks.isEmpty { action = "answered" }
         // After a rerun the checks are running again, so no fingerprint: a red result after it gets its own round.
         s.fingerprint = action == "reran" ? nil : Fingerprint.full(pr, me: me)
+        if outcome.action == "fixed", let pushed = outcome.commit, !outcome.held {
+            noteChange(repo.slug, pr.n, &s, sha: pushed, summary: outcome.summary,
+                       checks: (result?.ran ?? []).compactMap(Playbook.sanitize))
+        }
         // The app or `act` may have changed the PR during the session. What is on disk is merged in under the PR's lock.
         try withPRLock(repo.slug, pr.n) {
             s = s.merged(disk: store.load(repo.slug, pr.n) ?? s, startCalls: startCalls)
@@ -702,6 +707,17 @@ final class Tender {
             if verdict == "disagree" && text.isEmpty { verdict = "unclear" }
             // An unclear ask has no reply: its text is dropped, so there is no draft and the council is not given one.
             if verdict == "unclear" { text = "" }
+            // A self-review finding never posts. Fixed and agreed is answered; any other verdict is answered too, and the
+            // tower says the finding was left.
+            if ask.kind == "self" {
+                s.answered.append(ask.id)
+                if verdict != "agree" {
+                    tower(repo.slug, pr.n, "self-review finding left · \(String(ask.body.prefix(120)))", amber: false, now: now)
+                }
+                out.verdicts.append(ThreadVerdict(id: ask.id, author: ask.author, quote: String(ask.body.prefix(160)),
+                                                  verdict: verdict, reply: nil, posted: false))
+                continue
+            }
             let body = verdict == "agree" ? Tender.agreedBody(sha: sha ?? "", reply: text) : text
             let resolve = ask.kind == "thread" && verdict != "unclear"
 
@@ -747,6 +763,10 @@ final class Tender {
             }
             out.verdicts.append(ThreadVerdict(id: ask.id, author: ask.author, quote: String(ask.body.prefix(160)),
                                               verdict: verdict, reply: body.isEmpty ? nil : body, posted: posted))
+        }
+        // Once every self-review finding is answered, the review is done.
+        if let review = s.selfReview, Threads.selfAsks(review, answered: Set(s.answered)).isEmpty {
+            s.selfReview?.done = true
         }
         return out
     }
@@ -997,6 +1017,9 @@ final class Tender {
             outcome = markStuck(&s, repo, pr, "\(error)", now: now)
         }
         s.fingerprint = Fingerprint.full(pr, me: me)
+        if outcome.action == "merged", let pushed = outcome.commit {
+            noteChange(repo.slug, pr.n, &s, sha: pushed, summary: outcome.summary, checks: [])
+        }
         try withPRLock(repo.slug, pr.n) {
             s = s.merged(disk: store.load(repo.slug, pr.n) ?? s, startCalls: startCalls)
             try store.save(s)
@@ -1158,7 +1181,7 @@ final class Tender {
         guard let prs = try? fetchOpen(repo.slug), let pr = prs.first(where: { $0.n == n }) else { return nil }
         let state = freshState(repo.slug, pr, now)
         guard Landing.ready(pr, state), TendDecision.decide(pr, state: state, me: me) == .idle,
-              Threads.actionable(pr, me: me, answered: Set(state.answered), handled: state.handled).isEmpty else { return nil }
+              TendDecision.pendingAsks(pr, state: state, me: me).isEmpty else { return nil }
         return (pr, prs)
     }
 
@@ -1462,6 +1485,93 @@ final class Tender {
         return r.ok ? Tender.parseCheckRuns(r.stdout) : nil
     }
 
+    // MARK: Self-review
+
+    /// Glidepath's own review of a PR, once per ready transition: a dry run of `glidepath review` on the PR's head, which
+    /// posts nothing. A verdict of changes becomes self asks for the next round. The review is deferred work, so it waits
+    /// for quiet hours like the other deferred spending.
+    private func selfReviewStep(_ repo: RepoConfig, _ pr: OpenPR, _ s: inout TendPR, _ now: Date) {
+        if pr.isDraft {
+            s.wasDraft = true
+            return
+        }
+        guard config.tend.selfReview, !pr.isFork, Approach.tendable(pr, s), s.selfReview == nil || s.wasDraft else { return }
+        switch UsageGuard.decide(.deferred, UsageState.load(paths), reserve: config.tend.usageReserve,
+                                 quiet: config.tend.quietHours, now: now) {
+        case .now:
+            break
+        case .wait(let until, let reason):
+            queue.append(TendQueueItem(slug: repo.slug, n: pr.n, cls: .deferred, until: until, reason: reason))
+            print("\(repo.slug) #\(pr.n): \(reason)")
+            return
+        case .stop:
+            return
+        }
+        let startCalls = Set(s.calls.map(\.id))
+        let review = selfReviewOf(repo, pr, now: now)
+        // The review took a while: what is on disk is merged in under the PR's lock, as a round does.
+        try? withPRLock(repo.slug, pr.n) {
+            s.selfReview = review
+            s.wasDraft = false
+            // New findings are new asks, which the PR's fingerprint must not hide.
+            if !review.findings.isEmpty { s.fingerprint = nil }
+            s = s.merged(disk: store.load(repo.slug, pr.n) ?? s, startCalls: startCalls)
+            try store.save(s)
+        }
+    }
+
+    /// Runs `glidepath review` on the PR's head as a dry run and reads its verdict. A run that fails gives a review that
+    /// did not run, so the PR is not tried again until its next ready transition.
+    private func selfReviewOf(_ repo: RepoConfig, _ pr: OpenPR, now: Date) -> SelfReview {
+        let r = Shell.run(InitCommand.binaryPath(), ["review", repo.slug, String(pr.n), "--dry-run", "--again"],
+                          env: env, timeout: 1800)
+        let runId = Tender.selfReviewRunID(r.stdout)
+        let draft = runId.flatMap { id in
+            FileManager.default.contents(atPath: paths.scratchDir + "/" + id + "/" + repo.owner + "-" + repo.name + "/\(pr.n)/final.json")
+        }.flatMap { try? JSONDecoder().decode(Draft.self, from: $0) }
+        guard r.ok, let runId, let draft else {
+            let why = r.ok ? "no review written" : "review exited with \(r.status)"
+            tower(repo.slug, pr.n, "self-review did not run · \(why)", amber: false, now: now)
+            return SelfReview(head: pr.head, at: now, verdict: "failed", findings: [], done: true)
+        }
+        let changes = draft.verdict == "changes"
+        let findings = changes ? draft.comments : []
+        let line = findings.isEmpty ? "self-review · clean"
+            : "self-review · \(findings.count) \(findings.count == 1 ? "finding" : "findings")"
+        tower(repo.slug, pr.n, line, amber: false, now: now)
+        let tokens = (try? RunStore(paths: paths).load(runId))?.tokens ?? 0
+        try? saveRun(Runner.makeID(now), now: now, repo: repo, pr: pr, summary: line, action: "self-review", check: nil,
+                     tokens: tokens)
+        return SelfReview(head: pr.head, at: now, verdict: changes ? "changes" : "clean", findings: findings,
+                          done: findings.isEmpty)
+    }
+
+    /// The run id a `glidepath review` printed: the word after `run` on its first `run` line. Nil when there is none.
+    static func selfReviewRunID(_ stdout: String) -> String? {
+        for line in stdout.split(whereSeparator: \.isNewline) where line.hasPrefix("run ") {
+            return line.dropFirst(4).split(separator: " ").first.map(String.init)
+        }
+        return nil
+    }
+
+    // MARK: Description
+
+    /// Adds a pushed change to the PR's "Changes since review" block and rewrites that block in the PR body. Only the
+    /// marked span is ever written, and the body is edited only when the block differs.
+    private func noteChange(_ slug: String, _ n: Int, _ s: inout TendPR, sha: String, summary: String, checks: [String]) {
+        let first = summary.components(separatedBy: .newlines).first ?? ""
+        s.changes = Describe.adding("\(sha.prefix(7)) \(first.trimmingCharacters(in: .whitespaces).prefix(120))", to: s.changes)
+        let r = Shell.run("gh", ["pr", "view", String(n), "-R", slug, "--json", "body"], env: env, timeout: 120)
+        guard r.ok, let data = r.stdout.data(using: .utf8),
+              let body = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["body"] as? String else { return }
+        let updated = Describe.rewrite(body, block: Describe.block(lines: s.changes, checks: checks))
+        guard updated != body else { return }
+        let file = NSTemporaryDirectory() + "glidepath-body-" + UUID().uuidString + ".md"
+        guard (try? updated.write(toFile: file, atomically: true, encoding: .utf8)) != nil else { return }
+        defer { try? FileManager.default.removeItem(atPath: file) }
+        _ = Shell.run("gh", ["pr", "edit", String(n), "-R", slug, "--body-file", file], env: env, timeout: 120)
+    }
+
     // MARK: Subcommands on one PR
 
     /// `push`, `discard`, `retry`, `on` and `off` for one PR, under the PR's lock.
@@ -1486,6 +1596,7 @@ final class Tender {
             s.held = nil
             s.pendingRan = held.ran ?? []
             s.pendingRanHead = head
+            noteChange(repo.slug, n, &s, sha: head, summary: held.summary, checks: held.ran ?? [])
             let posted = postPending(held.replies, head: head, repo, n, &s, now: now)
             // The agreed replies answered change requests: those reviewers are asked again, as a round asks them.
             let reviewers = posted.compactMap { $0.ask?.reviewer }

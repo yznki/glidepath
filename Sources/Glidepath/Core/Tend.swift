@@ -193,7 +193,7 @@ struct TendStore {
     var dir: String { paths.stateDir + "/tend" }
 
     /// Files in `dir` that are not one PR's state.
-    static let sharedFiles: Set<String> = ["approach.json", "landed.json"]
+    static let sharedFiles: Set<String> = ["approach.json", "landed.json", "briefing.json", "lessons.json"]
 
     private static let lineEncoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -337,10 +337,18 @@ enum TendDecision: Equatable {
         if state.held != nil { return .idle }
         guard pr.ciStatus != .pending else { return .idle }
         let conflicts = pr.mergeStateStatus == "DIRTY"
-        let asks = Threads.actionable(pr, me: me, answered: Set(state.answered), handled: state.handled)
+        let asks = pendingAsks(pr, state: state, me: me)
         guard pr.ciStatus == .failed || conflicts || !asks.isEmpty else { return .idle }
         guard state.fingerprint != Fingerprint.full(pr, me: me) else { return .idle }
         return .round(pr.approved && (pr.ciStatus == .failed || conflicts) ? .urgent : .normal)
+    }
+
+    /// What a round answers: the threads, reviews and comments that wait on someone, then the self-review findings not
+    /// yet answered.
+    static func pendingAsks(_ pr: OpenPR, state: TendPR, me: String) -> [Ask] {
+        let open = Threads.actionable(pr, me: me, answered: Set(state.answered), handled: state.handled)
+        let own = state.selfReview.map { Threads.selfAsks($0, answered: Set(state.answered)) } ?? []
+        return open + own
     }
 
     /// True when the PR has a new head since its stuck mark was set, so the mark goes.
