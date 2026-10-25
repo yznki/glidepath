@@ -251,4 +251,204 @@ final class TendCoreTests: XCTestCase {
             XCTAssertFalse(PushGuard.isTestPath(path), path)
         }
     }
+
+    // MARK: Approach
+
+    private func openPR(_ n: Int, branch: String, base: String,
+                        checks: [CheckState] = [CheckState(name: "test", status: "COMPLETED", conclusion: "SUCCESS")],
+                        approved: Bool = false, clean: Bool = false, draft: Bool = false,
+                        requested: [String] = []) -> OpenPR {
+        OpenPR(n: n, title: "PR \(n)", url: "https://github.com/acme/api/pull/\(n)", isDraft: draft,
+               reviewDecision: approved ? "APPROVED" : nil, mergeStateStatus: clean ? "CLEAN" : "BLOCKED",
+               branch: branch, head: "sha\(n)", base: base, checks: checks, requested: requested)
+    }
+
+    func testApproachStackSoloAndPhases() {
+        let failing = CheckState(name: "lint", status: "COMPLETED", conclusion: "FAILURE")
+        let a = openPR(1, branch: "a", base: "main", approved: true, clean: true)
+        let b = openPR(2, branch: "b", base: "a", requested: ["alice"])
+        let c = openPR(3, branch: "c", base: "b", checks: [failing])
+        let d = openPR(4, branch: "d", base: "main", draft: true)
+
+        let lanes = Approach.lanes([d, c, b, a])
+        XCTAssertEqual(lanes.map { $0.map(\.n) }, [[1, 2, 3], [4]])
+
+        XCTAssertEqual(Approach.marker(a), 3)
+        XCTAssertEqual(Approach.phase(a, state: nil, working: false), .cleared)
+        XCTAssertEqual(Approach.label(a, state: nil, working: false), "Ready to land")
+        XCTAssertEqual(Approach.marker(b), 1)
+        XCTAssertEqual(Approach.phase(b, state: nil, working: false), .waiting)
+        XCTAssertEqual(Approach.label(b, state: nil, working: false), "Waiting on alice")
+        XCTAssertEqual(Approach.phase(c, state: nil, working: false), .flying)
+        XCTAssertEqual(Approach.label(c, state: nil, working: false), "Checks failing · lint")
+        XCTAssertEqual(Approach.gates(c, state: nil)[0].who, "Glidepath")
+        XCTAssertEqual(Approach.phase(d, state: nil, working: false), .taxiing)
+
+        var planes: [ApproachPlane] = []
+        for (li, lane) in lanes.enumerated() {
+            for (i, p) in lane.enumerated() {
+                planes.append(Approach.plane(p, slug: "acme/api", state: nil, working: false, lane: li,
+                                             stackIndex: lane.count > 1 ? i + 1 : nil))
+            }
+        }
+        XCTAssertEqual(planes.map(\.stackIndex), [1, 2, 3, nil])
+        XCTAssertEqual(planes.map(\.lane), [0, 0, 0, 1])
+        XCTAssertEqual(planes[0].gates.map(\.name), ["CI", "Threads", "Approval", "Ready"])
+        XCTAssertEqual(planes[0].ci, "passed")
+    }
+
+    func testHeldFixIsNeedsItemAndHolds() {
+        let a = openPR(1, branch: "a", base: "main", approved: true, clean: true)
+        var held = TendPR(slug: "acme/api", n: 1)
+        held.held = TendHeld(commit: "abc123", summary: "approved, pushing cancels the approval", at: at(26, 9))
+        XCTAssertEqual(Approach.phase(a, state: held, working: false), .holding)
+        XCTAssertEqual(Approach.label(a, state: held, working: false), "Fix held · approved, pushing cancels the approval")
+        XCTAssertEqual(Approach.needs("acme/api", a, state: held), NeedsItem(
+            id: "acme/api#1/held", slug: "acme/api", n: 1, title: "PR 1", kind: "held",
+            detail: "Fix held · approved, pushing cancels the approval"))
+        XCTAssertNil(Approach.needs("acme/api", a, state: nil))
+    }
+
+    func testFingerprintIgnoresCheckOrder() {
+        let lint = CheckState(name: "lint", status: "COMPLETED", conclusion: "FAILURE")
+        let test = CheckState(name: "test", status: "COMPLETED", conclusion: "SUCCESS")
+        let x = openPR(3, branch: "c", base: "b", checks: [lint, test])
+        let y = openPR(3, branch: "c", base: "b", checks: [test, lint])
+        XCTAssertEqual(Fingerprint.ci(x), Fingerprint.ci(y))
+        XCTAssertEqual(Fingerprint.ci(x), "sha3|lint=FAILURE,test=SUCCESS")
+        var moved = x
+        moved.head = "sha9"
+        XCTAssertNotEqual(Fingerprint.ci(x), Fingerprint.ci(moved))
+    }
+
+    func testTendDecisionRoundsAndSkips() {
+        let failing = CheckState(name: "lint", status: "COMPLETED", conclusion: "FAILURE")
+        var red = openPR(3, branch: "c", base: "main", checks: [failing])
+        var state = TendPR(slug: "acme/api", n: 3)
+        XCTAssertEqual(TendDecision.decide(red, state: state), .round(.normal))
+        red.reviewDecision = "APPROVED"
+        XCTAssertEqual(TendDecision.decide(red, state: state), .round(.urgent))
+        // The same failure, already tried, is not a new round.
+        state.fingerprint = Fingerprint.ci(red)
+        XCTAssertEqual(TendDecision.decide(red, state: state), .idle)
+        state.fingerprint = nil
+        state.held = TendHeld(commit: "abc", summary: "x", at: at(26, 9))
+        XCTAssertEqual(TendDecision.decide(red, state: state), .idle)
+        state.held = nil
+        red.labels = [Approach.handsOffLabel]
+        XCTAssertEqual(TendDecision.decide(red, state: state), .skip("hands off"))
+        red.labels = []
+        state.off = true
+        XCTAssertEqual(TendDecision.decide(red, state: state), .skip("hands off"))
+        state.off = false
+        red.isFork = true
+        XCTAssertEqual(TendDecision.decide(red, state: state), .skip("fork"))
+        red.isFork = false
+        red.checks = [CheckState(name: "lint", status: "IN_PROGRESS", conclusion: nil)]
+        XCTAssertEqual(TendDecision.decide(red, state: state), .idle)
+
+        var stuck = TendPR(slug: "acme/api", n: 3)
+        stuck.fingerprint = "sha3|lint=FAILURE"
+        XCTAssertFalse(TendDecision.clearsStuck(red, state: stuck))
+        XCTAssertTrue(TendDecision.clearsStuck(openPR(9, branch: "c", base: "b"), state: stuck))
+    }
+
+    // MARK: Tend state
+
+    func testTendLimitsRollDayAndBlock() {
+        var s = TendPR(slug: "acme/api", n: 3)
+        let cfg = TendConfig()
+        TendLimits.rollDay(&s, at(26, 9), calendar: utc)
+        s.roundsToday = 5
+        XCTAssertEqual(TendLimits.blocked(s, head: "h", cfg), "5 rounds a day reached")
+        TendLimits.rollDay(&s, at(26, 20), calendar: utc)
+        XCTAssertEqual(s.roundsToday, 5)
+        TendLimits.rollDay(&s, at(27, 8), calendar: utc)
+        XCTAssertEqual(s.roundsToday, 0)
+        s.triesByHead["h"] = 2
+        XCTAssertEqual(TendLimits.blocked(s, head: "h", cfg), "2 tries on this head used")
+        XCTAssertNil(TendLimits.blocked(s, head: "new", cfg))
+    }
+
+    func testCIEvidenceIdsAndWindows() {
+        XCTAssertEqual(CIEvidence.ids("https://github.com/acme/api/actions/runs/123/job/456")?.run, 123)
+        XCTAssertEqual(CIEvidence.ids("https://github.com/acme/api/actions/runs/123/job/456")?.job, 456)
+        XCTAssertNil(CIEvidence.ids("https://github.com/acme/api/actions/runs/9")?.job)
+        XCTAssertNil(CIEvidence.ids(nil))
+
+        var lines = (0..<1000).map { "line \($0)" }
+        lines[100] = "x ##[error]"
+        lines[150] = "y ##[error]"
+        // Windows 40...120 and 90...170 overlap, so they merge into 40...170.
+        let merged = CIEvidence.windows(lines.joined(separator: "\n"))
+        XCTAssertEqual(merged.count, 131)
+        XCTAssertEqual(merged.first, "line 40")
+        XCTAssertEqual(merged.last, "line 170")
+        XCTAssertEqual(CIEvidence.windows(lines.joined(separator: "\n"), cap: 50).count, 50)
+        // No error: the last 300 lines.
+        let quiet = (0..<500).map { "line \($0)" }.joined(separator: "\n")
+        let tail = CIEvidence.windows(quiet)
+        XCTAssertEqual(tail.count, 300)
+        XCTAssertEqual(tail.first, "line 200")
+    }
+
+    func testAutopilotTable() {
+        for autopilot in [false, true] {
+            for action in [TendAction.giveUp, .flagPaths, .limitHit, .guardRefused] {
+                XCTAssertEqual(Autopilot.actor(action, autopilot: autopilot, push: .always), .you)
+            }
+            XCTAssertEqual(Autopilot.actor(.rerun, autopilot: autopilot, push: .untilApproved), .act)
+            XCTAssertEqual(Autopilot.actor(.pushFix(approved: false), autopilot: autopilot, push: .untilApproved), .act)
+        }
+        XCTAssertEqual(Autopilot.actor(.pushFix(approved: true), autopilot: false, push: .untilApproved), .you)
+        XCTAssertEqual(Autopilot.actor(.pushFix(approved: true), autopilot: true, push: .untilApproved), .act)
+        XCTAssertEqual(Autopilot.actor(.pushFix(approved: true), autopilot: false, push: .always), .act)
+    }
+
+    func testTendStoreRoundTripsAndTowerIsNewestFirst() throws {
+        let paths = Paths(home: NSTemporaryDirectory() + "glidepath-tend-\(UUID().uuidString)", env: [:])
+        let store = TendStore(paths: paths)
+        var s = TendPR(slug: "acme/api", n: 7)
+        s.held = TendHeld(commit: "abc", summary: "approved", at: at(26, 9))
+        try store.save(s)
+        XCTAssertEqual(store.load("acme/api", 7), s)
+        XCTAssertEqual(store.all(), [s])
+        XCTAssertTrue(store.file("acme/api", 7).hasSuffix("/tend/acme-api-7.json"))
+        // A state file from before the newer keys still loads.
+        XCTAssertEqual(try RunStore.decoder().decode(TendPR.self, from: Data(#"{"slug":"acme/api","n":4}"#.utf8)),
+                       TendPR(slug: "acme/api", n: 4))
+
+        for i in 0..<3 {
+            try store.appendTower(TowerLine(at: at(26, 9 + i), slug: "acme/api", n: 7, text: "line \(i)", detail: nil, amber: false))
+        }
+        XCTAssertEqual(store.tower(limit: 2).map(\.text), ["line 2", "line 1"])
+        XCTAssertEqual(store.tower(limit: 10).count, 3)
+    }
+
+    // MARK: Playbook
+
+    func testPlaybookRoundTripVerifyAndCap() throws {
+        var pb = Playbook().teach("Run swift test before pushing", source: "PR 12", date: at(20, 0))
+        pb = pb.verify(["swift test", "swift build"], date: at(21, 0)).verify(["swift test"], date: at(22, 0))
+        XCTAssertEqual(pb.commands.first { $0.command == "swift test" }?.verified, 2)
+        XCTAssertEqual(pb.commands.first { $0.command == "swift test" }?.date, at(22, 0))
+        let text = pb.render()
+        XCTAssertTrue(text.contains("- `swift test` · verified 2× · 2026-10-22\n"))
+        XCTAssertTrue(text.contains("- Run swift test before pushing · PR 12 · 2026-10-20\n"))
+        XCTAssertEqual(Playbook.parse(text), pb)
+
+        // Three long lessons; the first taught is the newest, so the oldest by date is "PR 2".
+        var big = Playbook()
+        for i in 0..<3 {
+            big = big.teach(String(repeating: "lesson \(i) ", count: 100), source: "PR \(i)", date: at(22 - i, 0))
+        }
+        let capped = big.cap(big.render().count - 1)
+        XCTAssertEqual(capped.lessons.map(\.source), ["PR 0", "PR 1"])
+        XCTAssertEqual(capped.commands, big.commands)
+
+        let paths = Paths(home: NSTemporaryDirectory() + "glidepath-playbook-\(UUID().uuidString)", env: [:])
+        try pb.save("acme/api", paths: paths)
+        XCTAssertEqual(Playbook.load("acme/api", paths: paths), pb)
+        XCTAssertEqual(Playbook.load("acme/none", paths: paths), Playbook())
+    }
 }
