@@ -8,7 +8,7 @@ enum WindowSection: String, CaseIterable {
     var title: String {
         switch self {
         case .now: return "Now"
-        case .reviews: return "Reviews"
+        case .reviews: return "History"
         case .repos: return "Repos"
         case .schedule: return "Schedule"
         case .settings: return "Settings"
@@ -23,7 +23,7 @@ final class WindowRouter: ObservableObject {
     static let shared = WindowRouter()
 
     @Published var section: WindowSection = .now
-    /// A review the Now rows asked Reviews to select, by `Strip.id`. Reviews takes it when it appears.
+    /// A review the Now rows or the popover asked History to open, by `Strip.id`. History takes it when it appears.
     @Published var reviewFocus: String?
     /// The window shows onboarding instead of the sections. Set while there is no config file, and by the popover's
     /// "Set up Glidepath…". Cleared when onboarding finishes.
@@ -70,7 +70,7 @@ final class WindowRouter: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    /// Opens Reviews with the PR `stripID` selected.
+    /// Opens History with the PR `stripID` open.
     func openReview(_ stripID: String) {
         reviewFocus = stripID
         open(.reviews)

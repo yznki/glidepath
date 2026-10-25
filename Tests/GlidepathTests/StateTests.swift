@@ -103,7 +103,8 @@ final class StateTests: XCTestCase {
         XCTAssertEqual(added.title, "Five")
         XCTAssertEqual(added.verdict, .approve)
         XCTAssertEqual(added.draft, true)
-        XCTAssertNil(added.carriedFrom)
+        // Its run was replaced, so the row is carried: the digest leaves it out, and the row says when it was held.
+        XCTAssertEqual(added.carriedFrom, t0)
         run.showDrafts([])
         XCTAssertEqual(run.repos[0].prs.map(\.draft), [false, false], "a draft that is gone is no longer marked")
     }
