@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.7
 
 - Huge PRs (over GitHub's 300-file diff limit) are reviewed: when `gh pr diff` fails, the diff is built from the run's clone, `--path` included.
 - GitNexus tools reach the gatherer subagents, so blast radius is read from the graph when GitNexus is on.
