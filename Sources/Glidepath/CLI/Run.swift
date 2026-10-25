@@ -695,6 +695,8 @@ final class Runner {
         childEnv["PATH"] = Claude.pathPrepending(InitCommand.runningBinaryDirectory(), to: childEnv["PATH"])
         childEnv["GLIDEPATH_STATE_DIR"] = paths.stateDir
         childEnv["GLIDEPATH_CONFIG_FILE"] = paths.configFile
+        // The session's agents must finish; the runner's 3600 s session timeout still bounds the run.
+        childEnv = Claude.waitingForAgents(childEnv)
 
         // The session id and its directory go in the run file, so the app can read this session's transcript while it runs.
         try? update {

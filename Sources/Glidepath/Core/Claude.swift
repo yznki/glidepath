@@ -86,6 +86,12 @@ enum Claude {
         return env
     }
 
+    /// Review sessions wait for their agents. Without this, `claude -p` stops background agents 10 minutes after the
+    /// last turn, and their reviews are dropped.
+    static func waitingForAgents(_ env: [String: String]) -> [String: String] {
+        env.merging(["CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS": "0"]) { _, new in new }
+    }
+
     /// MCP config. Holds only GitNexus when enabled; otherwise no servers at all.
     static func mcpConfig(gitnexus: Bool) -> String {
         let servers: [String: Any] = gitnexus

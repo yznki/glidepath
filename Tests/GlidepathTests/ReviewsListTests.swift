@@ -63,4 +63,56 @@ final class ReviewsListTests: XCTestCase {
             .filtered(by: .all, expanded: false)
         XCTAssertEqual(sweep.entries.map(\.id), [rows[0].id])
     }
+
+    private func run(_ id: String, at offset: TimeInterval = 0, finished: Bool, _ prs: [PRState]) -> RunState {
+        let started = Date(timeIntervalSince1970: 1_000 + offset)
+        return RunState(id: id, started: started, finished: finished ? started.addingTimeInterval(60) : nil,
+                        repos: [RepoState(slug: "acme/api", prs: prs, error: nil)], tokens: 0, error: nil)
+    }
+
+    private func pr(_ n: Int, verdict: Verdict? = nil, carried: Bool = false) -> PRState {
+        var state = PRState(n: n, author: "sam", title: "PR \(n)", stage: .review, active: false, verdict: verdict,
+                            reason: nil, tokens: 0)
+        if carried { state.carriedFrom = Date(timeIntervalSince1970: 500) }
+        return state
+    }
+
+    private func sweepsFrom(_ runs: [RunState]) -> [ReviewSweep] {
+        ReviewsModel.sweeps(from: runs) { _, _, _ in nil }
+    }
+
+    func testFinishedRunKeepsVerdictlessRowAsNoResult() {
+        let rows = sweepsFrom([run("r1", finished: true, [pr(1, verdict: .approve), pr(2)])]).first?.rows ?? []
+        XCTAssertEqual(rows.map(\.number), [1, 2])
+        XCTAssertNil(rows[1].verdict)
+        XCTAssertTrue(ReviewFilter.all.includes(rows[1]))
+        for filter in [ReviewFilter.approved, .changes, .skipped, .waiting] {
+            XCTAssertFalse(filter.includes(rows[1]), "\(filter) counts a No result row")
+        }
+    }
+
+    func testUnfinishedRunDropsVerdictlessRow() {
+        let rows = sweepsFrom([run("r1", finished: false, [pr(1, verdict: .approve), pr(2)])]).first?.rows ?? []
+        XCTAssertEqual(rows.map(\.number), [1])
+    }
+
+    func testCarriedRowIsNotListed() {
+        let rows = sweepsFrom([run("r1", finished: true, [pr(1, carried: true), pr(2, verdict: .changes)])]).first?.rows ?? []
+        XCTAssertEqual(rows.map(\.number), [2])
+    }
+
+    func testCurrentSweepIsTheNewestWithRows() {
+        let list = sweepsFrom([run("new", at: 3600, finished: true, [pr(2, carried: true)]),
+                               run("old", finished: true, [pr(1, verdict: .approve)])])
+        XCTAssertEqual(ReviewsModel.current(in: list)?.id, "old")
+        XCTAssertNil(ReviewsModel.current(in: []))
+    }
+
+    func testRowLookupFindsTheNewestSweepWithThePR() {
+        let list = sweepsFrom([run("new", at: 3600, finished: true, [pr(1, carried: true), pr(2, verdict: .changes)]),
+                               run("old", finished: true, [pr(1, verdict: .approve), pr(9, verdict: .changes)])])
+        XCTAssertEqual(ReviewsModel.row(stripID: "acme/api#9", in: list)?.runId, "old")
+        XCTAssertEqual(ReviewsModel.row(stripID: "acme/api#1", in: list)?.runId, "old")
+        XCTAssertNil(ReviewsModel.row(stripID: "acme/api#77", in: list))
+    }
 }
