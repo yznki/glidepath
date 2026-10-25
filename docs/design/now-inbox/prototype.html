@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Glidepath · Now as an inbox</title>
+<style>
+:root{
+  --void:#030304; --mat:#0b0b0e; --side:#070709; --edge:rgba(255,255,255,.07); --fg:#ececef; --mute:rgba(236,236,242,.46);
+  --faint:rgba(236,236,242,.24); --row:rgba(255,255,255,.04); --hi:rgba(255,255,255,.12);
+  --changes:#d29b45; --skipped:#4d4e56;
+  --sys:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",system-ui,sans-serif;
+  --ease:cubic-bezier(.2,.7,.1,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sys);color:var(--fg);-webkit-font-smoothing:antialiased;padding:16px;
+  background:radial-gradient(900px 500px at 50% -10%,#15151b 0,#000 70%);display:flex;flex-direction:column;align-items:center}
+.switch{display:flex;gap:6px;margin-bottom:16px;padding:4px;border-radius:99px;background:var(--row);border:1px solid var(--edge)}
+.switch button{all:unset;cursor:pointer;font-size:12px;font-weight:600;padding:7px 14px;border-radius:99px;color:var(--mute)}
+.switch button[aria-pressed=true]{background:var(--hi);color:var(--fg)}
+
+.win{width:min(1080px,100%);height:760px;display:grid;grid-template-columns:200px 1fr;border-radius:14px;overflow:hidden;
+  border:1px solid var(--edge);background:var(--void);box-shadow:0 40px 120px rgba(0,0,0,.7)}
+.side{background:var(--side);border-right:1px solid var(--edge);padding:16px 12px;display:flex;flex-direction:column}
+.lights{display:flex;gap:8px;margin:0 0 22px 4px}.lights i{width:12px;height:12px;border-radius:50%;background:#2a2a30}
+.brand{font-weight:700;font-size:14px;margin:0 0 18px 8px}
+.nav a{display:flex;justify-content:space-between;font-size:13px;padding:7px 10px;border-radius:8px;color:var(--mute);text-decoration:none}
+.nav a.on{background:var(--row);color:var(--fg)}
+.nav a b{color:var(--changes);font-weight:600}
+.side .foot{margin-top:auto;font-size:11px;color:var(--faint);padding:0 8px}
+
+main{overflow:auto;padding:26px 36px 40px}
+header{display:flex;align-items:center;gap:14px}
+h1{font-size:24px;font-weight:700;letter-spacing:-.4px}
+.status{margin-left:auto;font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+.status b{color:var(--fg);font-weight:500}
+.btn{all:unset;cursor:pointer;font-size:12px;font-weight:600;height:30px;line-height:30px;padding:0 14px;border-radius:99px;border:1px solid var(--hi);white-space:nowrap}
+.btn.pri{background:var(--fg);color:#08080a;border-color:var(--fg)}
+.btn.ghost{border-color:transparent;color:var(--mute)}
+.btn:hover{background:var(--hi)}.btn.pri:hover{background:#fff}
+.menu{position:relative}
+.menu .pop{display:none;position:absolute;right:0;top:36px;width:230px;background:#141418;border:1px solid var(--edge);border-radius:10px;padding:5px;z-index:2;box-shadow:0 20px 50px rgba(0,0,0,.6)}
+.menu.open .pop{display:block}
+.pop div{font-size:13px;padding:8px 10px;border-radius:6px;cursor:pointer}
+.pop div small{display:block;color:var(--mute);font-size:11px;margin-top:2px}
+.pop div:hover{background:var(--row)}
+
+h2{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin:30px 0 10px;display:flex;gap:8px}
+h2 b{color:var(--changes)}
+
+.row{display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:center;padding:11px 12px;border-radius:10px;cursor:pointer}
+.row:hover{background:var(--row)}
+.ava{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#3a3a44,#1a1a20);border:1px solid var(--edge);
+  display:grid;place-items:center;font-size:11px;font-weight:600}
+.t{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s{font-size:12px;color:var(--mute);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s .v{font-weight:600}.v.ch{color:var(--changes)}.v.ap{color:var(--fg)}.v.nr{color:var(--mute)}
+.acts{display:flex;gap:6px;align-items:center}
+
+.needs .row{background:rgba(210,155,69,.07)}
+.needs .row+.row{margin-top:6px}
+
+.run{border:1px solid var(--edge);border-radius:14px;background:var(--mat);margin-bottom:12px;overflow:hidden}
+.run .hd{display:flex;align-items:baseline;gap:10px;padding:14px 16px 4px}
+.run .hd .n{font-size:14px;font-weight:600}
+.run .hd .m{font-size:12px;color:var(--faint);margin-left:auto;font-variant-numeric:tabular-nums}
+.run .sum{font-size:13px;color:var(--mute);padding:0 16px 8px}
+.run .sum b{color:var(--fg);font-weight:500}
+.run .body{padding:0 4px 6px}
+.fold{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--mute);padding:9px 12px;border-radius:8px;cursor:pointer;margin:0 4px}
+.fold:hover{background:var(--row)}
+.fold .car{transition:transform .2s var(--ease);display:inline-block}
+.fold.open .car{transform:rotate(90deg)}
+.chips{display:none;flex-wrap:wrap;gap:6px;padding:4px 16px 12px 36px}
+.fold.open+.chips{display:flex}
+.chip{font-size:11px;color:var(--mute);padding:3px 8px;border-radius:99px;background:var(--row);border:1px solid var(--edge)}
+
+/* live track: only on rows in flight */
+.track{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mute)}
+.track i{width:7px;height:7px;border-radius:50%;border:1.5px solid var(--faint)}
+.track i.d{background:var(--fg);border-color:var(--fg)}
+.track i.a{border-color:var(--fg);animation:pulse 1.4s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 4px rgba(255,255,255,.08)}}
+.bar{height:2px;background:var(--edge);margin:0 16px 10px;border-radius:2px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--fg);width:38%}
+.empty{padding:60px 0;text-align:center;color:var(--mute);font-size:13px}
+.empty b{display:block;color:var(--fg);font-size:16px;margin-bottom:6px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="switch" role="group">
+  <button aria-pressed="true" data-s="idle">After a review</button>
+  <button aria-pressed="false" data-s="live">Reviewing</button>
+  <button aria-pressed="false" data-s="clear">All clear</button>
+</div>
+
+<div class="win">
+  <aside class="side">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="brand">Glidepath</div>
+    <nav class="nav">
+      <a class="on" href="#">Now <b class="needcount">2</b></a>
+      <a href="#">History</a><a href="#">Repos</a><a href="#">Schedule</a><a href="#">Settings</a>
+    </nav>
+    <div class="foot">v1.5.0</div>
+  </aside>
+
+  <main>
+    <header>
+      <h1>Now</h1>
+      <div class="status" data-st="idle">Next sweep <b>8:00 PM</b> · in 3 h 41 min</div>
+      <div class="status" data-st="live" hidden>Reviewing <b>Eleyy's PRs</b> · 6:12</div>
+      <div class="menu">
+        <button class="btn pri" id="rev">Review…</button>
+        <div class="pop">
+          <div>Sweep all repos now<small>Every open PR that needs you</small></div>
+          <div>Review PRs…<small>By URL or number</small></div>
+          <div>Review someone's PRs…<small>Every open PR by one author</small></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- needs you -->
+    <section class="needs" data-st="idle live">
+      <h2>Needs you <b>2</b></h2>
+      <div class="row">
+        <div class="ava">O</div>
+        <div><div class="t">Cache org permissions per request in the audit log</div>
+          <div class="s"><span class="v ch">Changes</span> · missing RLS test · lumen/api #1212</div></div>
+        <div class="acts"><button class="btn ghost">Discard</button><button class="btn pri">Post</button></div>
+      </div>
+      <div class="row">
+        <div class="ava">D</div>
+        <div><div class="t">Bump Postgres driver to 3.4</div>
+          <div class="s"><span class="v ap">Approve</span> · driver bump only, tests pass · lumen/api #1229</div></div>
+        <div class="acts"><button class="btn ghost">Discard</button><button class="btn pri">Post</button></div>
+      </div>
+    </section>
+
+    <section data-st="clear" hidden>
+      <div class="empty"><b>Nothing needs you</b>Every open PR is reviewed at its latest commit. Next sweep 8:00 PM.</div>
+    </section>
+
+    <h2 data-st="idle live clear">Recent</h2>
+
+    <!-- live run -->
+    <div class="run" data-st="live" hidden>
+      <div class="hd"><span class="n">Eleyy's PRs</span><span class="m">started 4:30 PM · 188k tokens</span>
+        <button class="btn ghost" style="margin-left:8px">Stop</button></div>
+      <div class="sum"><b>2 of 4</b> reviewed · 21 already reviewed by you, skipped</div>
+      <div class="bar"><span></span></div>
+      <div class="body">
+        <div class="row"><div class="ava">E</div>
+          <div><div class="t">Fan-out publish for shared ids</div><div class="s">lumen/web #1277</div></div>
+          <div class="track"><i class="d"></i><i class="d"></i><i class="a"></i><i></i> Checking</div></div>
+        <div class="row"><div class="ava">E</div>
+          <div><div class="t">Selection race in the upload picker</div><div class="s">lumen/web #1276</div></div>
+          <div class="track"><i class="d"></i><i class="a"></i><i></i><i></i> Reviewing</div></div>
+        <div class="row"><div class="ava">E</div>
+          <div><div class="t">Cross-discipline row adoption</div><div class="s"><span class="v ch">Changes</span> · posted · lumen/web #1275</div></div>
+          <div class="s">5 min</div></div>
+        <div class="row"><div class="ava">E</div>
+          <div><div class="t">Read-only endpoints for the asset list</div><div class="s"><span class="v ap">Approved</span> · posted · lumen/web #1274</div></div>
+          <div class="s">4 min</div></div>
+      </div>
+    </div>
+
+    <!-- finished by-hand run -->
+    <div class="run" data-st="idle">
+      <div class="hd"><span class="n">Eleyy's PRs</span><span class="m">4:30 PM · 14 min · 1.7M tokens</span></div>
+      <div class="sum"><b>Reviewed 4.</b> The other 21 you already reviewed, and nothing changed since.</div>
+      <div class="body">
+        <div class="row"><div class="ava">E</div>
+          <div><div class="t">Fan-out publish for shared ids</div><div class="s"><span class="v ch">Changes</span> · drops a second owner of the same id · #1277</div></div>
+          <div class="s">posted</div></div>
+        <div class="row"><div class="ava">E</div>
+          <div><div class="t">Selection race in the upload picker</div><div class="s"><span class="v ch">Changes</span> · race still open; no error state · #1276</div></div>
+          <div class="s">posted</div></div>
+        <div class="row"><div class="ava">E</div>
+          <div><div class="t">Cross-discipline row adoption</div><div class="s"><span class="v ch">Changes</span> · legacy lock mismatch · #1275</div></div>
+          <div class="s">posted</div></div>
+        <div class="row"><div class="ava">E</div>
+          <div><div class="t">Read-only endpoints for the asset list</div><div class="s"><span class="v ap">Approved</span> · a few edge cases worth tightening · #1274</div></div>
+          <div class="s">posted</div></div>
+        <div class="fold"><span class="car">›</span> 21 already reviewed by you</div>
+        <div class="chips"><span class="chip">#1285</span><span class="chip">#1284</span><span class="chip">#1283</span><span class="chip">#1282</span><span class="chip">#1281</span><span class="chip">#1280</span><span class="chip">#1279</span><span class="chip">#1278</span><span class="chip">#1273</span><span class="chip">#1272</span><span class="chip">#1271</span><span class="chip">#1270</span><span class="chip">#1269</span><span class="chip">#1268</span><span class="chip">#1267</span><span class="chip">#1266</span><span class="chip">#1265</span><span class="chip">#1264</span><span class="chip">#1263</span><span class="chip">#1262</span><span class="chip">#1231</span></div>
+      </div>
+    </div>
+
+    <!-- morning sweep -->
+    <div class="run" data-st="idle live clear">
+      <div class="hd"><span class="n">Morning sweep</span><span class="m">7:00 AM · 2 repos · 41 min · 3.9M tokens</span></div>
+      <div class="sum"><b>Reviewed 5, 3 stopped.</b> 22 skipped: 11 yours, 7 bots, 2 already reviewed, 1 draft, 1 too large.</div>
+      <div class="body">
+        <div class="row"><div class="ava">W</div>
+          <div><div class="t">Fetch an alarm's preview under bounds</div><div class="s"><span class="v nr">Stopped in review</span> · no result · lumen/api #1258</div></div>
+          <button class="btn">Review again</button></div>
+        <div class="row"><div class="ava">A</div>
+          <div><div class="t">ENG-424</div><div class="s"><span class="v nr">Stopped in gather</span> · diff over GitHub's 300-file limit · lumen/api #808</div></div>
+          <button class="btn">Review again</button></div>
+        <div class="fold"><span class="car">›</span> 5 reviewed and posted</div>
+        <div class="chips"><span class="chip">#1314 approved</span><span class="chip">#1310 approved</span><span class="chip">#1309 approved</span><span class="chip">#1300 approved</span><span class="chip">#1125 changes</span></div>
+        <div class="fold"><span class="car">›</span> 22 skipped</div>
+        <div class="chips"><span class="chip">11 your own</span><span class="chip">7 bots</span><span class="chip">2 already reviewed</span><span class="chip">1 draft · #1313</span><span class="chip">1 too large · #1219</span></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+const set=s=>{
+  document.querySelectorAll('.switch button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.s===s));
+  document.querySelectorAll('[data-st]').forEach(el=>el.hidden=!el.dataset.st.split(' ').includes(s));
+  document.querySelector('.needcount').hidden = s==='clear';
+};
+document.querySelectorAll('.switch button').forEach(b=>b.onclick=()=>set(b.dataset.s));
+document.querySelectorAll('.fold').forEach(f=>f.onclick=()=>f.classList.toggle('open'));
+const m=document.querySelector('.menu');document.getElementById('rev').onclick=e=>{e.stopPropagation();m.classList.toggle('open')};
+document.addEventListener('click',()=>m.classList.remove('open'));
+set('idle');
+</script>
+</body>
+</html>

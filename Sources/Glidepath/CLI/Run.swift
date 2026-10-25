@@ -250,6 +250,14 @@ enum ReviewTarget: Equatable {
         return PRRef(slug: slug, n: n)
     }
 
+    /// What the run file records for this target: "author:<login>", or "prs:" and `owner/name#n` joined with commas.
+    var runTarget: String {
+        switch self {
+        case .prs(let refs): return "prs:" + refs.map { "\($0.slug)#\($0.n)" }.joined(separator: ",")
+        case .author(let login): return "author:\(login)"
+        }
+    }
+
     /// The CLI arguments the app spawns for this target: each repo's slug, then its numbers, in first-seen order.
     var arguments: [String] {
         switch self {
@@ -475,7 +483,7 @@ final class Runner {
         let now = Date()
         id = Runner.makeID(now)
         do {
-            var fresh = RunState.new(id: id, now: now, kind: target == nil ? nil : "review")
+            var fresh = RunState.new(id: id, now: now, kind: target == nil ? nil : "review", target: target?.runTarget)
             if target != nil, !dryRun, let previous = try? store.loadCurrent() {
                 fresh.carryRows(from: previous)
             }
