@@ -379,10 +379,10 @@ final class TendCoreTests: XCTestCase {
         held.held = TendHeld(commit: "abc123", summary: "approved, pushing cancels the approval", at: at(26, 9))
         XCTAssertEqual(Approach.phase(a, state: held, working: false), .holding)
         XCTAssertEqual(Approach.label(a, state: held, working: false), "Fix held · approved, pushing cancels the approval")
-        XCTAssertEqual(Approach.needs("acme/api", a, state: held), NeedsItem(
+        XCTAssertEqual(Approach.needs("acme/api", a, state: held), [NeedsItem(
             id: "acme/api#1/held", slug: "acme/api", n: 1, title: "PR 1", kind: "held",
-            detail: "Fix held · approved, pushing cancels the approval"))
-        XCTAssertNil(Approach.needs("acme/api", a, state: nil))
+            detail: "Fix held · approved, pushing cancels the approval")])
+        XCTAssertEqual(Approach.needs("acme/api", a, state: nil), [])
     }
 
     func testFingerprintIgnoresCheckOrder() {
@@ -401,27 +401,27 @@ final class TendCoreTests: XCTestCase {
         let failing = CheckState(name: "lint", status: "COMPLETED", conclusion: "FAILURE")
         var red = openPR(3, branch: "c", base: "main", checks: [failing])
         var state = TendPR(slug: "acme/api", n: 3)
-        XCTAssertEqual(TendDecision.decide(red, state: state), .round(.normal))
+        XCTAssertEqual(TendDecision.decide(red, state: state, me: "dev"), .round(.normal))
         red.reviewDecision = "APPROVED"
-        XCTAssertEqual(TendDecision.decide(red, state: state), .round(.urgent))
+        XCTAssertEqual(TendDecision.decide(red, state: state, me: "dev"), .round(.urgent))
         // The same failure, already tried, is not a new round.
-        state.fingerprint = Fingerprint.ci(red)
-        XCTAssertEqual(TendDecision.decide(red, state: state), .idle)
+        state.fingerprint = Fingerprint.full(red, me: "dev")
+        XCTAssertEqual(TendDecision.decide(red, state: state, me: "dev"), .idle)
         state.fingerprint = nil
         state.held = TendHeld(commit: "abc", summary: "x", at: at(26, 9))
-        XCTAssertEqual(TendDecision.decide(red, state: state), .idle)
+        XCTAssertEqual(TendDecision.decide(red, state: state, me: "dev"), .idle)
         state.held = nil
         red.labels = [Approach.handsOffLabel]
-        XCTAssertEqual(TendDecision.decide(red, state: state), .skip("hands off"))
+        XCTAssertEqual(TendDecision.decide(red, state: state, me: "dev"), .skip("hands off"))
         red.labels = []
         state.off = true
-        XCTAssertEqual(TendDecision.decide(red, state: state), .skip("hands off"))
+        XCTAssertEqual(TendDecision.decide(red, state: state, me: "dev"), .skip("hands off"))
         state.off = false
         red.isFork = true
-        XCTAssertEqual(TendDecision.decide(red, state: state), .skip("fork"))
+        XCTAssertEqual(TendDecision.decide(red, state: state, me: "dev"), .skip("fork"))
         red.isFork = false
         red.checks = [CheckState(name: "lint", status: "IN_PROGRESS", conclusion: nil)]
-        XCTAssertEqual(TendDecision.decide(red, state: state), .idle)
+        XCTAssertEqual(TendDecision.decide(red, state: state, me: "dev"), .idle)
 
         var stuck = TendPR(slug: "acme/api", n: 3)
         stuck.fingerprint = "sha3|lint=FAILURE"

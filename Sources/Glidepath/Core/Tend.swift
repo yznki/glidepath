@@ -7,6 +7,38 @@ struct TendHeld: Codable, Equatable {
     var at: Date
     /// The commands the fix session reported as passing. Kept so the playbook can count them once the fix is pushed.
     var ran: [String]? = nil
+    /// Agreed thread replies waiting to post when the fix is pushed.
+    var replies: [PendingReply] = []
+}
+
+/// A reply tend has drafted or agreed to post. `askId` is the ask it answers; `resolve` closes its thread after.
+struct PendingReply: Codable, Equatable {
+    var askId: String
+    var kind: String
+    var body: String
+    var resolve: Bool
+}
+
+extension TendHeld {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        commit = try c.decode(String.self, forKey: .commit)
+        summary = try c.decode(String.self, forKey: .summary)
+        at = try c.decode(Date.self, forKey: .at)
+        ran = try c.decodeIfPresent([String].self, forKey: .ran)
+        replies = try c.decodeIfPresent([PendingReply].self, forKey: .replies) ?? []
+    }
+}
+
+/// A question tend could not answer alone: the user decides. `draft` is the reply tend wrote for it, if any.
+struct YourCall: Codable, Equatable {
+    var id: String
+    var kind: String
+    var author: String
+    /// The first 160 characters of the ask.
+    var quote: String
+    var draft: String?
+    var at: Date
 }
 
 /// What tend knows about one PR, in `stateDir/tend/<owner>-<name>-<n>.json`. Only `slug` and `n` are required; a
@@ -28,6 +60,14 @@ struct TendPR: Codable, Equatable {
     var pendingRan: [String] = []
     var pendingRanHead: String?
     var lastRound: Date?
+    /// Ask ids tend has handled: reviews and comments it answered.
+    var answered: [String] = []
+    /// Thread ids tend resolved after an agreed fix or a posted reply.
+    var resolvedByUs: [String] = []
+    /// Asks waiting for the user.
+    var calls: [YourCall] = []
+    /// Reviewers asked to review again this head, so each is asked once.
+    var rereq: [String] = []
 
     init(slug: String, n: Int) {
         self.slug = slug
@@ -49,11 +89,15 @@ struct TendPR: Codable, Equatable {
         pendingRan = try c.decodeIfPresent([String].self, forKey: .pendingRan) ?? []
         pendingRanHead = try c.decodeIfPresent(String.self, forKey: .pendingRanHead)
         lastRound = try c.decodeIfPresent(Date.self, forKey: .lastRound)
+        answered = try c.decodeIfPresent([String].self, forKey: .answered) ?? []
+        resolvedByUs = try c.decodeIfPresent([String].self, forKey: .resolvedByUs) ?? []
+        calls = try c.decodeIfPresent([YourCall].self, forKey: .calls) ?? []
+        rereq = try c.decodeIfPresent([String].self, forKey: .rereq) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
         case slug, n, fingerprint, roundsToday, roundsDate, triesByHead, rerunsByHead, held, stuck, off
-        case pendingRan, pendingRanHead, lastRound
+        case pendingRan, pendingRanHead, lastRound, answered, resolvedByUs, calls, rereq
     }
 }
 
@@ -164,6 +208,17 @@ enum Fingerprint {
     static func ci(_ pr: OpenPR) -> String {
         pr.head + "|" + pr.checks.map { "\($0.name)=\($0.conclusion ?? $0.status)" }.sorted().joined(separator: ",")
     }
+
+    /// The checks, then the open threads with their last comment, the reviews with their state, and the plain comments
+    /// not by `me`, each part sorted and joined by `|`. A new comment or review changes it; the order of listing does not.
+    static func full(_ pr: OpenPR, me: String) -> String {
+        let threads = pr.threads.filter { !$0.isResolved }
+            .map { "\($0.id):\($0.comments.last?.id ?? "")" }.sorted().joined(separator: ",")
+        let reviews = pr.reviews.map { "\($0.id):\($0.state)" }.sorted().joined(separator: ",")
+        let comments = pr.comments.filter { $0.author.caseInsensitiveCompare(me) != .orderedSame }
+            .map(\.id).sorted().joined(separator: ",")
+        return [ci(pr), threads, reviews, comments].joined(separator: "|")
+    }
 }
 
 /// How many rounds a day and tries on one head tend may use.
@@ -189,12 +244,17 @@ enum TendDecision: Equatable {
     case idle
     case round(WorkClass)
 
-    static func decide(_ pr: OpenPR, state: TendPR) -> TendDecision {
+    /// A round when CI failed or a thread, review or comment asks for an answer, and the PR's full fingerprint is new.
+    /// Pending CI waits. The round is urgent only when the PR is approved and CI failed.
+    static func decide(_ pr: OpenPR, state: TendPR, me: String) -> TendDecision {
         if pr.isFork { return .skip("fork") }
         if !Approach.tendable(pr, state) { return .skip("hands off") }
         if state.held != nil { return .idle }
-        guard pr.ciStatus == .failed, state.fingerprint != Fingerprint.ci(pr) else { return .idle }
-        return .round(pr.approved ? .urgent : .normal)
+        guard pr.ciStatus != .pending else { return .idle }
+        let asks = Threads.actionable(pr, me: me, answered: Set(state.answered))
+        guard pr.ciStatus == .failed || !asks.isEmpty else { return .idle }
+        guard state.fingerprint != Fingerprint.full(pr, me: me) else { return .idle }
+        return .round(pr.approved && pr.ciStatus == .failed ? .urgent : .normal)
     }
 
     /// True when the PR has a new head since its stuck mark was set, so the mark goes.

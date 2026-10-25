@@ -238,6 +238,12 @@ enum ConfigEditor {
         return out
     }
 
+    static func setTendDisagree(_ config: Config, _ disagree: TendDisagree) -> Config {
+        var out = config
+        out.tend.disagree = disagree
+        return out
+    }
+
     static func setAutopilot(_ config: Config, _ on: Bool) -> Config {
         var out = config
         out.tend.autopilot = on
