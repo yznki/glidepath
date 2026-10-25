@@ -605,6 +605,11 @@ final class Runner {
             }
         }
         guard !kept.isEmpty else { return 0 }
+        // Runs after the session, and also when it could not start, so no kept row is left with nothing said.
+        defer {
+            try? update { $0.noteUnstamped(repo: repo.slug, numbers: Set(kept.map(\.n)),
+                                           reason: "review session ended without a verdict; see the log") }
+        }
         return try invokeReview(repo, kept: kept, gitnexus: gitnexus)
     }
 
@@ -613,8 +618,14 @@ final class Runner {
     private func refreshGitNexus(_ repo: RepoConfig) -> Bool {
         let r = Shell.run("gitnexus", ["analyze", "--index-only"], cwd: repo.clone, env: env, timeout: 600)
         let output = (r.stdout + r.stderr).trimmingCharacters(in: .whitespacesAndNewlines)
+        if r.ok {
+            // The JSON log lines are most of the output and say nothing a reader needs. Keep the last few others.
+            let lines = output.split(separator: "\n").map(String.init)
+                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && !$0.hasPrefix("{\"level\"") }
+            if !lines.isEmpty { print(lines.suffix(8).joined(separator: "\n")) }
+            return true
+        }
         if !output.isEmpty { print(output) }
-        if r.ok { return true }
         print("\(repo.slug): gitnexus refresh failed (exit \(r.status)); reviewing this repo without GitNexus")
         return false
     }
@@ -662,7 +673,7 @@ final class Runner {
         let binding = RunBinding(runId: id, repo: repo.slug, scratch: scratch, clone: repo.clone, dryRun: dryRun)
         let args = Claude.arguments(
             prompt: prompt, systemPrompt: skill, sessionId: session, scratch: scratch, mcpConfig: mcpPath,
-            agents: Claude.agentsJSON(),
+            agents: Claude.agentsJSON(gitnexus: gitnexus),
             settings: Claude.hookSettingsJSON(binary: InitCommand.binaryPath()),
             allowlist: allowlist, model: config.model.rawValue)
         var childEnv = Claude.childEnvironment(parent: env, binding: binding.environment)

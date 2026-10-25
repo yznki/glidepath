@@ -266,12 +266,60 @@ enum PRCommands {
         let recorded = try binding.pr(run, repo: slug, n: n)
         let view = try PRView.fetch(slug, n)
         try requireSameHead(recorded, view.headRefOid, n)
-        let raw = try GH.run(["pr", "diff", String(n), "--repo", slug])
-        guard let path = f["--path"] else { return raw }
+        let path = f["--path"]
+        let raw: String
+        do {
+            raw = try GH.run(["pr", "diff", String(n), "--repo", slug])
+        } catch {
+            // gh refuses a diff over 300 files. The same diff comes from the clone.
+            return try cloneDiff(binding, n: n, head: view.headRefOid, base: view.baseRefName, path: path)
+        }
+        guard let path else { return raw }
         guard view.files.contains(where: { $0.path == path }) else {
             throw CommandError("\(path) is not a file in #\(n)")
         }
         return section(of: raw, path: path)
+    }
+
+    /// The PR's diff from the run's clone: the merge-base diff GitHub shows. The head and base are fetched under
+    /// refs/glidepath, so the clone's branches do not move. The fetched head must be the recorded one.
+    static func cloneDiff(_ binding: RunBinding, n: Int, head: String, base: String, path: String?) throws -> String {
+        let fetch = Shell.run("git", fetchArguments(clone: binding.clone, n: n, base: base), timeout: RepoClone.slowTimeout)
+        guard fetch.ok else { throw CommandError("could not fetch #\(n): \(fetch.stderr.trimmingCharacters(in: .whitespacesAndNewlines))") }
+        let fetched = try git(["-C", binding.clone, "rev-parse", "--verify", "--quiet", "refs/glidepath/pr/\(n)^{commit}"])
+        guard fetched.trimmingCharacters(in: .whitespacesAndNewlines) == head else {
+            throw CommandError("head moved since gather for #\(n); refusing")
+        }
+        guard let path else { return try git(diffArguments(clone: binding.clone, n: n, head: head, path: nil)) }
+        // Checked against the clone's own file list: gh's list can be cut short on a PR this large.
+        let names = try git(diffNameArguments(clone: binding.clone, n: n, head: head))
+        guard names.split(separator: "\n").contains(where: { $0 == path }) else {
+            throw CommandError("\(path) is not a file in #\(n)")
+        }
+        return try git(diffArguments(clone: binding.clone, n: n, head: head, path: path))
+    }
+
+    /// Fetches the PR head and its base branch into refs/glidepath. Same credential setup as the clone in `RepoClone.sync`.
+    static func fetchArguments(clone: String, n: Int, base: String) -> [String] {
+        ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential",
+         "-C", clone, "fetch", "--quiet", "--no-tags", "origin",
+         "+refs/pull/\(n)/head:refs/glidepath/pr/\(n)", "+refs/heads/\(base):refs/glidepath/base/\(n)"]
+    }
+
+    /// Three dots: the diff from the merge-base of base and head, as GitHub shows it.
+    static func diffArguments(clone: String, n: Int, head: String, path: String?) -> [String] {
+        ["-C", clone, "diff", "--no-color", "--no-ext-diff", "refs/glidepath/base/\(n)...\(head)"]
+            + (path.map { ["--", $0] } ?? [])
+    }
+
+    static func diffNameArguments(clone: String, n: Int, head: String) -> [String] {
+        ["-C", clone, "diff", "--name-only", "refs/glidepath/base/\(n)...\(head)"]
+    }
+
+    private static func git(_ args: [String]) throws -> String {
+        let r = Shell.run("git", args, timeout: 120)
+        guard r.ok else { throw CommandError("git failed: \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))") }
+        return r.stdout
     }
 
     /// The part of a unified diff for one file, from its `diff --git` header to the next one.

@@ -14,6 +14,9 @@ enum Claude {
         "detect_changes", "impact", "api_impact", "context", "query", "route_map", "shape_check",
     ]
 
+    /// The GitNexus tools as MCP names, for the allowlist and for subagents.
+    static var gitnexusMCPTools: [String] { gitnexusTools.map { "mcp__gitnexus__\($0)" } }
+
     /// Built-in tools a review session may not use, whatever the allowlist says.
     static let disallowed = [
         "WebFetch", "WebSearch", "Skill",
@@ -52,7 +55,7 @@ enum Claude {
             "Bash(glidepath code files:*)",
         ]
         if let rules { list.append("Read(\(permissionPath(rules)))") }
-        if gitnexus { list += gitnexusTools.map { "mcp__gitnexus__\($0)" } }
+        if gitnexus { list += gitnexusMCPTools }
         return list
     }
 
@@ -93,7 +96,8 @@ enum Claude {
 
     /// The three review subagents. Each one runs under the session's allowlist and hooks, and in dontAsk.
     /// `tools` names tool families; the command-level limits are the allowlist and the bash guard.
-    static func agentsJSON() -> String {
+    /// The gatherer also lists the GitNexus MCP tools when GitNexus is on, since a subagent sees only what `tools` names.
+    static func agentsJSON(gitnexus: Bool) -> String {
         let common: [String: Any] = [
             "tools": ["Read", "Edit", "Write", "Bash"],
             "permissionMode": "dontAsk",
@@ -105,9 +109,13 @@ enum Claude {
                 "model": model,
             ]) { $1 }
         }
+        var gatherer = agent("Gathers one PR's data into its scratch folder with glidepath pr commands.",
+                             "Gather PR data only with glidepath pr info, pr diff, pr threads, code grep, code files and the GitNexus read tools. code files takes no flags. Never run --help or any other shell command. Write only inside the scratch folder you are given. Report gaps.", "haiku")
+        if gitnexus {
+            gatherer["tools"] = (common["tools"] as? [String] ?? []) + gitnexusMCPTools
+        }
         return json([
-            "gatherer": agent("Gathers one PR's data into its scratch folder with glidepath pr commands.",
-                              "Gather PR data only with glidepath pr info, pr diff, pr threads, code grep, code files and the GitNexus read tools. code files takes no flags. Never run --help or any other shell command. Write only inside the scratch folder you are given. Report gaps.", "haiku"),
+            "gatherer": gatherer,
             "reviewer": agent("Reviews one PR against the rubric and writes draft.json.",
                               "Review one PR against the rubric. Quote exact lines. Never run --help or any shell command other than glidepath's listed subcommands. Write draft.json only inside the scratch folder you are given.", "sonnet"),
             "checker": agent("Verifies every finding in a draft against the code and writes final.json.",

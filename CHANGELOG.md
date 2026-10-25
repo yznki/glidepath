@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Huge PRs (over GitHub's 300-file diff limit) are reviewed: when `gh pr diff` fails, the diff is built from the run's clone, `--path` included.
+- GitNexus tools reach the gatherer subagents, so blast radius is read from the graph when GitNexus is on.
+- A PR the session leaves without a verdict says why in its row ("review session ended without a verdict; see the log"), and a reason the session left on it is kept.
+- The GitNexus index refresh prints a short summary on success, not its whole log.
+
 ## 1.3.6
 
 - `glidepath review` and the Review sheet take several PRs at once (`owner/name 12 15`, several PR links, or PRs from several repos), run as one review.
