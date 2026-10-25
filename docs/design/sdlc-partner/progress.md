@@ -24,6 +24,11 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | 1.7 | teammate Glidepath marker `<!-- glidepath:review -->` on posted reviews; bot plain comments never trigger | done | 67b2759 |
 | 1.7 | scratch Bot workflow (bot.yml: comment/line/approve/changes via GITHUB_TOKEN; Actions may approve) | done | scratch 78cdac6 |
 | 1.8–1.10 | build notes written | done | 0d71d00 69b7ae0 c717454 |
+| 1.7 | live: scratch PR #2 bot threads: agree fixed+replied+resolved, disagree → call → `tend reply` posted+resolved, 15k tokens, CI green | done | |
+| 1.7 | Sonnet review: 15 findings (handled asks, per-PR lock + merge, double-post guard, ReplyGuard bypasses, pushback untrusted, Bot typename, settled reviews + seeding, noise threads, pushed sha in reply, downgraded verdicts, discard → calls, dropNeeds scope, council fail-closed, grammar) all fixed, 479 pass | done | 9e73d65 438172a |
+| 1.7 | live re-verify: new bot thread fixed, reply sha = pushed head 0909d35, bot plain comment ignored, second check idle, CI green | done | |
+| 1.7 | released 1.7.0: PR https://github.com/yznki/glidepath/pull/11, release https://github.com/yznki/glidepath/releases/tag/v1.7.0, tap 1516b88, sha256 a6428754…, snapshots /tmp/gp-1.7 | done | 15c149c |
+| 1.8 | branch sdlc-1.8 from main 084bc94; core: merge setting, Landing, MainWatch, TendLanded (495 pass) | done | 9d61ad6 |
 
 ## Decisions (Yazan should know)
 
@@ -48,6 +53,9 @@ Resume here after a compaction. One line per step; decisions and open issues bel
   it himself (Settings → Tending → When Glidepath disagrees → Reply and resolve).
 - 1.7: a teammate's Glidepath is recognised by a hidden `<!-- glidepath:review -->` marker that 1.7 now appends to
   every posted review body and inline comment.
+
+- 1.8: `merge` parses off; turning tending on in Settings writes `merge = "ask"` (also when it was an explicit off).
+- 1.8: main watch with no check runs yet on the merge commit counts as pending, never green.
 
 ## Open issues
 
