@@ -130,6 +130,31 @@ final class StateTests: XCTestCase {
         XCTAssertFalse(pr.active)
     }
 
+    func testSkipVerdictNeedsSkippedAndAReason() throws {
+        XCTAssertNil(try StateCommand.skipVerdict([:], reason: nil))
+        XCTAssertEqual(try StateCommand.skipVerdict(["--verdict": "skipped"], reason: "diff too large"), .skipped)
+        XCTAssertThrowsError(try StateCommand.skipVerdict(["--verdict": "skipped"], reason: nil))
+        XCTAssertThrowsError(try StateCommand.skipVerdict(["--verdict": "skipped"], reason: ""))
+        XCTAssertThrowsError(try StateCommand.skipVerdict(["--verdict": "approve"], reason: "ok"))
+        XCTAssertThrowsError(try StateCommand.skipVerdict(["--verdict": "changes"], reason: "ok"))
+    }
+
+    func testSkippedRowShowsItsReasonAndKeepsItsVerdict() throws {
+        var run = RunState.new(id: "r1", now: Date())
+        try run.setPR(repo: "a/b", n: 7, stage: .review, author: nil, title: nil, verdict: nil, reason: nil)
+        try run.setPR(repo: "a/b", n: 7, stage: nil, author: nil, title: nil, verdict: .skipped, reason: "diff too large")
+        var pr = run.repos[0].prs[0]
+        XCTAssertEqual(pr.verdict, .skipped)
+        XCTAssertEqual(pr.reason, "diff too large")
+        XCTAssertFalse(pr.active)
+        // A stamped row keeps its verdict and reason; a different verdict is refused.
+        try run.setPR(repo: "a/b", n: 7, stage: nil, author: nil, title: nil, verdict: .skipped, reason: "other")
+        XCTAssertEqual(run.repos[0].prs[0].reason, "diff too large")
+        XCTAssertThrowsError(try run.setPR(repo: "a/b", n: 7, stage: nil, author: nil, title: nil, verdict: .approve, reason: nil))
+        pr = run.repos[0].prs[0]
+        XCTAssertEqual(pr.verdict, .skipped)
+    }
+
     func testFinishedRunRejectsWrites() throws {
         var run = RunState.new(id: "r1", now: Date())
         run.finish(at: Date(), error: nil)

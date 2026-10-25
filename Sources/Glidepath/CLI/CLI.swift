@@ -36,7 +36,8 @@ enum CLI {
       glidepath update [--wait]           update a Homebrew install to the latest release (--wait: wait for a sweep to end)
       glidepath run [--dry-run] [--repo owner/name] [--max-prs N]
                                              run the review pipeline now
-      glidepath state set --run ID --repo owner/name --pr N [--stage gather|review|check] [--reason TEXT]
+      glidepath state set --run ID --repo owner/name --pr N [--stage gather|review|check] [--reason TEXT] [--verdict skipped]
+                                             --verdict skipped needs --reason; it shows the PR as Skipped with that reason
       glidepath state show [--run ID]     print a run as JSON (default: current)
       glidepath review owner/name N [N...] | PR-URL [PR-URL...] | --author login [--repo owner/name] [--dry-run] [--again]
                                              review PRs, or every open PR by an author, now, ignoring the
@@ -99,6 +100,16 @@ enum CLI {
 
 /// `glidepath state set|show`. The review skill calls `set` at each stage; it never edits JSON.
 enum StateCommand {
+    /// `--verdict` takes only `skipped`, with a `--reason`. approve and changes are stamped by `glidepath post`.
+    static func skipVerdict(_ f: [String: String], reason: String?) throws -> Verdict? {
+        guard let text = f["--verdict"] else { return nil }
+        guard text == Verdict.skipped.rawValue else {
+            throw StateError("--verdict takes only skipped; approve and changes are set by glidepath post")
+        }
+        guard let reason, !reason.isEmpty else { throw StateError("--verdict skipped needs --reason TEXT") }
+        return .skipped
+    }
+
     static func main(_ args: [String]) -> Int32 {
         guard let sub = args.first else {
             eprint("usage: glidepath state set|show ...")
@@ -111,7 +122,7 @@ enum StateCommand {
         do {
             switch sub {
             case "set":
-                let f = try StrictFlags.parse(Array(args.dropFirst()), allowed: ["--run", "--repo", "--pr", "--stage", "--reason"])
+                let f = try StrictFlags.parse(Array(args.dropFirst()), allowed: ["--run", "--repo", "--pr", "--stage", "--reason", "--verdict"])
                 guard let runId = f["--run"] else { throw StateError("state set needs --run") }
                 let slug = try StrictFlags.repo(f)
                 let n = try StrictFlags.pr(f)
@@ -122,6 +133,7 @@ enum StateCommand {
                     return s
                 }
                 let note = try StrictFlags.reason(f)
+                let verdict = try skipVerdict(f, reason: note)
                 // Bound to the run and repo in the environment. Stamps belong to `glidepath post`.
                 let binding = try RunBinding.current()
                 guard runId == binding.runId, slug == binding.repo else {
@@ -131,8 +143,8 @@ enum StateCommand {
                     guard run.repos.first(where: { $0.slug == slug })?.prs.contains(where: { $0.n == n }) == true else {
                         throw StateError("unknown PR for this run: \(slug) #\(n)")
                     }
-                    try run.setPR(repo: slug, n: n, stage: stage, author: nil, title: nil, verdict: nil, reason: nil)
-                    if let note { try run.setNote(repo: slug, n: n, note: note) }
+                    try run.setPR(repo: slug, n: n, stage: stage, author: nil, title: nil, verdict: verdict, reason: note)
+                    if verdict == nil, let note { try run.setNote(repo: slug, n: n, note: note) }
                 }
                 print("ok")
                 return 0
