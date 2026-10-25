@@ -51,6 +51,8 @@ struct WindowScreen: View {
             switch router.section {
             case .now:
                 NowView(store: store)
+            case .approach:
+                ApproachSectionView(store: store)
             case .reviews:
                 HistoryView(store: store)
             case .repos:

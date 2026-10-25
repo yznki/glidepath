@@ -28,7 +28,7 @@ enum ShortcutAvailability {
         if s.sheetOpen && !sheetAllowed.contains(action) { return false }
         let inReviews = !s.onboarding && (s.section == .now || s.section == .reviews) && s.reviewSelected
         switch action {
-        case .showOverview, .showReviews, .showRepos, .showSchedule, .showSettings:
+        case .showOverview, .showApproach, .showReviews, .showRepos, .showSchedule, .showSettings:
             return !s.onboarding
         case .addRepo:
             // Onboarding has its own repo picker, so Add Repo's sheet is not offered there.
@@ -214,6 +214,7 @@ enum ShortcutDispatch {
         }
         switch action {
         case .showOverview: router.open(.now)
+        case .showApproach: router.open(.approach)
         case .showReviews: router.open(.reviews)
         case .showRepos: router.open(.repos)
         case .showSchedule: router.open(.schedule)
@@ -356,10 +357,10 @@ struct GlidepathCommands: Commands {
 }
 
 extension ShortcutAction {
-    /// The section entries in View: Overview through Settings.
+    /// The section entries in View: Now through Settings.
     var isSection: Bool {
         switch self {
-        case .showOverview, .showReviews, .showRepos, .showSchedule, .showSettings: return true
+        case .showOverview, .showApproach, .showReviews, .showRepos, .showSchedule, .showSettings: return true
         default: return false
         }
     }

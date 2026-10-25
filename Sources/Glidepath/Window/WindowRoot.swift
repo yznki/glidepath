@@ -3,11 +3,12 @@ import AppKit
 
 /// The sections of the main window, in sidebar order.
 enum WindowSection: String, CaseIterable {
-    case now, reviews, repos, schedule, settings
+    case now, approach, reviews, repos, schedule, settings
 
     var title: String {
         switch self {
         case .now: return "Now"
+        case .approach: return "Approach"
         case .reviews: return "History"
         case .repos: return "Repos"
         case .schedule: return "Schedule"

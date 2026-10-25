@@ -10,7 +10,7 @@ enum ShortcutAction: String, CaseIterable {
     // Edit
     case find, discardDraft, removeRepo, deletePin
     // View
-    case showOverview, showReviews, showRepos, showSchedule, showSettings
+    case showOverview, showApproach, showReviews, showRepos, showSchedule, showSettings
     // Sweep
     case runSweep, stopSweep, togglePause, reviewRepoNow, openLog
     // Review
@@ -182,10 +182,11 @@ enum Shortcuts {
                  note: "Repos, onboarding"),
 
         Shortcut(action: .showOverview, title: "Now", key: .character("1"), modifiers: .command, menu: .view),
-        Shortcut(action: .showReviews, title: "History", key: .character("2"), modifiers: .command, menu: .view),
-        Shortcut(action: .showRepos, title: "Repos", key: .character("3"), modifiers: .command, menu: .view),
-        Shortcut(action: .showSchedule, title: "Schedule", key: .character("4"), modifiers: .command, menu: .view),
-        Shortcut(action: .showSettings, title: "Settings", key: .character("5"), modifiers: .command, menu: .view),
+        Shortcut(action: .showApproach, title: "Approach", key: .character("2"), modifiers: .command, menu: .view),
+        Shortcut(action: .showReviews, title: "History", key: .character("3"), modifiers: .command, menu: .view),
+        Shortcut(action: .showRepos, title: "Repos", key: .character("4"), modifiers: .command, menu: .view),
+        Shortcut(action: .showSchedule, title: "Schedule", key: .character("5"), modifiers: .command, menu: .view),
+        Shortcut(action: .showSettings, title: "Settings", key: .character("6"), modifiers: .command, menu: .view),
 
         Shortcut(action: .runSweep, title: "Run Sweep Now", key: .character("r"), modifiers: .command, menu: .sweep),
         Shortcut(action: .stopSweep, title: "Stop Sweep", key: .character("."), modifiers: .command, menu: .sweep),

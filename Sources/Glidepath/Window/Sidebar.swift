@@ -75,6 +75,7 @@ struct Sidebar: View {
     static func symbol(_ section: WindowSection) -> String {
         switch section {
         case .now: return "waveform.path.ecg"
+        case .approach: return "scope"
         case .reviews: return "rectangle.stack"
         case .repos: return "arrow.triangle.branch"
         case .schedule: return "clock"
@@ -85,6 +86,7 @@ struct Sidebar: View {
     private func navRow(_ section: WindowSection) -> some View {
         let on = router.section == section
         let count = section == .now ? store.waitingCount : 0
+        let inAir = store.snap.approach?.planes.filter { $0.phase != .landed }.count ?? 0
         return Button {
             router.section = section
         } label: {
@@ -96,7 +98,15 @@ struct Sidebar: View {
                 Text(section.title)
                     .font(.system(size: 14, weight: .medium))
                 Spacer(minLength: 0)
-                if count > 0 {
+                if section == .approach {
+                    // The planes tend has in the air: small and faint, not a count.
+                    if inAir > 0 {
+                        Text("\(inAir) in the air")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Gotham.mute.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                } else if count > 0 {
                     Text("\(count)")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Gotham.signal(signalKey))
