@@ -18,16 +18,19 @@ enum Confirm {
         store.runNow(repo: slug)
     }
 
-    /// Reviews one PR, or every open PR by one author. A review that posts for real asks first: a PR's repo on
-    /// posting = "review", or any repo on it for an author. True when the review started; false when the user cancelled.
+    /// Reviews the named PRs, or every open PR by one author. A review that posts for real asks first: any named PR's
+    /// repo on posting = "review", or any repo on it for an author. True when the review started; false when the user cancelled.
     @discardableResult
     static func review(_ store: Store, _ target: ReviewTarget) -> Bool {
         let posts: Bool
         let message: String
         switch target {
-        case .pr(let slug, let n):
-            posts = store.snap.config?.repos.first { $0.slug.caseInsensitiveCompare(slug) == .orderedSame }?.posting == .review
-            message = "Review \(slug) #\(n) now?"
+        case .prs(let refs):
+            let repos = store.snap.config?.repos ?? []
+            posts = refs.contains { ref in
+                repos.first { $0.slug.caseInsensitiveCompare(ref.slug) == .orderedSame }?.posting == .review
+            }
+            message = refs.count == 1 ? "Review \(refs[0].slug) #\(refs[0].n) now?" : "Review \(refs.count) PRs now?"
         case .author(let login):
             posts = store.snap.postsReviews
             message = "Review every open PR by \(login) now?"

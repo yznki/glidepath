@@ -87,20 +87,25 @@ final class ReviewSheetModel: ObservableObject {
         }
     }
 
-    /// The target the form asks for, or the message to show. In PR mode a GitHub PR link is read as it is; a bare
-    /// number is read against the picked repo. The repo must be one of `repos`, spelled as the config spells it.
+    /// The target the form asks for, or the message to show. In PR mode the text is PR numbers and GitHub PR links,
+    /// separated by commas or spaces; a bare number is read against the picked repo. Every repo must be one of `repos`,
+    /// spelled as the config spells it.
     func target(config repos: [String]) -> Result<ReviewTarget, ConfigError> {
         guard !repos.isEmpty else { return .failure(ConfigError(message: "No repos configured")) }
         switch mode {
         case .pr:
-            let text = prText.trimmingCharacters(in: .whitespaces)
-            guard let pr = ReviewTarget.parsePR([text]) ?? ReviewTarget.parsePR([repo, text]) else {
-                return .failure(ConfigError(message: "Type a PR number or paste a GitHub PR link"))
+            let tokens = prText.split(whereSeparator: { $0 == "," || $0.isWhitespace }).map(String.init)
+            guard let refs = ReviewTarget.parsePRs(tokens, defaultRepo: repo) else {
+                return .failure(ConfigError(message: "Type PR numbers or paste GitHub PR links"))
             }
-            guard let configured = repos.first(where: { $0.caseInsensitiveCompare(pr.slug) == .orderedSame }) else {
-                return .failure(ConfigError(message: "\(pr.slug) is not in your repos"))
+            var named: [PRRef] = []
+            for ref in refs {
+                guard let configured = repos.first(where: { $0.caseInsensitiveCompare(ref.slug) == .orderedSame }) else {
+                    return .failure(ConfigError(message: "\(ref.slug) is not in your repos"))
+                }
+                named.append(PRRef(slug: configured, n: ref.n))
             }
-            return .success(.pr(slug: configured, n: pr.n))
+            return .success(.prs(named))
         case .author:
             guard let login = selectedAuthor else { return .failure(ConfigError(message: "Pick an author")) }
             return .success(.author(login))
@@ -188,7 +193,7 @@ struct ReviewNowSheet: View {
                 ForEach(repos, id: \.self) { Text($0).tag($0) }
             }
             .labelsHidden()
-            TextField("PR number or GitHub link", text: $model.prText)
+            TextField("PR numbers or GitHub links, e.g. 12, 15", text: $model.prText)
                 .winField()
                 .onSubmit(submit)
         }
@@ -274,9 +279,12 @@ struct ReviewNowSheet: View {
     }
 
     private var primaryTitle: String {
-        guard model.mode == .author else { return "Review" }
-        guard let count = selectedCount else { return "Review" }
-        return "Review \(count) PR\(count == 1 ? "" : "s")"
+        if model.mode == .author {
+            guard let count = selectedCount else { return "Review" }
+            return "Review \(count) PR\(count == 1 ? "" : "s")"
+        }
+        guard case .success(.prs(let refs)) = model.target(config: repos), refs.count > 1 else { return "Review" }
+        return "Review \(refs.count) PRs"
     }
 
     /// Turns the form into a target. A bad form shows its message; a good one asks, and closes the sheet once the

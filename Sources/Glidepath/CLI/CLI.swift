@@ -38,8 +38,8 @@ enum CLI {
                                              run the review pipeline now
       glidepath state set --run ID --repo owner/name --pr N [--stage gather|review|check] [--reason TEXT]
       glidepath state show [--run ID]     print a run as JSON (default: current)
-      glidepath review owner/name N | PR-URL | --author login [--repo owner/name] [--dry-run] [--again]
-                                             review one PR, or every open PR by an author, now, ignoring the
+      glidepath review owner/name N [N...] | PR-URL [PR-URL...] | --author login [--repo owner/name] [--dry-run] [--again]
+                                             review PRs, or every open PR by an author, now, ignoring the
                                              authors list, size limit and per-sweep cap
       glidepath drafts list               list reviews held for posting (draft mode)
       glidepath drafts post owner/name N  post the newest draft for a PR
