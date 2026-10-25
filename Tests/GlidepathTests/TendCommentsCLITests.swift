@@ -49,8 +49,7 @@ final class TendCommentsCLITests: XCTestCase {
     }
 
     func testRerequestLoginsAreChangeRequestersAskedOnce() {
-        var pr = OpenPR()
-        pr.reviews = [
+        let reviews = [
             ReviewInfo(id: "R0", author: "gadi", state: "CHANGES_REQUESTED", body: "old"),
             ReviewInfo(id: "R1", author: "gadi", state: "CHANGES_REQUESTED", body: "Split it."),
             ReviewInfo(id: "R2", author: "lee", state: "APPROVED", body: ""),
@@ -65,8 +64,9 @@ final class TendCommentsCLITests: XCTestCase {
                 databaseId: nil),
         ]
         let posted: Set<String> = ["R1", "t1", "t2", "t3", "C1"]
-        XCTAssertEqual(Tender.rerequestLogins(pr: pr, posted: posted, asks: asks), ["gadi"])
-        XCTAssertEqual(Tender.rerequestLogins(pr: pr, posted: [], asks: asks), [])
+        let reviewers = asks.filter { posted.contains($0.id) }.compactMap(\.reviewer)
+        XCTAssertEqual(Tender.rerequestLogins(reviews: reviews, reviewers: reviewers), ["gadi"])
+        XCTAssertEqual(Tender.rerequestLogins(reviews: reviews, reviewers: []), [])
     }
 
     func testCouncilArgumentsPinTheJudgeFlags() {
@@ -120,8 +120,11 @@ final class TendCommentsCLITests: XCTestCase {
           "reviewDecision":"CHANGES_REQUESTED","updatedAt":null,"author":{"login":"yazan"},
           "labels":{"nodes":[]},"reviewRequests":{"nodes":[]},
           "reviews":{"nodes":[{"id":"R1","databaseId":99,"state":"CHANGES_REQUESTED","body":"Please split this.",
-                               "author":{"login":"gadi"}}]},
-          "comments":{"nodes":[{"id":"IC1","databaseId":7,"body":"Can you add a test?","author":{"login":"lee"}}]},
+                               "author":{"__typename":"User","login":"gadi"}}]},
+          "comments":{"nodes":[
+            {"id":"IC1","databaseId":7,"body":"Can you add a test?","author":{"__typename":"User","login":"lee"}},
+            {"id":"IC2","databaseId":8,"body":"Summary: 2 files","author":{"__typename":"Bot","login":"copilot-pull-request-reviewer"}}
+          ]},
           "reviewThreads":{"nodes":[]},
           "commits":{"nodes":[]}
         }]}}}
@@ -131,7 +134,11 @@ final class TendCommentsCLITests: XCTestCase {
         let pr = prs[0]
         XCTAssertEqual(pr.reviews, [ReviewInfo(id: "R1", author: "gadi", state: "CHANGES_REQUESTED",
                                                body: "Please split this.", databaseId: 99)])
-        XCTAssertEqual(pr.comments, [PRComment(id: "IC1", databaseId: 7, author: "lee", body: "Can you add a test?")])
+        // A Bot's login comes back with its [bot] suffix, which GraphQL leaves off.
+        XCTAssertEqual(pr.comments, [
+            PRComment(id: "IC1", databaseId: 7, author: "lee", body: "Can you add a test?"),
+            PRComment(id: "IC2", databaseId: 8, author: "copilot-pull-request-reviewer[bot]", body: "Summary: 2 files"),
+        ])
         let asks = Threads.actionable(pr, me: "yazan", answered: [])
         XCTAssertEqual(asks.map(\.kind), ["review", "comment"])
         XCTAssertEqual(asks.map(\.author), ["gadi", "lee"])
