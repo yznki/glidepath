@@ -18,6 +18,28 @@ enum Confirm {
         store.runNow(repo: slug)
     }
 
+    /// Reviews one PR, or every open PR by one author. A review that posts for real asks first: a PR's repo on
+    /// posting = "review", or any repo on it for an author. True when the review started; false when the user cancelled.
+    @discardableResult
+    static func review(_ store: Store, _ target: ReviewTarget) -> Bool {
+        let posts: Bool
+        let message: String
+        switch target {
+        case .pr(let slug, let n):
+            posts = store.snap.config?.repos.first { $0.slug.caseInsensitiveCompare(slug) == .orderedSame }?.posting == .review
+            message = "Review \(slug) #\(n) now?"
+        case .author(let login):
+            posts = store.snap.postsReviews
+            message = "Review every open PR by \(login) now?"
+        }
+        if posts {
+            let asked = ask(message, "Some repos post reviews with posting = \"review\", which show as real reviews on GitHub.",
+                            confirm: "Review now", cancel: "Cancel")
+            guard asked else { return false }
+        }
+        return store.review(target)
+    }
+
     /// Stops the sweep, or the dry run.
     static func stop(_ store: Store) {
         let asked = ask(store.snap.dryRunning ? "Stop the dry run?" : "Stop the current sweep?",

@@ -175,15 +175,94 @@ enum RunCommand {
     }
 }
 
-/// `glidepath review owner/name N [--dry-run] [--again]`: reviews one open PR now, including one over
-/// `max_changed_lines`. Every other filter still applies. The run lock is taken, as for a sweep.
+/// What `glidepath review` reviews: one PR, or every open PR by one author.
+enum ReviewTarget: Equatable {
+    case pr(slug: String, n: Int)
+    case author(String)
+
+    /// Whether a PR is in this target. Slugs and logins match case-insensitively. An author target ignores the slug.
+    func includes(slug: String, n: Int, author: String?) -> Bool {
+        switch self {
+        case .pr(let target, let number):
+            return target.caseInsensitiveCompare(slug) == .orderedSame && number == n
+        case .author(let login):
+            guard let author else { return false }
+            return author.caseInsensitiveCompare(login) == .orderedSame
+        }
+    }
+
+    /// The PR a review names: `["owner/name", "N"]`, or `[url]` for a GitHub pull request link. Nil otherwise.
+    static func parsePR(_ positional: [String]) -> (slug: String, n: Int)? {
+        if positional.count == 2 {
+            guard RepoConfig.isValidSlug(positional[0]), let n = Int(positional[1]), n > 0, String(n) == positional[1] else {
+                return nil
+            }
+            return (positional[0], n)
+        }
+        guard positional.count == 1 else { return nil }
+        let url = positional[0]
+        let pattern = #"\Ahttps?://(www\.)?github\.com/([^/\s]+/[^/\s]+)/pull/([0-9]+)([/?#].*)?\z"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)),
+              let slugRange = Range(match.range(at: 2), in: url),
+              let numberRange = Range(match.range(at: 3), in: url) else { return nil }
+        let slug = String(url[slugRange])
+        guard RepoConfig.isValidSlug(slug), let n = Int(url[numberRange]), n > 0 else { return nil }
+        return (slug, n)
+    }
+
+    /// The CLI arguments the app spawns for this target.
+    var arguments: [String] {
+        switch self {
+        case .pr(let slug, let n): return ["review", slug, String(n)]
+        case .author(let login): return ["review", "--author", login]
+        }
+    }
+}
+
+/// `glidepath review owner/name N | PR-URL | --author login [--repo owner/name] [--dry-run] [--again]`: reviews one
+/// open PR now, including one over `max_changed_lines`, or every open PR by one author. A by-hand review ignores the
+/// authors list, the size limit, the per-sweep cap, and the draft and bot skips. It still skips your own PRs, PRs
+/// reviewed at this head and PRs with a held draft at this head. The run lock is taken, as for a sweep.
 enum ReviewCommand {
+    static let usage = "usage: glidepath review owner/name N | PR-URL | --author login [--repo owner/name]  [--dry-run] [--again]"
+
+    /// The parsed arguments, or nil when they are not one of the three forms.
+    static func parse(_ args: [String]) -> (target: ReviewTarget, repo: String?, dryRun: Bool, again: Bool)? {
+        var positional: [String] = []
+        var author: String?
+        var repo: String?
+        var dryRun = false
+        var again = false
+        var i = 0
+        while i < args.count {
+            let token = args[i]
+            i += 1
+            switch token {
+            case "--author", "--repo":
+                guard i < args.count else { return nil }
+                if token == "--author" { author = args[i] } else { repo = args[i] }
+                i += 1
+            case "--dry-run":
+                dryRun = true
+            case "--again":
+                again = true
+            default:
+                if token.hasPrefix("--") { return nil }
+                positional.append(token)
+            }
+        }
+        guard let login = author else {
+            guard repo == nil, let pr = ReviewTarget.parsePR(positional) else { return nil }
+            return (.pr(slug: pr.slug, n: pr.n), nil, dryRun, again)
+        }
+        guard positional.isEmpty, (try? ConfigEditor.validateLogin(login)) != nil else { return nil }
+        if let repo, !RepoConfig.isValidSlug(repo) { return nil }
+        return (.author(login), repo, dryRun, again)
+    }
+
     static func main(_ args: [String]) -> Int32 {
-        let switches = Set(args.filter { $0.hasPrefix("--") })
-        let positional = args.filter { !$0.hasPrefix("--") }
-        let usage = "usage: glidepath review owner/name N [--dry-run] [--again]"
-        guard switches.isSubset(of: ["--dry-run", "--again"]), positional.count == 2,
-              RepoConfig.isValidSlug(positional[0]), let n = Int(positional[1]), n > 0, String(n) == positional[1] else {
+        guard let parsed = parse(args) else {
             eprint(usage)
             return 2
         }
@@ -199,9 +278,31 @@ enum ReviewCommand {
             eprint("\(error)")
             return 1
         }
-        guard let repo = config.repos.first(where: { $0.slug == positional[0] }) else {
-            eprint("repo \(positional[0]) is not in the config")
-            return 1
+        var target = parsed.target
+        let repos: [RepoConfig]
+        switch parsed.target {
+        case .pr(let slug, let n):
+            guard let repo = config.repos.first(where: { $0.slug.caseInsensitiveCompare(slug) == .orderedSame }) else {
+                eprint("repo \(slug) is not in the config")
+                return 1
+            }
+            repos = [repo]
+            target = .pr(slug: repo.slug, n: n)
+        case .author:
+            guard !config.repos.isEmpty else {
+                eprint("no repos configured; run glidepath init")
+                return 1
+            }
+            if let slug = parsed.repo {
+                let narrowed = config.repos.filter { $0.slug.caseInsensitiveCompare(slug) == .orderedSame }
+                guard !narrowed.isEmpty else {
+                    eprint("repo \(slug) is not in the config")
+                    return 1
+                }
+                repos = narrowed
+            } else {
+                repos = config.repos
+            }
         }
         let lock: RunLock
         do {
@@ -218,10 +319,10 @@ enum ReviewCommand {
         _ = setpgid(0, 0)
         try? "\(getpid())".write(toFile: paths.pidFile, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(atPath: paths.pidFile) }
-        let runner = Runner(paths: paths, config: config, dryRun: switches.contains("--dry-run") || config.dryRun)
-        runner.onlyPR = (repo.slug, n)
-        runner.again = switches.contains("--again")
-        return withExtendedLifetime(lock) { runner.execute(repos: [repo]) }
+        let runner = Runner(paths: paths, config: config, dryRun: parsed.dryRun || config.dryRun)
+        runner.target = target
+        runner.again = parsed.again
+        return withExtendedLifetime(lock) { runner.execute(repos: repos) }
     }
 }
 
@@ -276,10 +377,11 @@ final class Runner {
     let store: RunStore
     let env: [String: String]
     private(set) var id = ""
-    /// Set by `glidepath review`: the one PR to consider, and whether an already reviewed head is reviewed again.
-    var onlyPR: (slug: String, n: Int)?
+    /// Set by `glidepath review`: the PR or author to consider. nil for a sweep.
+    var target: ReviewTarget?
+    /// Set by `glidepath review --again`: an already reviewed head is reviewed again. Ignored for a sweep.
     var again = false
-    /// Set when the PR named by `onlyPR` was skipped as the user's own, so the summary can say how to review it.
+    /// Set when a `glidepath review` target was skipped as the user's own PR, so the summary can say how to review it.
     private var namedPRIsOwn = false
     /// A scheduled sweep (launchd's `run --scheduled`). Only these stop at the monthly token budget.
     var scheduled = false
@@ -321,9 +423,9 @@ final class Runner {
         let now = Date()
         id = Runner.makeID(now)
         do {
-            var fresh = RunState.new(id: id, now: now, kind: onlyPR == nil ? nil : "review")
-            if let target = onlyPR, !dryRun, let previous = try? store.loadCurrent() {
-                fresh.carryRows(from: previous, except: target)
+            var fresh = RunState.new(id: id, now: now, kind: target == nil ? nil : "review")
+            if target != nil, !dryRun, let previous = try? store.loadCurrent() {
+                fresh.carryRows(from: previous)
             }
             try store.save(fresh)
             if !dryRun { try store.makeCurrent(id) }
@@ -379,36 +481,37 @@ final class Runner {
 
     /// Returns the tokens this repo's session used.
     private func process(_ repo: RepoConfig) throws -> Int {
-        try prepareClone(repo)
         setPhase("listing PRs in \(repo.slug)")
-        var prs = try listPRs(repo)
-        if let target = onlyPR {
-            // `glidepath review`: only the named PR is considered, and only it gets the size override.
-            prs = prs.filter { $0.n == target.n }
-            if prs.isEmpty { print("\(repo.slug) #\(target.n): not an open PR") }
+        var prs = try Runner.openPRs(repo.slug, env: env)
+        if let target {
+            // `glidepath review`: only the PRs in the target are considered, and they skip the by-hand filters.
+            prs = prs.filter { target.includes(slug: repo.slug, n: $0.n, author: $0.author) }
+            if case .pr(_, let n) = target, prs.isEmpty { print("\(repo.slug) #\(n): not an open PR") }
         }
+        // A review with nothing to consider in this repo clones nothing. A sweep always syncs the clone.
+        if target == nil || !prs.isEmpty { try prepareClone(repo) }
 
         var kept: [PRInfo] = []
         var skipped: [(PRInfo, String)] = []
         let drafts = Drafts.all(paths)
+        let byHand = target != nil
         for pr in prs {
-            let again = self.again && self.onlyPR?.n == pr.n
+            let again = self.again && byHand
             let heldHeads = Set(drafts.filter { $0.draft.slug == repo.slug && $0.draft.n == pr.n }.map(\.draft.head))
             let decision = PRFilter.evaluate(
                 pr, me: me, includeOwn: repo.includeOwn, reviewDrafts: repo.reviewDrafts ?? config.reviewDrafts,
-                includeBots: config.includeBots, authors: repo.authors,
-                limits: Runner.limits(config.limits, for: pr.n, reviewing: onlyPR?.n),
+                includeBots: config.includeBots, byHand: byHand, authors: repo.authors, limits: config.limits,
                 draftHeads: again ? [] : heldHeads,
                 isCollaborator: { self.isCollaborator(repo, login: pr.author) },
                 reviewedHeads: { again ? Set<String>() : self.reviewedHeads(repo, pr.n) })
             switch decision {
-            case .keep where kept.count < config.limits.maxPRsPerRun:
+            case .keep where byHand || kept.count < config.limits.maxPRsPerRun:
                 kept.append(pr)
             case .keep:
                 skipped.append((pr, PRFilter.heldForNextSweep(cap: config.limits.maxPRsPerRun)))
             case .skip(let reason):
                 skipped.append((pr, reason))
-                if onlyPR?.n == pr.n, reason == PRFilter.ownPRReason { namedPRIsOwn = true }
+                if target != nil, reason == PRFilter.ownPRReason { namedPRIsOwn = true }
             }
         }
 
@@ -423,6 +526,7 @@ final class Runner {
         try update { run in
             run.phase = nil
             run.ensureRepo(repo.slug)
+            run.dropCarried(repo: repo.slug, numbers: Set(prs.map(\.n)))
             for (pr, reason) in skipped {
                 try run.setPR(repo: repo.slug, n: pr.n, stage: nil, author: pr.author, title: pr.title,
                               verdict: .skipped, reason: reason)
@@ -440,13 +544,6 @@ final class Runner {
         }
         guard !kept.isEmpty else { return 0 }
         return try invokeReview(repo, kept: kept, gitnexus: gitnexus)
-    }
-
-    /// The limits for one PR. Only the PR named by `glidepath review` loses the size limit; every other filter applies.
-    static func limits(_ base: Limits, for n: Int, reviewing target: Int?) -> Limits {
-        var out = base
-        if target == n { out.maxChangedLines = Int.max }
-        return out
     }
 
     /// Re-indexes the clone so GitNexus answers from the code that is checked out. Failure or the 10-minute limit
@@ -587,9 +684,11 @@ final class Runner {
         let deletions: Int
     }
 
-    private func listPRs(_ repo: RepoConfig) throws -> [PRInfo] {
-        let r = gh(["pr", "list", "-R", repo.slug, "--state", "open", "--limit", "100",
-                    "--json", "number,title,author,isDraft,headRefOid,additions,deletions"])
+    /// The open PRs of a repo, from `gh pr list`. Throws when gh fails. The app lists them too, for the Review sheet.
+    static func openPRs(_ slug: String, env: [String: String]) throws -> [PRInfo] {
+        let r = Shell.run("gh", ["pr", "list", "-R", slug, "--state", "open", "--limit", "100",
+                                 "--json", "number,title,author,isDraft,headRefOid,additions,deletions"],
+                          env: env, timeout: 120)
         guard r.ok, let data = r.stdout.data(using: .utf8),
               let rows = try? JSONDecoder().decode([GHPR].self, from: data) else {
             throw RunError("gh pr list failed")
