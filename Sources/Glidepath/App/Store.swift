@@ -97,6 +97,16 @@ struct Snapshot {
     var tools: [Checks.Item]?
     /// Snapshot rendering only: the login item state, in place of reading it.
     var loginOn = false
+    /// Tending is on in config.toml.
+    var tendOn = false
+    /// What tend's last sweep saw, from `stateDir/tend/approach.json`. Nil until tend has written it.
+    var approach: ApproachSnapshot?
+    /// The newest 30 tower lines, newest first.
+    var tower: [TowerLine] = []
+    /// Tend rounds started today, from the run files.
+    var tendRounds: [RunState] = []
+    /// Snapshot rendering only: the playbooks by repo, in place of reading them.
+    var playbooks: [String: Playbook] = [:]
 }
 
 /// Watches the state folders with DispatchSource, so the popover updates on each write without polling.
@@ -177,6 +187,8 @@ final class Store: ObservableObject {
     private var jobReinstalling = false
     /// The last reinstall of the launchd job that failed. Cleared by the next check that succeeds.
     @Published private(set) var jobError: String?
+    /// The tend needs seen by the last load, by id. Nil until the first load, which notifies nothing.
+    private var seenNeeds: Set<String>?
 
     /// `snapshot == nil` is the live app: registers at login and watches the state folders.
     /// A non-nil snapshot is fixed state for snapshot rendering.
@@ -198,7 +210,7 @@ final class Store: ObservableObject {
         Notifier.setUp()
         let stateDir = paths.stateDir
         let runsDir = paths.runsDir
-        watcher = DirectoryWatcher(paths: [stateDir, runsDir, paths.configDir]) {
+        watcher = DirectoryWatcher(paths: [stateDir, runsDir, paths.configDir, TendStore(paths: paths).dir]) {
             MainActor.assumeIsolated { Store.shared.reload() }
         }
         reload()
@@ -291,6 +303,7 @@ final class Store: ObservableObject {
         s.updateChecking = snap.updateChecking
         s.updatePhase = snap.updatePhase
         s.updateNote = snap.updateNote
+        readTend(&s, config: config)
 
         // A sweep notifies once, when the file goes from running to finished. Dry runs never become current.
         if let run = s.run {
@@ -331,9 +344,42 @@ final class Store: ObservableObject {
             }
         }
         snap = s
+        notifyNewNeeds(config: config)
         reconcileJob()
         syncLiveTokens()
         hovered = hovered.flatMap { h in Store.strips(from: s.run).contains { $0.id == h } ? h : nil }
+    }
+
+    /// Reads tend's approach snapshot, tower and today's rounds. Rounds are read only while tending is on.
+    private func readTend(_ s: inout Snapshot, config: Config?) {
+        let tend = TendStore(paths: paths)
+        s.tendOn = config?.tend.enabled ?? false
+        s.approach = tend.loadApproach()
+        s.tower = tend.tower(limit: 30)
+        if s.tendOn {
+            let today = Date()
+            s.tendRounds = RunStore(paths: paths).loadAll()
+                .filter { $0.kind == "tend" && Calendar.current.isDate($0.started, inSameDayAs: today) }
+                .sorted { $0.started > $1.started }
+        }
+    }
+
+    /// Notifies once for each holding item (a held fix or a stuck PR) that was not in the last load. The first load
+    /// notifies nothing, so opening the app does not repeat what is already waiting.
+    private func notifyNewNeeds(config: Config?) {
+        guard !isFixture, let needs = snap.approach?.needs else { return }
+        defer { seenNeeds = Set(needs.map(\.id)) }
+        guard let seen = seenNeeds, config?.notify ?? true else { return }
+        for item in needs where !seen.contains(item.id) {
+            Notifier.post(SweepNotice(title: "#\(item.n) needs you", body: item.detail),
+                          runID: "tend-\(item.id)-\(Store.hash(item.detail))",
+                          sound: config?.notifySound ?? .glass, respectFocus: config?.respectFocus ?? true)
+        }
+    }
+
+    /// A stable hash of a string, for notification ids: `hashValue` changes between launches.
+    private static func hash(_ text: String) -> UInt32 {
+        text.utf8.reduce(UInt32(5381)) { $0 &* 33 &+ UInt32($1) }
     }
 
     /// Starts the token poller once per session while a sweep runs, and stops it when the sweep ends. The transcript is
@@ -620,6 +666,38 @@ final class Store: ObservableObject {
             process.standardOutput = log
             process.standardError = log
         }
+    }
+
+    /// Runs `glidepath tend <args>` (push, discard, retry) with the job's environment, off the main thread. A failure
+    /// shows its last output line; either way the state is read again after.
+    func tendCommand(_ args: [String]) {
+        guard let binary = Bundle.main.executablePath else {
+            actionError = "cannot find the glidepath binary"
+            return
+        }
+        let env = Runner.environment(paths)
+        Task {
+            let result = await Task.detached { Shell.run(binary, ["tend"] + args, env: env) }.value
+            if result.ok {
+                actionError = nil
+            } else {
+                let text = result.stderr.isEmpty ? result.stdout : result.stderr
+                let last = text.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n").last.map(String.init)
+                actionError = "tend \(args.first ?? ""): \(last ?? "failed")"
+            }
+            reload()
+        }
+    }
+
+    /// The approach plane for a PR, when tend has one.
+    func approachPlane(_ slug: String, _ n: Int) -> ApproachPlane? {
+        snap.approach?.planes.first { $0.slug == slug && $0.n == n }
+    }
+
+    /// The repo's playbook: the fixture's in snapshot mode, the file otherwise.
+    func playbook(_ slug: String) -> Playbook {
+        if isFixture { return snap.playbooks[slug] ?? Playbook() }
+        return Playbook.load(slug, paths: paths)
     }
 
     // MARK: Updates
