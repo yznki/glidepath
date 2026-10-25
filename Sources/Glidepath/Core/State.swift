@@ -316,10 +316,12 @@ struct RunStore {
         try save(run)
     }
 
-    /// Every readable run on disk. Unreadable files are skipped.
-    func loadAll() -> [RunState] {
+    /// Every readable run on disk, or only those whose id starts with `prefix` (run ids start with the day, so a day's
+    /// runs are read without opening the rest). Unreadable files are skipped.
+    func loadAll(prefix: String? = nil) -> [RunState] {
         let files = (try? FileManager.default.contentsOfDirectory(atPath: paths.runsDir)) ?? []
-        return files.filter { $0.hasSuffix(".json") }.compactMap { try? load(String($0.dropLast(5))) }
+        return files.filter { $0.hasSuffix(".json") && $0.hasPrefix(prefix ?? "") }
+            .compactMap { try? load(String($0.dropLast(5))) }
     }
 
     func load(_ id: String) throws -> RunState {

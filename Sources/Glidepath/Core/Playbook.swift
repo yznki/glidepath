@@ -65,10 +65,19 @@ struct Playbook: Equatable {
         return out
     }
 
-    /// Counts each command as verified once more, on `date`. A command not listed yet is added with one.
-    func verify(_ cmds: [String], date: Date) -> Playbook {
+    /// A command as the playbook keeps it: its first line, trimmed, without backticks, at most 200 characters. Nil when
+    /// nothing is left.
+    static func sanitize(_ command: String) -> String? {
+        let line = (command.components(separatedBy: .newlines).first ?? "").replacingOccurrences(of: "`", with: "")
+        let clean = String(line.trimmingCharacters(in: .whitespaces).prefix(200)).trimmingCharacters(in: .whitespaces)
+        return clean.isEmpty ? nil : clean
+    }
+
+    /// Counts each command as verified once more, on `date`. A command not listed yet is added with one. Commands are
+    /// sanitized first.
+    func verify(_ commands: [String], date: Date) -> Playbook {
         var out = self
-        for cmd in cmds {
+        for cmd in commands.compactMap(Playbook.sanitize) {
             if let i = out.commands.firstIndex(where: { $0.command == cmd }) {
                 out.commands[i].verified += 1
                 out.commands[i].date = date

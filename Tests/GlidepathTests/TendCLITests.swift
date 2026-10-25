@@ -89,8 +89,22 @@ final class TendCLITests: XCTestCase {
         let network = try XCTUnwrap(sandbox["network"] as? [String: Any])
         XCTAssertEqual(network["allowedDomains"] as? [String], config.tend.registries)
         let filesystem = try XCTUnwrap(sandbox["filesystem"] as? [String: Any])
-        XCTAssertEqual(filesystem["denyRead"] as? [String], ["~/.config/gh", "~/.ssh", "~/.git-credentials", "~/Library/Keychains"])
+        XCTAssertEqual(filesystem["denyRead"] as? [String], [
+            "~/.config/gh", "~/.ssh", "~/.git-credentials", "~/Library/Keychains", "~/.claude", "~/.npmrc", "~/.aws",
+            "~/.netrc", "~/.docker", "~/.kube", "~/.gnupg", "~/.config/glidepath", "~/Library/Application Support",
+        ])
         XCTAssertEqual(value(after: "--allowedTools", in: off)?.contains("Edit(//fake/wt/**)"), true)
+        XCTAssertEqual(TendConfig().registries, ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"])
+
+        // A separate Claude account's folder is denied too, written as the config gives it.
+        config.claudeConfigDir = "/fake/alt"
+        let alt = Tender.sessionArguments(prompt: "Tend round.", systemPrompt: "skill", scratch: "/fake/scratch",
+                                          worktree: "/fake/wt", config: config)
+        let altSettings = try XCTUnwrap(value(after: "--settings", in: alt))
+        let altRoot = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(altSettings.utf8)) as? [String: Any])
+        let altSandbox = try XCTUnwrap(altRoot["sandbox"] as? [String: Any])
+        let altFilesystem = try XCTUnwrap(altSandbox["filesystem"] as? [String: Any])
+        XCTAssertEqual((altFilesystem["denyRead"] as? [String])?.last, "/fake/alt")
 
         config.tend.advisor = .opus
         let on = Tender.sessionArguments(prompt: "Tend round.", systemPrompt: "skill", scratch: "/fake/scratch",

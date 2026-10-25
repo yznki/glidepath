@@ -58,6 +58,18 @@ struct ReviewInfo: Codable, Equatable {
 enum CIStatus: String, Codable, Equatable { case none, pending, failed, passed }
 
 extension OpenPR {
+    /// Approved: GitHub's decision says so. With no decision (no branch rule asks for reviews), each author's latest
+    /// review is an approval or a change request, and at least one approves and none requests changes.
+    var approved: Bool {
+        if reviewDecision == "APPROVED" { return true }
+        guard reviewDecision == nil else { return false }
+        var latest: [String: String] = [:]
+        for review in reviews where review.state == "APPROVED" || review.state == "CHANGES_REQUESTED" {
+            latest[review.author] = review.state
+        }
+        return latest.values.contains("APPROVED") && !latest.values.contains("CHANGES_REQUESTED")
+    }
+
     static let failureConclusions: Set<String> = ["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED",
                                                   "STARTUP_FAILURE", "ERROR"]
 
@@ -135,7 +147,7 @@ enum Approach {
     /// and not a draft. 0 while CI is pending or failing. Landed (4) is set by the landing step, not here.
     static func marker(_ pr: OpenPR) -> Int {
         guard pr.ciStatus == .passed || pr.ciStatus == .none else { return 0 }
-        guard pr.reviewDecision == "APPROVED", !pr.reviews.contains(where: { $0.state == "CHANGES_REQUESTED" }),
+        guard pr.approved, !pr.reviews.contains(where: { $0.state == "CHANGES_REQUESTED" }),
               !pr.threads.contains(where: { !$0.isResolved }) else { return 1 }
         guard pr.mergeStateStatus == "CLEAN", !pr.isDraft else { return 2 }
         return 3
@@ -177,7 +189,7 @@ enum Approach {
             : Gate(name: "Threads", state: .wait, detail: "\(open.count) open",
                    who: person(open.first?.comments.first?.author))
         let approval: Gate
-        if pr.reviewDecision == "APPROVED" {
+        if pr.approved {
             approval = Gate(name: "Approval", state: .ok, detail: "Approved")
         } else if let changes = pr.reviews.first(where: { $0.state == "CHANGES_REQUESTED" }) {
             approval = Gate(name: "Approval", state: .wait, detail: "Changes requested by \(changes.author)",
@@ -225,7 +237,7 @@ enum Approach {
 
     /// The reviewer the PR waits on: the first one GitHub still asks for. Nil once approved.
     static func waitingOn(_ pr: OpenPR) -> String? {
-        pr.reviewDecision == "APPROVED" ? nil : pr.requested.first
+        pr.approved ? nil : pr.requested.first
     }
 
     /// Stacks: a PR whose base is another open PR's branch sits on it. A lane runs bottom-up from a root (a PR whose
