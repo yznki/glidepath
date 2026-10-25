@@ -200,6 +200,14 @@ final class SecurityTests: XCTestCase {
         XCTAssertThrowsError(try CodeCommands.pattern(["--pattern": String(repeating: "x", count: 121)]))
     }
 
+    func testCodeFilesRefusesAnyFlag() {
+        XCTAssertNoThrow(try CodeCommands.noFlags([]))
+        XCTAssertThrowsError(try CodeCommands.noFlags(["--pattern", "x"])) { error in
+            XCTAssertEqual(String(describing: error),
+                           "code files takes no flags; it lists every tracked file in the checkout")
+        }
+    }
+
     func testChildPathStartsWithRunningBinaryDirectory() {
         XCTAssertEqual(Claude.pathPrepending("/opt/rr/bin", to: "/usr/bin:/bin"), "/opt/rr/bin:/usr/bin:/bin")
         XCTAssertEqual(Claude.pathPrepending("/opt/rr/bin", to: "/usr/bin:/opt/rr/bin"), "/opt/rr/bin:/usr/bin")

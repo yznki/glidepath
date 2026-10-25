@@ -24,6 +24,9 @@ class Glidepath < Formula
       Needs: claude (Claude Code, logged in), gh (signed in), git and the
       Xcode Command Line Tools. init checks these and prints the fix for each.
 
+      If the build stops on Xcode: update Xcode to match your macOS and run
+      `sudo xcodebuild -license accept`. Command Line Tools only: `xcode-select --install`.
+
       init links the app into ~/Applications. To remove everything:
         glidepath uninstall && brew uninstall glidepath
     EOS

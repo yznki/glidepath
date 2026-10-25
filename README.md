@@ -25,6 +25,10 @@ Homebrew builds it from source on your Mac (a few minutes, needs Xcode's Command
 Gatekeeper prompt. `init` checks your tools, asks which repos to watch, and does a dry run. On a new setup, nothing is posted until
 you hold to post.
 
+If the build stops with "Your Xcode is too outdated" or "You have not agreed to the Xcode license": with Xcode
+installed, update it to the version your macOS needs and run `sudo xcodebuild -license accept`. With only the
+Command Line Tools, run `xcode-select --install`.
+
 <p align="center">
   <img src="docs/media/hero.gif" alt="The Glidepath popover: a stack of glass cards, one per pull request, each showing the author and the verdict." width="400">
 </p>

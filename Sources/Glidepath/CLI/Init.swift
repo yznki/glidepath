@@ -20,9 +20,14 @@ enum InitCommand {
                 config = try Config.load(paths)
                 print("Using existing config at \(paths.configFile)")
             } else {
-                guard let slug = a.value("--repo") ?? prompt("GitHub repo to review (owner/name): "),
-                      RepoConfig.isValidSlug(slug) else {
-                    eprint("init needs a repo as owner/name, for example --repo acme/api")
+                let slug: String?
+                if let flag = a.value("--repo") {
+                    slug = repoChoice(answer: flag, suggestion: nil)
+                } else {
+                    slug = askForRepo(suggestion: currentFolderRepo())
+                }
+                guard let slug else {
+                    eprint(repoNeededMessage)
                     return 2
                 }
                 let clone = a.value("--clone").map(paths.expand)
@@ -97,9 +102,53 @@ enum InitCommand {
         let slug = config.repos[0].slug
         // Output streams as the run produces it, so the first review is visible while it works.
         let status = Shell.inherit(binary, ["run", "--dry-run", "--repo", slug], env: env)
-        print(status == 0 ? "Done. Scheduled reviews will post with posting = \"\(config.repos[0].posting.rawValue)\"."
-                          : "Dry run failed; fix the issue above, then run glidepath doctor.")
-        return status == 0 ? 0 : 1
+        guard status == 0 else {
+            print("Dry run failed; fix the issue above, then run glidepath doctor.")
+            return 1
+        }
+        print(doneLine(config.repos[0].posting))
+        return 0
+    }
+
+    /// The last line of init, worded by what the posting mode does on GitHub.
+    static func doneLine(_ posting: Posting) -> String {
+        switch posting {
+        case .draft:
+            return "Done. Scheduled reviews are held as drafts on this Mac; nothing reaches GitHub until you post one (glidepath drafts post, or from the app)."
+        case .comment:
+            return "Done. Scheduled reviews post to GitHub as COMMENT reviews, each starting with its verdict line."
+        case .review:
+            return "Done. Scheduled reviews post to GitHub as APPROVE or REQUEST_CHANGES reviews."
+        }
+    }
+
+    static let repoNeededMessage = "init needs a repo as owner/name, for example: glidepath init --repo acme/api"
+
+    /// The repo init settles on for one answer. An empty answer takes the suggestion, if there is a valid one.
+    /// Anything else must be owner/name. nil when there is no valid repo.
+    static func repoChoice(answer: String, suggestion: String?) -> String? {
+        let typed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        if typed.isEmpty { return suggestion.flatMap { RepoConfig.isValidSlug($0) ? $0 : nil } }
+        return RepoConfig.isValidSlug(typed) ? typed : nil
+    }
+
+    /// Asks up to three times. nil at end of input or after three answers that are not owner/name.
+    private static func askForRepo(suggestion: String?) -> String? {
+        let text = suggestion.map { "GitHub repo to review (owner/name) [\($0)]: " } ?? "GitHub repo to review (owner/name): "
+        for _ in 0..<3 {
+            guard let answer = prompt(text) else { return nil }
+            if let slug = repoChoice(answer: answer, suggestion: suggestion) { return slug }
+            print("That is not owner/name. Type it like acme/api.")
+        }
+        return nil
+    }
+
+    /// The repo of the current folder, as gh reads its remote. nil when gh fails or the answer is not owner/name.
+    private static func currentFolderRepo() -> String? {
+        let r = Shell.run("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+                          cwd: FileManager.default.currentDirectoryPath, env: ProcessInfo.processInfo.environment, timeout: 30)
+        let slug = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return r.ok && RepoConfig.isValidSlug(slug) ? slug : nil
     }
 
     /// `init --refresh`, run by `glidepath update` from the new binary after a brew upgrade. Non-interactive: the
@@ -188,11 +237,11 @@ enum InitCommand {
         return Shell.find("glidepath") ?? Bundle.main.executablePath ?? arg0
     }
 
+    /// The trimmed answer, "" for an empty line, and nil at end of input.
     private static func prompt(_ text: String) -> String? {
         print(text, terminator: "")
         guard let line = readLine() else { return nil }
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        return line.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Looks for `relative` next to the binary, then walks up from it (the dev build layout).

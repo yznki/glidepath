@@ -108,7 +108,7 @@ enum CodeCommands {
                 let f = try StrictFlags.parse(Array(args.dropFirst()), allowed: ["--pattern"])
                 print(try grep(clone: binding.clone, pattern: try pattern(f)))
             case "files":
-                _ = try StrictFlags.parse(Array(args.dropFirst()), allowed: [])
+                try noFlags(Array(args.dropFirst()))
                 print(try files(clone: binding.clone))
             default:
                 throw CommandError("usage: glidepath code grep --pattern TEXT | code files")
@@ -117,6 +117,13 @@ enum CodeCommands {
         } catch {
             eprint("\(error)")
             return 1
+        }
+    }
+
+    /// `code files` takes no arguments: any one is an error, with a message that says what the command does.
+    static func noFlags(_ rest: [String]) throws {
+        guard rest.isEmpty else {
+            throw CommandError("code files takes no flags; it lists every tracked file in the checkout")
         }
     }
 

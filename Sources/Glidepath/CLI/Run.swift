@@ -240,18 +240,29 @@ enum HookRefusal {
 
 /// The skill and rubric, read from the installed share folder, and the repo's rules file if any.
 enum SkillText {
-    static func load(paths: Paths, rules: String?, rulesMode: RulesMode) throws -> String {
+    /// The installed skill folder: share/glidepath next to the binary, or the skill/glidepath dev folder.
+    static func installedDir() throws -> String {
         guard let dir = InitCommand.findInstalledDir(relative: "share/glidepath", fallback: "skill/glidepath",
                                                      requiredFile: "SKILL.md", from: InitCommand.binaryPath()) else {
             throw RunError("skill files not found; reinstall glidepath")
         }
-        var text = try String(contentsOfFile: dir + "/SKILL.md", encoding: .utf8)
-        text += "\n\n# Review rubric\n\n" + (try String(contentsOfFile: dir + "/rubric.md", encoding: .utf8))
+        return dir
+    }
+
+    /// rubric.md, with the repo's rules file appended when there is one. Reviewers read this copy from scratch.
+    static func rubric(dir: String, rules: String?, rulesMode: RulesMode) throws -> String {
+        var text = try String(contentsOfFile: dir + "/rubric.md", encoding: .utf8)
         if let rules {
             let body = try String(contentsOfFile: rules, encoding: .utf8)
             text += "\n\n# Repo rules (\(rulesMode.rawValue))\n\n" + body
         }
         return text
+    }
+
+    static func load(paths: Paths, rules: String?, rulesMode: RulesMode) throws -> String {
+        let dir = try installedDir()
+        let skill = try String(contentsOfFile: dir + "/SKILL.md", encoding: .utf8)
+        return skill + "\n\n# Review rubric\n\n" + (try rubric(dir: dir, rules: rules, rulesMode: rulesMode))
     }
 }
 
@@ -268,6 +279,8 @@ final class Runner {
     /// Set by `glidepath review`: the one PR to consider, and whether an already reviewed head is reviewed again.
     var onlyPR: (slug: String, n: Int)?
     var again = false
+    /// Set when the PR named by `onlyPR` was skipped as the user's own, so the summary can say how to review it.
+    private var namedPRIsOwn = false
     /// A scheduled sweep (launchd's `run --scheduled`). Only these stop at the monthly token budget.
     var scheduled = false
     private var collaboratorCache: [String: Bool] = [:]
@@ -356,6 +369,9 @@ final class Runner {
             if failed { run.carryOver(from: earlier) }
         }
         printSummary()
+        if namedPRIsOwn {
+            print("To review your own PRs, set include_own = true under this repo in \(paths.configFile)")
+        }
         return failed ? 1 : 0
     }
 
@@ -392,6 +408,7 @@ final class Runner {
                 skipped.append((pr, PRFilter.heldForNextSweep(cap: config.limits.maxPRsPerRun)))
             case .skip(let reason):
                 skipped.append((pr, reason))
+                if onlyPR?.n == pr.n, reason == PRFilter.ownPRReason { namedPRIsOwn = true }
             }
         }
 
@@ -464,6 +481,10 @@ final class Runner {
         let session = UUID().uuidString.lowercased()
         let scratch = paths.scratchDir + "/" + id + "/" + repo.owner + "-" + repo.name
         try fm.createDirectory(atPath: scratch, withIntermediateDirectories: true)
+        // Reviewers may read only the clone and the scratch folder, so the rubric (with the repo rules) is copied here
+        // for them. The skill's step 3 points at this file.
+        let rubric = try SkillText.rubric(dir: SkillText.installedDir(), rules: repo.rules, rulesMode: repo.rulesMode)
+        try rubric.write(toFile: scratch + "/rubric.md", atomically: true, encoding: .utf8)
         let mcpPath = scratch + "/mcp.json"
         try Claude.mcpConfig(gitnexus: gitnexus).write(toFile: mcpPath, atomically: true, encoding: .utf8)
 
@@ -496,8 +517,12 @@ final class Runner {
             $0.sessionCwd = repo.clone
         }
         print("\(repo.slug): reviewing \(numbers.map { "#\($0)" }.joined(separator: " "))")
-        print("allowlist: " + allowlist.joined(separator: ","))
-        print("disallowed: " + Claude.disallowed.joined(separator: ","))
+        // The scheduled log is not a terminal and keeps the full tool lists for later audit. An interactive run
+        // skips them, since they repeat on every review.
+        if isatty(STDOUT_FILENO) == 0 {
+            print("allowlist: " + allowlist.joined(separator: ","))
+            print("disallowed: " + Claude.disallowed.joined(separator: ","))
+        }
         let result = Shell.run("claude", args, cwd: repo.clone, env: childEnv, timeout: 3600)
         let logPath = scratch + "/claude.log"
         try? (result.stdout + result.stderr).write(toFile: logPath, atomically: true, encoding: .utf8)
@@ -631,6 +656,12 @@ final class Runner {
                 let reason = pr.reason.map { " (\($0))" } ?? ""
                 print("\(repo.slug) #\(pr.n) \(pr.author ?? "?"): \(verdict)\(reason)")
             }
+        }
+        let rows = run.repos.flatMap(\.prs)
+        if rows.isEmpty {
+            print("no open PRs to review")
+        } else if !rows.contains(where: { $0.verdict == .approve || $0.verdict == .changes }) {
+            print("0 PRs reviewed (\(rows.filter { $0.verdict == .skipped }.count) skipped)")
         }
         print("tokens: \(run.tokens)")
     }
