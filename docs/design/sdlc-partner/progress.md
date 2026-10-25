@@ -29,6 +29,9 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | 1.7 | live re-verify: new bot thread fixed, reply sha = pushed head 0909d35, bot plain comment ignored, second check idle, CI green | done | |
 | 1.7 | released 1.7.0: PR https://github.com/yznki/glidepath/pull/11, release https://github.com/yznki/glidepath/releases/tag/v1.7.0, tap 1516b88, sha256 a6428754…, snapshots /tmp/gp-1.7 | done | 15c149c |
 | 1.8 | branch sdlc-1.8 from main 084bc94; core: merge setting, Landing, MainWatch, TendLanded (495 pass) | done | 9d61ad6 |
+| 1.8 | CLI: land step, `tend land/revert`, conflict rounds, main watch, revert PRs, skill Conflicts (502 pass) | done | 8f58d78 be8c8dd 124aa2c |
+| 1.8 | App: land/revert rows, notifications, landing glide, drawer markers, Landing setting; snapshots /tmp/gp-1.8 | done | a733f64..9234ca8 |
+| 1.8 | live: scratch #3 landed (merge f1e5ff1), #4 retargeted with approval KEPT, stack-a deleted, #4 landed next check; #5 conflict resolved + pushed (15k tokens); watch → ok. Bugs: conflict check counted clean-merged files (fixed 22c0b31); revert of #3 conflicted with #4 (expected; abort + message 0418fae) | done | |
 
 ## Decisions (Yazan should know)
 
@@ -56,6 +59,10 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 
 - 1.8: `merge` parses off; turning tending on in Settings writes `merge = "ask"` (also when it was an explicit off).
 - 1.8: main watch with no check runs yet on the merge commit counts as pending, never green.
+
+- 1.8: retargeting a stacked child to main kept its approval on the scratch repo (no rulesets there); Sager's
+  rulesets were not tested (build never touches Sager repos).
+- 1.8: a child whose retarget fails keeps the merged branch alive (deleting it would make GitHub close the child).
 
 ## Open issues
 
