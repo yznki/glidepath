@@ -532,7 +532,8 @@ struct ApproachDrawer: View {
         WinScroll {
             VStack(alignment: .leading, spacing: 0) {
                 header
-                gates
+                markers
+                if plane.phase == .landed { landedRecord } else { gates }
                 rounds
                 teach
                 lessons
@@ -571,6 +572,44 @@ struct ApproachDrawer: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
         }
+    }
+
+    /// The approach's four markers, each filled once the PR has passed it: the outer CI check, the middle review, the
+    /// inner ready check, and the runway.
+    private var markers: some View {
+        let names = ["Outer · CI", "Middle · Review", "Inner · Ready", "Runway · Landed"]
+        return HStack(spacing: 12) {
+            ForEach(names.indices, id: \.self) { i in
+                let passed = plane.marker >= i + 1
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(passed ? Gotham.fg : Color.clear)
+                        .overlay(Circle().strokeBorder(passed ? Gotham.fg : approachFaint, lineWidth: 1))
+                        .frame(width: 8, height: 8)
+                    Text(names[i])
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(passed ? Gotham.fg : approachFaint)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.top, 18)
+    }
+
+    /// A landed PR's line: what main has done since the merge, and the merge commit.
+    private var landedRecord: some View {
+        let record = store.snap.landed.first { $0.slug == plane.slug && $0.n == plane.n }
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(plane.label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(record?.status == "broke" ? signal : Gotham.fg)
+            if let record {
+                Text(verbatim: "\(String(record.sha.prefix(7))) · merged \(HeaderCopy.clock(record.at))")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Gotham.mute)
+            }
+        }
+        .padding(.top, 20)
     }
 
     /// The four gates: CI, threads, approval and readiness, each with its state and whose move it is.
