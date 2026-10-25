@@ -67,14 +67,15 @@ enum SettingsCopy {
     static let tendRepos = Row(label: "Tended repos", caption: "Glidepath tends the PRs in the repos switched on here.")
     static let tendPush = Row(label: "Approved fixes", caption: "Push anyway pushes a tended fix at once. Hold the fix keeps it for you.")
     static let tendRounds = Row(label: "Rounds per PR a day", caption: "Each PR gets at most this many tending rounds a day.")
-    static let tendAutopilot = Row(label: "Autopilot", caption: "Tending merges, replies and resolves without asking. Hard stops still come to you.")
+    static let tendLanding = Row(label: "Landing", caption: "Off never merges. Ask me puts a ready PR in Needs you. Automatically lands it at the next check.")
+    static let tendAutopilot = Row(label: "Autopilot", caption: "Tending lands ready PRs, replies and resolves without asking. Hard stops still come to you.")
     static let tendDisagree = Row(label: "When Glidepath disagrees",
                                   caption: "Tending leaves the reply as a draft for you, or posts it and resolves the thread.")
     static let tendAccount = Row(label: "Claude account", caption: "Tending and reviews sign in as this account.")
     static let tendReserve = Row(label: "Usage reserve", caption: "Tending never spends the last share of your 5-hour and weekly windows.")
     static let tendQuiet = Row(label: "Quiet hours", caption: "Heavy tending waits for these hours.")
     static let tending = Block(id: "tending", title: "Tending",
-                               rows: [tendOn, tendRepos, tendPush, tendRounds, tendAutopilot, tendDisagree, tendAccount,
+                               rows: [tendOn, tendRepos, tendPush, tendRounds, tendLanding, tendAutopilot, tendDisagree, tendAccount,
                                       tendReserve, tendQuiet])
 
     static let notifications = Block(id: "notify", title: "Notifications", rows: [notify, changesOnly, sound, focus])
@@ -437,6 +438,14 @@ struct SettingsView: View {
                               committed: Double(tend.roundsPerDay), range: 1...10, valueText: { "\(Int($0.rounded()))" }) { value in
                         model.commit("tendRounds", store: store) { try ConfigEditor.setTendRoundsPerDay($0, Int(value.rounded())) }
                     }
+                }
+                row(SettingsCopy.tendLanding, error: model.rowErrors["tendLanding"]) {
+                    SettingSegmented(
+                        options: [(value: TendMerge.off, label: "Off"), (value: .ask, label: "Ask me"),
+                                  (value: .auto, label: "Automatically")],
+                        selected: tend.merge) { choice in
+                            model.commit("tendLanding", store: store) { ConfigEditor.setTendMerge($0, choice) }
+                        }
                 }
                 row(SettingsCopy.tendAutopilot, error: model.rowErrors["autopilot"]) {
                     SettingSwitch(isOn: tend.autopilot, label: "Autopilot") {
