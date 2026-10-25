@@ -74,9 +74,17 @@ enum SettingsCopy {
     static let tendAccount = Row(label: "Claude account", caption: "Tending and reviews sign in as this account.")
     static let tendReserve = Row(label: "Usage reserve", caption: "Tending never spends the last share of your 5-hour and weekly windows.")
     static let tendQuiet = Row(label: "Quiet hours", caption: "Heavy tending waits for these hours.")
+    static let tendLinear = Row(label: "Linear", caption: "Tending comments on a blocked PR's Linear issue. The key stays in your Keychain.")
     static let tending = Block(id: "tending", title: "Tending",
                                rows: [tendOn, tendRepos, tendPush, tendRounds, tendLanding, tendAutopilot, tendDisagree, tendAccount,
-                                      tendReserve, tendQuiet])
+                                      tendReserve, tendQuiet, tendLinear])
+    // Playbook. Its rows show together whenever the block matches, so the search "playbook" shows the whole section.
+    static let playbookRepo = Row(label: "Playbook repo", caption: "Each repo keeps its own playbook. Only repos with the switch on appear here.")
+    static let playbookCommands = Row(label: "Commands", caption: "Checks Glidepath ran in this repo and saw pass. Read-only.")
+    static let playbookLessons = Row(label: "Lessons", caption: "What Glidepath has learned about this repo. Edit or delete any lesson.")
+    static let playbookTeach = Row(label: "Teach", caption: "A rule for the next rounds in this repo, in your words.")
+    static let playbook = Block(id: "playbook", title: "Playbook",
+                                rows: [playbookRepo, playbookCommands, playbookLessons, playbookTeach])
 
     static let notifications = Block(id: "notify", title: "Notifications", rows: [notify, changesOnly, sound, focus])
     static let menuBar = Block(id: "menubar", title: "Menu bar", rows: [icon, badge, shortcut, login])
@@ -84,7 +92,7 @@ enum SettingsCopy {
     static let budget = Block(id: "budget", title: "Budget", rows: [monthly, pause])
     static let advanced = Block(id: "advanced", title: "Advanced",
                                 rows: [dryRun, codeGraph, checks, updates, files, tools, reset, uninstall])
-    static let blocks = [reviewing, tending, notifications, menuBar, look, budget, advanced]
+    static let blocks = [reviewing, tending, playbook, notifications, menuBar, look, budget, advanced]
 }
 
 /// Settings: the search, the section chips, and six groups of rows. Each switch, segment and slider saves at once
@@ -149,6 +157,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         reviewing
                         tending
+                        PlaybookSection(model: model, store: store)
                         notifications
                         menuBar
                         look
@@ -490,6 +499,9 @@ struct SettingsView: View {
                             model.commit("quiet", store: store) { try ConfigEditor.setQuietHours($0, text) }
                         }
                     }
+                }
+                if model.matches(SettingsCopy.tendLinear) {
+                    LinearKeyRow(model: model, store: store)
                 }
             }
         }
