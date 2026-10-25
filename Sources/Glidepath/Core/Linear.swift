@@ -29,6 +29,14 @@ enum Linear {
         return id
     }
 
+    /// True when a commentCreate response says the comment was made.
+    static func commentPosted(_ data: Data) -> Bool {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let payload = json["data"] as? [String: Any],
+              let create = payload["commentCreate"] as? [String: Any] else { return false }
+        return create["success"] as? Bool == true
+    }
+
     static func commentText(n: Int, url: String, reason: String) -> String {
         "PR #\(n) (\(url)) is blocked: \(reason)."
     }

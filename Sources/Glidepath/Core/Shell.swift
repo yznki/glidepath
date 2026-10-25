@@ -9,8 +9,9 @@ struct ShellResult {
 
 enum Shell {
     /// Runs an executable without a shell. A bare name is looked up in `PATH` (from `env` or this process).
+    /// `input`, when given, is written to the process's stdin and then closed. Keep it small: it is written before stdout is read.
     static func run(_ exe: String, _ args: [String], cwd: String? = nil,
-                    env: [String: String]? = nil, timeout: TimeInterval = 600) -> ShellResult {
+                    env: [String: String]? = nil, timeout: TimeInterval = 600, input: String? = nil) -> ShellResult {
         guard let path = exe.contains("/") ? exe : find(exe, path: env?["PATH"]) else {
             return ShellResult(status: 127, stdout: "", stderr: "\(exe): not found")
         }
@@ -23,10 +24,16 @@ enum Shell {
         let err = Pipe()
         process.standardOutput = out
         process.standardError = err
+        let stdin = input == nil ? nil : Pipe()
+        if let stdin { process.standardInput = stdin }
         do {
             try process.run()
         } catch {
             return ShellResult(status: 126, stdout: "", stderr: "\(exe): \(error.localizedDescription)")
+        }
+        if let input, let stdin {
+            try? stdin.fileHandleForWriting.write(contentsOf: Data(input.utf8))
+            try? stdin.fileHandleForWriting.close()
         }
         let killer = DispatchWorkItem { if process.isRunning { process.terminate() } }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: killer)
