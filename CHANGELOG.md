@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.5
 
 - `glidepath review` takes a PR link, and `--author login [--repo owner/name]` reviews every open PR by one author. A by-hand review ignores the authors list, size limit, per-run cap and draft and bot skips. A named PR is reviewed even if it is yours; `--author` still skips your own PRs unless `include_own` is on.
 - Now has a "Review a PR or author…" link under Run now.
