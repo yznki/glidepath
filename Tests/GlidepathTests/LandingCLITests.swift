@@ -14,7 +14,7 @@ final class LandingCLITests: XCTestCase {
     }
 
     func testParseCheckRunsReadsNameStatusAndConclusion() {
-        let checks = Tender.parseCheckRuns("Unit Tests\tcompleted\tfailure\nBuild\tin_progress\t\n\nLint\tcompleted\tsuccess\n")
+        let checks = Tender.parseCheckRuns("1\tUnit Tests\tcompleted\tfailure\n2\tBuild\tin_progress\t\n\n3\tLint\tcompleted\tsuccess\n")
         XCTAssertEqual(checks, [
             CheckState(name: "Unit Tests", status: "COMPLETED", conclusion: "FAILURE", url: nil),
             CheckState(name: "Build", status: "IN_PROGRESS", conclusion: nil, url: nil),
@@ -22,9 +22,18 @@ final class LandingCLITests: XCTestCase {
         ])
     }
 
+    func testParseCheckRunsKeepsTheLatestRunOfEachName() {
+        // A re-run has the higher id: the older failure is superseded by the success.
+        let checks = Tender.parseCheckRuns("9\tLint\tcompleted\tsuccess\n4\tLint\tcompleted\tfailure\n")
+        XCTAssertEqual(checks, [CheckState(name: "Lint", status: "COMPLETED", conclusion: "SUCCESS", url: nil)])
+        let parent = Tender.parseCheckRuns("5\tLint\tcompleted\tsuccess\n")
+        XCTAssertEqual(MainWatch.verdict(merge: Tender.parseCheckRuns("4\tLint\tcompleted\tfailure\n9\tLint\tcompleted\tsuccess\n"),
+                                         parent: parent), .ok, "an older failed run superseded by a newer success is ok")
+    }
+
     func testWatchVerdictFromParsedCheckRuns() {
-        let merge = Tender.parseCheckRuns("Unit Tests\tcompleted\tfailure\n")
-        let parent = Tender.parseCheckRuns("Unit Tests\tcompleted\tsuccess\n")
+        let merge = Tender.parseCheckRuns("7\tUnit Tests\tcompleted\tfailure\n")
+        let parent = Tender.parseCheckRuns("7\tUnit Tests\tcompleted\tsuccess\n")
         XCTAssertEqual(MainWatch.verdict(merge: merge, parent: parent), .broke(["Unit Tests"]))
     }
 
