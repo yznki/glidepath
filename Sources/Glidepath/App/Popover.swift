@@ -216,6 +216,7 @@ struct PopoverView: View {
             stack(all: all, list: shown.cards, more: shown.more, copy: copy)
             digestLine
             updateLine
+            ApproachPopoverBlock(store: store, offscreen: offscreen)
             footer
         }
         .frame(width: StackGeometry.width)
