@@ -1933,8 +1933,9 @@ final class Tender {
 
     /// Prints one line for a tower event, and appends it to the tower log.
     private func tower(_ slug: String, _ n: Int, _ text: String, amber: Bool, detail: String? = nil, now: Date = Date()) {
-        let line = "#\(n) \(text)"
-        print("\(slug) \(line)")
+        // Repo-less lines (n == 0, like the briefing) show the text only, never "#0".
+        let line = n == 0 ? text : "#\(n) \(text)"
+        print(n == 0 ? line : "\(slug) \(line)")
         try? store.appendTower(TowerLine(at: now, slug: slug, n: n, text: line, detail: detail, amber: amber))
     }
 
