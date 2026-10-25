@@ -209,6 +209,9 @@ Off by default. Settings → Tending → "Tend my PRs", then switch on the repos
   fix gets a reply ("Fixed in `abc1234`: …") and the thread is resolved. A disagreement or an unclear ask becomes a
   "Your call" with a draft, unless `disagree = "reply_resolve"`. Replies mention no one but the commenter and link only
   to this PR's commits.
+- Landing is off unless set: `merge = "ask"` offers Hold to land, `merge = "auto"` lands on its own. Stacked PRs land
+  bottom-up and are retargeted to main. Conflicts are resolved by merging main in, never by rebasing. After a merge
+  Glidepath watches main for an hour and offers a revert PR if the merge broke it.
 - Limits: `rounds_per_day` (5 per PR), `tries_per_head` (2), `max_usd_per_session` (2), and `usage_reserve` (40):
   Glidepath never spends the last 40% of your 5-hour and weekly Claude windows. Deferred work waits for
   `quiet_hours` ("22:00-07:00,sat,sun").
@@ -222,6 +225,7 @@ enabled = true
 push = "always"          # or "until_approved"
 advisor = "opus"         # Sonnet fixes, Opus consulted at hard points; "off" to skip
 disagree = "draft"       # or "reply_resolve"
+merge = "ask"            # or "auto", "off"
 usage_reserve = 40
 
 [[repo]]
