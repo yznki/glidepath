@@ -249,7 +249,7 @@ struct ApproachSectionView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(Gotham.mute)
                 .multilineTextAlignment(.center)
-            WinButton(title: "Turn on in Settings", style: .outline) {
+            SettingButton(title: "Turn on in Settings", prominent: true) {
                 WindowRouter.shared.open(.settings)
             }
         }
@@ -412,10 +412,10 @@ struct TendNeedRow: View {
             }
         } else {
             HStack(spacing: 8) {
-                WinButton(title: "Open PR", style: .outline, small: true) {
+                SettingButton(title: "Open PR") {
                     if let link = URL(string: url) { NSWorkspace.shared.open(link) }
                 }
-                WinButton(title: "Try again", style: .primary, small: true) {
+                SettingButton(title: "Try again", prominent: true) {
                     store.tendCommand(["retry", item.slug, "\(item.n)"])
                 }
             }
