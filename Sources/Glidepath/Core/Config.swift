@@ -128,10 +128,17 @@ enum TendAdvisor: String, CaseIterable, Equatable { case opus, off }
 /// `reply_resolve` posts it and resolves the thread.
 enum TendDisagree: String, CaseIterable, Equatable { case draft, replyResolve = "reply_resolve" }
 
+/// Landing a ready PR. `off` (the default) never merges; `ask` puts it in Needs you; `auto` merges at the next check.
+enum TendMerge: String, CaseIterable, Equatable { case off, ask, auto }
+
+/// The `gh pr merge` flag a repo's PRs land with.
+enum MergeMethod: String, CaseIterable, Equatable { case merge, squash, rebase }
+
 /// The `[tend]` table: Glidepath fixing the user's own PRs. A config without the table keeps tending off.
 struct TendConfig: Equatable {
     var enabled = false
     var push: TendPush = .untilApproved
+    var merge: TendMerge = .off
     /// Fix rounds a day, across all PRs.
     var roundsPerDay = 5
     /// Fix attempts on one head before its PR is stuck.
@@ -173,6 +180,8 @@ struct RepoConfig: Equatable {
     var flagNote = RepoConfig.defaultFlagNote
     /// Glidepath fixes this repo's own PRs. Off unless the repo asks for it.
     var tend = false
+    /// How a landed PR merges. Read by `gh pr merge`.
+    var mergeMethod: MergeMethod = .merge
     /// Keys this version does not know, kept as they were read so a save does not drop them.
     var extras: [String: TOMLValue] = [:]
 
@@ -331,6 +340,7 @@ struct Config: Equatable {
         var tend = TendConfig()
         tend.enabled = try bool(t["enabled"], key: "enabled") ?? tend.enabled
         tend.push = try choice(t["push"], key: "push") ?? tend.push
+        tend.merge = try choice(t["merge"], key: "merge") ?? tend.merge
         tend.roundsPerDay = try positiveInt(t["rounds_per_day"], key: "rounds_per_day") ?? tend.roundsPerDay
         tend.triesPerHead = try positiveInt(t["tries_per_head"], key: "tries_per_head") ?? tend.triesPerHead
         tend.maxFixLines = try nonNegativeInt(t["max_fix_lines"], key: "max_fix_lines") ?? tend.maxFixLines
@@ -352,7 +362,7 @@ struct Config: Equatable {
             }
             tend.quietHours = quiet
         }
-        tend.extras = extraKeys(t, allowed: ["enabled", "push", "rounds_per_day", "tries_per_head", "max_fix_lines",
+        tend.extras = extraKeys(t, allowed: ["enabled", "push", "merge", "rounds_per_day", "tries_per_head", "max_fix_lines",
                                              "autopilot", "advisor", "disagree", "max_usd_per_session", "council_per_day",
                                              "registries", "usage_reserve", "quiet_hours"])
         return tend
@@ -409,7 +419,7 @@ struct Config: Equatable {
         var repo = RepoConfig(slug: slug, clone: expandedClone)
         repo.extras = extraKeys(t, allowed: ["slug", "clone", "posting", "authors", "rules", "rules_mode", "gitnexus",
                                              "gitnexus_refresh", "include_own", "review_drafts", "flag_paths", "flag_note",
-                                             "tend"])
+                                             "tend", "merge_method"])
 
         if let p = try string(t["posting"], key: "posting") {
             guard let v = Posting(rawValue: p) else { throw ConfigError(message: "posting must be comment, review or draft") }
@@ -447,6 +457,7 @@ struct Config: Equatable {
         }
         repo.flagNote = try string(t["flag_note"], key: "flag_note") ?? RepoConfig.defaultFlagNote
         repo.tend = try bool(t["tend"], key: "tend") ?? false
+        repo.mergeMethod = try choice(t["merge_method"], key: "merge_method") ?? repo.mergeMethod
         return repo
     }
 
@@ -489,6 +500,7 @@ struct Config: Equatable {
             if tend.triesPerHead != d.triesPerHead { out += "tries_per_head = \(tend.triesPerHead)\n" }
             if tend.maxFixLines != d.maxFixLines { out += "max_fix_lines = \(tend.maxFixLines)\n" }
             if tend.autopilot != d.autopilot { out += "autopilot = \(tend.autopilot)\n" }
+            if tend.merge != d.merge { out += "merge = \(tomlQuoted(tend.merge.rawValue))\n" }
             if tend.advisor != d.advisor { out += "advisor = \(tomlQuoted(tend.advisor.rawValue))\n" }
             if tend.disagree != d.disagree { out += "disagree = \(tomlQuoted(tend.disagree.rawValue))\n" }
             if tend.maxUsdPerSession != d.maxUsdPerSession { out += "max_usd_per_session = \(tend.maxUsdPerSession)\n" }
@@ -522,6 +534,7 @@ struct Config: Equatable {
             out += "include_own = \(r.includeOwn)\n"
             if let drafts = r.reviewDrafts { out += "review_drafts = \(drafts)\n" }
             if r.tend { out += "tend = true\n" }
+            if r.mergeMethod != .merge { out += "merge_method = \(tomlQuoted(r.mergeMethod.rawValue))\n" }
             out += "gitnexus_refresh = \(r.gitnexusRefresh)\n"
             if !r.flagPaths.isEmpty {
                 out += "flag_paths = [" + r.flagPaths.map { tomlQuoted($0) }.joined(separator: ", ") + "]\n"

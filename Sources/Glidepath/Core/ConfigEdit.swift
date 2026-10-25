@@ -217,17 +217,28 @@ enum ConfigEditor {
 
     // MARK: Tending
 
-    /// The "Tend my PRs" switch. Turning it on also sets `advisor = "opus"`, the recommended setting.
+    /// The "Tend my PRs" switch. Turning it on also sets `advisor = "opus"`, the recommended setting, and `merge = "ask"`
+    /// when landing is still off: `off` is the default, so it is the same as the key being absent from the file.
     static func setTendEnabled(_ config: Config, _ on: Bool) -> Config {
         var out = config
         out.tend.enabled = on
-        if on { out.tend.advisor = .opus }
+        if on {
+            out.tend.advisor = .opus
+            if out.tend.merge == .off { out.tend.merge = .ask }
+        }
         return out
     }
 
     static func setTendPush(_ config: Config, _ push: TendPush) -> Config {
         var out = config
         out.tend.push = push
+        return out
+    }
+
+    /// The "Landing" setting: off, ask me, or automatic.
+    static func setTendMerge(_ config: Config, _ merge: TendMerge) -> Config {
+        var out = config
+        out.tend.merge = merge
         return out
     }
 

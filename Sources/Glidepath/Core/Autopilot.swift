@@ -17,6 +17,12 @@ enum TendAction: Equatable {
     case unclear
     /// A fix whose session reported low confidence.
     case lowConfidence
+    /// Merging a ready PR.
+    case land
+    /// Pushing a conflict resolution the session was not confident in.
+    case conflict
+    /// Reverting a landed PR that broke main.
+    case revert
 }
 
 enum Autopilot {
@@ -24,7 +30,9 @@ enum Autopilot {
     /// pushed by Glidepath only when autopilot is on or pushing always is set. Everything else is Glidepath's.
     /// With autopilot on, a call Glidepath would hand to the user goes to the council first. Disagreeing acts alone
     /// when the config says reply and resolve.
-    static func actor(_ action: TendAction, autopilot: Bool, push: TendPush, disagree: TendDisagree = .draft) -> Actor {
+    /// Landing acts under autopilot or `merge = "auto"`, and waits for the user under `ask`. With `off` it never acts.
+    static func actor(_ action: TendAction, autopilot: Bool, push: TendPush, disagree: TendDisagree = .draft,
+                      merge: TendMerge = .off) -> Actor {
         switch action {
         case .rerun, .pushFix(approved: false): return .act
         case .pushFix(approved: true): return (autopilot || push == .always) ? .act : .you
@@ -33,6 +41,10 @@ enum Autopilot {
             if autopilot { return .council }
             return disagree == .replyResolve ? .act : .you
         case .unclear, .lowConfidence: return autopilot ? .council : .you
+        case .land:
+            if merge == .off { return .you }
+            return (autopilot || merge == .auto) ? .act : .you
+        case .conflict, .revert: return autopilot ? .council : .you
         }
     }
 }
