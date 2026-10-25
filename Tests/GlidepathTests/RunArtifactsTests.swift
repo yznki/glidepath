@@ -39,8 +39,11 @@ final class RunArtifactsTests: XCTestCase {
         RunArtifacts.Review(verdict: verdict, reason: nil, body: body, comments: comments.map { comment($0.0, $0.1) })
     }
 
+    /// Paths whose scratch folder is inside the test root, so the loader's scratch check passes.
+    private var paths: Paths { Paths(home: root, env: [:]) }
+
     func testLoadsEveryFileInThePRFolder() throws {
-        let pr = root + "/run/acme-api/7"
+        let pr = paths.scratchDir + "/run/acme-api/7"
         try write(json(["files": [["path": "a"], ["path": "b"], ["path": "c"]], "additions": 10, "deletions": 2,
                         "headSha": "abc1234", "baseRef": "main"]), "pr.json", in: pr)
         try write(json(["reviews": [["user": "x"]], "review_comments": [["path": "a"], ["path": "b"]],
@@ -54,7 +57,7 @@ final class RunArtifactsTests: XCTestCase {
         try write("", "diff-1.patch", in: pr)
         try write("", "diff-2.patch", in: pr)
 
-        let a = RunArtifacts.load(folder: pr)
+        let a = RunArtifacts.load(paths, runId: "run", slug: "acme/api", n: 7)
         XCTAssertEqual(a.folder, pr)
         XCTAssertEqual(a.fileCount, 3)
         XCTAssertEqual(a.additions, 10)
@@ -71,17 +74,66 @@ final class RunArtifactsTests: XCTestCase {
         XCTAssertEqual(a.diffParts, 2, "diff.patch is the whole diff, not a part")
     }
 
+    func testDraftWithoutVerdictIsKeptWithItsBody() throws {
+        let pr = paths.scratchDir + "/run/acme-api/7"
+        try write(json(["body": "Still a review.", "comments": [["path": "a.swift", "line": 2, "body": "x"]]]),
+                  "draft.json", in: pr)
+        let a = RunArtifacts.load(paths, runId: "run", slug: "acme/api", n: 7)
+        XCTAssertEqual(a.drafts.count, 1)
+        XCTAssertNil(a.drafts[0].verdict)
+        XCTAssertEqual(a.drafts[0].body, "Still a review.")
+        XCTAssertEqual(a.drafts[0].comments.count, 1)
+    }
+
     func testMissingFolderIsEmpty() {
-        let empty = RunArtifacts.load(folder: root + "/does-not-exist")
+        let empty = RunArtifacts.load(paths, runId: "run", slug: "acme/api", n: 404)
         XCTAssertEqual(empty, RunArtifacts())
         XCTAssertNil(empty.folder)
         XCTAssertNil(empty.commentCount)
     }
 
     func testFolderPathMatchesTheRunnersScratchLayout() {
-        let paths = Paths(home: "/h", env: [:])
-        XCTAssertEqual(RunArtifacts.folder(paths, runId: "r1", slug: "acme/api", n: 7),
+        let home = Paths(home: "/h", env: [:])
+        XCTAssertEqual(RunArtifacts.folder(home, runId: "r1", slug: "acme/api", n: 7),
                        "/h/.local/state/glidepath/scratch/r1/acme-api/7")
+    }
+
+    func testFolderRefusesPathsOutsideTheScratchFolder() throws {
+        let home = Paths(home: "/h", env: [:])
+        XCTAssertNil(RunArtifacts.folder(home, runId: "..", slug: "acme/api", n: 7))
+        XCTAssertNil(RunArtifacts.folder(home, runId: ".", slug: "acme/api", n: 7))
+        XCTAssertNil(RunArtifacts.folder(home, runId: "", slug: "acme/api", n: 7))
+        XCTAssertNil(RunArtifacts.folder(home, runId: "../../x", slug: "acme/api", n: 7))
+        XCTAssertNil(RunArtifacts.folder(home, runId: "r1/sub", slug: "acme/api", n: 7))
+        XCTAssertNil(RunArtifacts.folder(home, runId: "r1", slug: "acme/..", n: 7))
+        XCTAssertNil(RunArtifacts.folder(home, runId: "r1", slug: "../etc", n: 7))
+        XCTAssertNil(RunArtifacts.folder(home, runId: "r1", slug: "acme/api", n: 0))
+
+        // A run id that points out of scratch loads nothing, even when the folder exists.
+        try write(json(["additions": 9]), "pr.json", in: root + "/.local/state/glidepath/scratch/../evil/acme-api/7")
+        XCTAssertNil(RunArtifacts.load(paths, runId: "..", slug: "acme/api", n: 7).folder)
+        XCTAssertEqual(RunArtifacts.load(paths, runId: "..", slug: "acme/api", n: 7), RunArtifacts())
+    }
+
+    func testFilesAreReadAtMostOneMegabyte() throws {
+        let pr = paths.scratchDir + "/run/acme-api/7"
+        // Short lines, so the 400-character line cap does not hide the byte limit.
+        let huge = "- first\n" + String(repeating: "x\n", count: RunArtifacts.readLimit)
+        try write(huge, "blast.md", in: pr)
+        let a = RunArtifacts.load(paths, runId: "run", slug: "acme/api", n: 7)
+        XCTAssertEqual(a.blast?.hasPrefix("- first"), true)
+        XCTAssertLessThanOrEqual(a.blast?.utf8.count ?? 0, RunArtifacts.readLimit, "the 2 MB file is cut at 1 MB")
+    }
+
+    func testLinesAreCutAt400Characters() {
+        let long = String(repeating: "a", count: 500)
+        XCTAssertEqual(RunArtifacts.clipLines(long).count, 400)
+        XCTAssertEqual(RunArtifacts.clipLines("short\n" + long).components(separatedBy: "\n").map(\.count), [5, 400])
+    }
+
+    func testListCapsKeepTheFirstItems() {
+        XCTAssertEqual(RunArtifacts.cap(Array(1...80), RunArtifacts.commentCap).count, 50)
+        XCTAssertEqual(RunArtifacts.cap(Array(1...3), RunArtifacts.bulletCap), [1, 2, 3])
     }
 
     func testCheckerDeltaKeysFindingsByPathAndLine() {
@@ -96,6 +148,17 @@ final class RunArtifactsTests: XCTestCase {
         XCTAssertEqual(delta.verdictChanged?.to, .approve)
     }
 
+    func testCheckerDeltaWithoutDraftsInfersEveryFindingKept() {
+        let final = review(.changes, [("a.swift", 1), ("b.swift", 2)], body: "Final.")
+        let delta = CheckerDelta.compute(drafts: [], final: final)
+        XCTAssertTrue(delta.inferred)
+        XCTAssertEqual(delta.kept.map { "\($0.path):\($0.line)" }, ["a.swift:1", "b.swift:2"])
+        XCTAssertTrue(delta.added.isEmpty)
+        XCTAssertTrue(delta.dropped.isEmpty)
+        XCTAssertNil(delta.verdictChanged)
+        XCTAssertFalse(CheckerDelta.compute(drafts: [review(.changes, [])], final: final).inferred)
+    }
+
     func testCheckerDeltaWithoutChangesIsQuiet() {
         let draft = review(.changes, [("a.swift", 1)], body: "Same.")
         let delta = CheckerDelta.compute(drafts: [draft], final: draft)
@@ -103,6 +166,18 @@ final class RunArtifactsTests: XCTestCase {
         XCTAssertTrue(delta.dropped.isEmpty)
         XCTAssertFalse(delta.bodyChanged)
         XCTAssertNil(delta.verdictChanged)
+    }
+
+    func testBlastChipReadsOnlyTheLede() {
+        let partial = RunArtifacts.blastSummary("GitNexus returned partial results, callers from grep\n- a -> b")
+        XCTAssertEqual(partial.chip, "grep only · partial")
+        XCTAssertTrue(partial.partial)
+
+        let headed = RunArtifacts.blastSummary("## Blast\nCallers from GitNexus, 2 found.\n- x -> y")
+        XCTAssertEqual(headed.chip, "GitNexus")
+
+        let bulletOnly = RunArtifacts.blastSummary("- grep was used here\nCallers from GitNexus.")
+        XCTAssertEqual(bulletOnly.chip, "", "text after the first bullet is not the lede")
     }
 
     func testBlastChips() {

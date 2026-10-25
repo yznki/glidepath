@@ -4,32 +4,32 @@ import AppKit
 /// The review sheet as a flight recorder: the approach a PR made through its run (gather, review, check, land), the
 /// verdict, and the readouts behind each stage. Drawn from prototype docs/design/run-detail/prototype.html.
 
-/// The artifacts a review sheet shows. Starts empty and fills off the main thread; a fixture starts loaded.
+/// The artifacts a review sheet shows. Nil until they load off the main thread; a fixture starts loaded.
 @MainActor
 final class RunArtifactsModel: ObservableObject {
     @Published private(set) var artifacts: RunArtifacts?
-    @Published private(set) var loaded: Bool
     private var requested = false
 
     init(fixture: RunArtifacts? = nil) {
         artifacts = fixture
-        loaded = fixture != nil
     }
 
     /// Reads the PR folder once, off the main actor.
-    func load(folder: String) {
-        guard !loaded, !requested else { return }
+    func load(_ paths: Paths, runId: String, slug: String, n: Int) {
+        guard artifacts == nil, !requested else { return }
         requested = true
         Task {
-            let found = await Task.detached(priority: .userInitiated) { RunArtifacts.load(folder: folder) }.value
+            let found = await Task.detached(priority: .userInitiated) {
+                RunArtifacts.load(paths, runId: runId, slug: slug, n: n)
+            }.value
             artifacts = found
-            loaded = true
         }
     }
 }
 
-/// The motion and pointer state of the sheet: the approach's draw-in, the touchdown halo, the hovered waypoint and the
-/// readout a click highlights. `play` runs the draw-in once when the sheet opens.
+/// The motion and pointer state of the sheet: the approach's draw-in, the touchdown halo, the hovered waypoint, the
+/// readout a click highlights and the footer link under the pointer. `play` runs the draw-in once when the sheet opens.
+/// `reviewError` is why Review again failed, shown under the verdict bar until the next try.
 @MainActor
 final class FlightModel: ObservableObject {
     /// How much of the slope is drawn, 0 to 1.
@@ -42,6 +42,8 @@ final class FlightModel: ObservableObject {
     @Published var halo: CGFloat = 0
     @Published var hot: Int?
     @Published var flashed: FlightReadout?
+    @Published var linkHot: FooterLink?
+    @Published var reviewError: String?
 
     func play(duration: Double) {
         draw = 1
@@ -72,6 +74,71 @@ enum FlightReadout: Hashable {
     case review, checker, blast, notes, gathered
 }
 
+/// The footer's links, for the underline that grows under the pointer.
+enum FooterLink: Hashable {
+    case finder, github
+}
+
+/// What a review's approach shows, from its row and artifacts (nil until they load): how far the run got, whether it
+/// landed, and the Land figure. Pure, so the stage rules are tested without the view.
+struct ApproachState: Equatable {
+    /// A held draft, or a verdict that was posted.
+    let landed: Bool
+    /// A filter skip: no work and no scratch. Hidden once the artifacts have loaded.
+    let filtered: Bool
+    /// A skip after some work, by the session.
+    let sessionSkip: Bool
+    /// A verdict with no draft and no posting: discarded, stale or a dry run.
+    let notPosted: Bool
+    /// The waypoints drawn as reached, 1 to 4. A review that did not land stops before Land.
+    let reached: Int
+    let landWord: String
+    let landSub: String?
+    /// Review again is offered once the artifacts have loaded.
+    let reviewAgainOffered: Bool
+
+    var stopped: Bool { !landed }
+
+    init(row: ReviewRow, artifacts: RunArtifacts?) {
+        let verdict = row.verdict == .approve || row.verdict == .changes
+        let loaded = artifacts != nil
+        landed = row.draft || (verdict && row.postedAt != nil)
+        notPosted = !row.draft && verdict && row.postedAt == nil
+        filtered = loaded && row.verdict == .skipped && !row.tooLarge && row.stage == .gather && row.tokens == 0
+            && artifacts?.folder == nil
+        sessionSkip = row.verdict == .skipped && !filtered && !row.tooLarge
+        reached = landed ? 4 : min(row.stage.rank + 1, 3)
+        reviewAgainOffered = loaded && !row.draft && !row.tooLarge && (row.verdict == nil || sessionSkip || notPosted)
+
+        if row.draft {
+            landWord = "Held as draft"
+            landSub = "Waiting for you to post"
+        } else if row.verdict == .skipped {
+            landWord = "Skipped"
+            landSub = row.reason.map { Self.clip($0, 32) }
+        } else if row.verdict == nil {
+            landWord = "No result"
+            landSub = "Nothing posted"
+        } else if let postedAt = row.postedAt {
+            landWord = "Posted"
+            landSub = "at \(HeaderCopy.clock(postedAt))"
+        } else {
+            landWord = "Not posted"
+            landSub = "Discarded, stale or dry run"
+        }
+    }
+
+    /// The readout a waypoint jumps to: gather, review, check, land.
+    func readout(at i: Int) -> FlightReadout {
+        landed ? [.blast, .review, .checker, .review][i] : [.gathered, .review, .review, .notes][i]
+    }
+
+    /// Cuts a figure's sub-line to `limit` characters with an ellipsis, so it stays inside the 206 pt profile.
+    private static func clip(_ text: String, _ limit: Int) -> String {
+        text.count > limit ? String(text.prefix(limit - 1)) + "…" : text
+    }
+}
+
 /// One stage's figure under the approach: a bold line and an optional muted line.
 struct FigureText: Equatable {
     let title: String
@@ -83,16 +150,20 @@ enum FlightText {
     static let loc = Color(hex: "8FB0FF")
     static let faint = Color(hex: "ECECF2").opacity(0.22)
 
-    /// Markdown with inline code only. Code spans draw in 12 pt monospaced fg.
+    /// Markdown with inline code only, and no links: session-written text never renders clickable. Code spans draw in
+    /// 12 pt monospaced fg. Each line is cut to `RunArtifacts.lineLimit` characters first.
     static func styled(_ text: String) -> AttributedString {
         var out = (try? AttributedString(
-            markdown: text,
+            markdown: RunArtifacts.clipLines(text),
             options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        )) ?? AttributedString(text)
-        let code = out.runs.filter { $0.inlinePresentationIntent?.contains(.code) == true }.map(\.range)
-        for range in code {
-            out[range].font = .system(size: 12, design: .monospaced)
-            out[range].foregroundColor = Gotham.fg
+        )) ?? AttributedString(RunArtifacts.clipLines(text))
+        let runs = out.runs.map { ($0.range, $0.inlinePresentationIntent?.contains(.code) == true) }
+        for (range, isCode) in runs {
+            out[range].link = nil
+            if isCode {
+                out[range].font = .system(size: 12, design: .monospaced)
+                out[range].foregroundColor = Gotham.fg
+            }
         }
         return out
     }
@@ -184,8 +255,7 @@ struct RunwayShape: Shape {
 /// A review that stopped pulls up on a dashed go-around. A filter skip never gets here (the sheet hides it).
 struct ApproachView: View {
     @ObservedObject var flight: FlightModel
-    let reached: Int
-    let landed: Bool
+    let state: ApproachState
     let figures: [FigureText]
     let settled: Bool
     let signal: Color
@@ -193,7 +263,11 @@ struct ApproachView: View {
 
     static let height = ApproachSpace.height
     private static let names = ["GATHER", "REVIEW", "CHECK", "LAND"]
+    /// The Land figure's top, below the runway, whether or not the review landed.
+    private static let landFigureTop: CGFloat = 164
 
+    private var reached: Int { state.reached }
+    private var landed: Bool { state.landed }
     /// The draw-in: 1.15 s for a landed review, 0.5 s when it stopped.
     private var duration: Double { landed ? 1.15 : 0.5 }
 
@@ -254,10 +328,6 @@ struct ApproachView: View {
         Double(min(i, last)) * duration / Double(max(reached, 2)) + 0.08
     }
 
-    private func target(_ i: Int) -> FlightReadout {
-        landed ? [.blast, .review, .checker, .review][i] : [.gathered, .review, .review, .notes][i]
-    }
-
     private func waypoint(_ i: Int, _ w: CGFloat) -> some View {
         let hot = flight.hot == i
         return Circle()
@@ -265,7 +335,7 @@ struct ApproachView: View {
             .overlay(Circle().strokeBorder(stroke(i), lineWidth: 1.5))
             .frame(width: 10, height: 10)
             .scaleEffect(hot ? 1.4 : 1)
-            .animation(.easeOut(duration: 0.3), value: hot)
+            .animation(settled ? nil : .easeOut(duration: 0.3), value: hot)
             .frame(width: 20, height: 20)
             .contentShape(Circle())
             .opacity(settled || flight.waypoints ? 1 : 0)
@@ -277,7 +347,7 @@ struct ApproachView: View {
                     flight.hot = nil
                 }
             }
-            .onTapGesture { onPick(target(i)) }
+            .onTapGesture { onPick(state.readout(at: i)) }
             .position(point(i, w))
     }
 
@@ -291,14 +361,17 @@ struct ApproachView: View {
             .position(point(last, w))
     }
 
-    /// One stage's label and figure. Stages the review never reached are dimmed; the Land figure is always drawn.
+    /// One stage's label and figure. Each figure line sits on its own knockout of the sheet colour, so the slope passes
+    /// behind the text. Stages the review never reached are dimmed; the Land figure is always drawn, right-aligned below
+    /// the runway.
     private func column(_ i: Int, _ w: CGFloat) -> some View {
-        let end = landed && i == 3
+        let end = i == 3
         let at = point(i, w)
         let figure = figures[i]
         let dim = i >= reached && i != 3
         let on = flight.hot == i
-        let x = end ? w - 180 : at.x - 6
+        let labelX = end ? w - 180 : at.x - 6
+        let figureY = end ? Self.landFigureTop : at.y + 14
         let shown = settled || flight.figures
         return ZStack(alignment: .topLeading) {
             Text(Self.names[i])
@@ -306,28 +379,42 @@ struct ApproachView: View {
                 .tracking(1.4)
                 .foregroundStyle(on ? Gotham.fg : Gotham.mute)
                 .frame(width: 180, alignment: end ? .trailing : .leading)
-                .offset(x: x, y: at.y - 26)
+                .opacity(dim ? 0.38 : 1)
+                .offset(x: labelX, y: at.y - 26)
             VStack(alignment: end ? .trailing : .leading, spacing: 2) {
-                Text(figure.title)
+                knockout(Text(figure.title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Gotham.fg)
-                    .multilineTextAlignment(end ? .trailing : .leading)
+                    .multilineTextAlignment(end ? .trailing : .leading), dim: dim)
                 if let sub = figure.sub {
-                    Text(sub)
+                    knockout(Text(sub)
                         .font(.system(size: 12))
                         .foregroundStyle(on ? Gotham.fg : Gotham.mute)
                         .multilineTextAlignment(end ? .trailing : .leading)
+                        .lineLimit(3), dim: dim)
                 }
             }
             .frame(width: 180, alignment: end ? .trailing : .leading)
-            .offset(x: x, y: at.y + 14)
+            .offset(x: end ? labelX + Self.knockoutPad : labelX - Self.knockoutPad, y: figureY - Self.knockoutPadV)
         }
         .allowsHitTesting(false)
         .frame(width: w, height: Self.height, alignment: .topLeading)
         .opacity(shown ? 1 : 0)
         .offset(y: shown ? 0 : -6)
         .animation(.timingCurve(0.2, 0.7, 0.1, 1, duration: 0.6).delay(0.12 + 0.06 * Double(i)), value: flight.figures)
-        .opacity(dim ? 0.38 : 1)
+    }
+
+    private static let knockoutPad: CGFloat = 4
+    private static let knockoutPadV: CGFloat = 2
+
+    /// A figure line on a knockout: 4 pt across and 2 pt down around the text, corner 4, in the sheet colour. The dim
+    /// goes on the text alone, so the knockout stays solid.
+    private func knockout<Content: View>(_ content: Content, dim: Bool) -> some View {
+        content
+            .opacity(dim ? 0.38 : 1)
+            .padding(.horizontal, Self.knockoutPad)
+            .padding(.vertical, Self.knockoutPadV)
+            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Gotham.void))
     }
 
     // MARK: Approach lights
@@ -395,7 +482,8 @@ struct ReviewSheet: View {
             .padding(.top, 14)
             ReviewDetail(row: row, text: text, store: store, artifacts: artifacts, onClose: onClose)
         }
-        .frame(width: 860, height: 760)
+        .frame(width: 860)
+        .frame(minHeight: 520, idealHeight: 760, maxHeight: 760)
         .background(Gotham.void)
     }
 }
@@ -419,23 +507,12 @@ struct ReviewDetail: View {
     private var p: Palette { Palette(scheme) }
     private var strip: Strip { row.strip }
     private var signal: Color { Gotham.signal(signalKey) }
+    private var reduced: Bool { Motion.reduced(reduceMotion) }
     /// Snapshots and reduced motion draw the settled sheet.
-    private var settled: Bool { offscreen || Motion.reduced(reduceMotion) }
+    private var settled: Bool { offscreen || reduced }
     private var art: RunArtifacts? { artifacts.artifacts }
-
-    /// A held draft or a verdict: the run got through the review.
-    private var landed: Bool { row.draft || row.verdict == .approve || row.verdict == .changes }
-    /// A skip with no scratch folder, no tokens, from the gather stage: the filter skipped it before any work.
-    private var filtered: Bool {
-        row.verdict == .skipped && row.stage == .gather && row.tokens == 0 && art?.folder == nil
-    }
-    /// A session skip: the run did some work, then skipped the PR.
-    private var sessionSkip: Bool { row.verdict == .skipped && !filtered && !row.tooLarge }
-    private var reviewAgainOffered: Bool {
-        !row.draft && !row.tooLarge && (row.verdict == nil || sessionSkip)
-    }
-    /// The stages reached, 1 to 4: gather, review, check, post. A landed review reached all four.
-    private var reached: Int { landed ? 4 : row.stage.rank + 1 }
+    private var state: ApproachState { ApproachState(row: row, artifacts: art) }
+    private var landed: Bool { state.landed }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -451,7 +528,7 @@ struct ReviewDetail: View {
                 .padding(.bottom, 22)
         }
         .onAppear {
-            artifacts.load(folder: RunArtifacts.folder(store.paths, runId: row.runId, slug: row.repo, n: row.number))
+            artifacts.load(store.paths, runId: row.runId, slug: row.repo, n: row.number)
             if !settled { flight.play(duration: landed ? 1.15 : 0.5) }
         }
         .onReceive(WindowRouter.shared.$pending.compactMap { $0 }.receive(on: DispatchQueue.main)) { _ in
@@ -462,9 +539,8 @@ struct ReviewDetail: View {
     private func content(_ proxy: ScrollViewProxy) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            if !filtered {
-                ApproachView(flight: flight, reached: reached, landed: landed, figures: figures,
-                                settled: settled, signal: signal) { readout in
+            if !state.filtered {
+                ApproachView(flight: flight, state: state, figures: figures, settled: settled, signal: signal) { readout in
                     proxy.scrollTo(readout, anchor: .center)
                     flight.flash(readout)
                 }
@@ -473,7 +549,7 @@ struct ReviewDetail: View {
             }
             verdictBar
                 .padding(.top, 6)
-            if let error = store.draftErrors[row.stripID] {
+            if let error = store.draftErrors[row.stripID] ?? flight.reviewError {
                 Text(error)
                     .font(.system(size: 12))
                     .foregroundStyle(p.error)
@@ -559,14 +635,12 @@ struct ReviewDetail: View {
 
     /// The four figures under the approach, from the row and its artifacts. Before the artifacts load, the figures wait.
     private var figures: [FigureText] {
-        [gatherFigure, reviewFigure, checkFigure, landFigure]
+        [gatherFigure, reviewFigure, checkFigure, FigureText(title: state.landWord, sub: state.landSub)]
     }
 
     private var gatherFigure: FigureText {
-        guard artifacts.loaded else { return FigureText(title: "—", sub: nil) }
-        guard let a = art, a.folder != nil else {
-            return FigureText(title: "—", sub: "Details are kept for 7 days.")
-        }
+        guard let a = art else { return FigureText(title: "—", sub: nil) }
+        guard a.folder != nil else { return FigureText(title: "—", sub: "Details are kept for 7 days.") }
         let counts = [a.fileCount.map { $0 == 100 ? "100+ files" : "\($0) files" },
                       a.commentCount.map { "\($0) comments" }].compactMap { $0 }
         var sub: [String] = []
@@ -584,8 +658,8 @@ struct ReviewDetail: View {
     }
 
     private var reviewFigure: FigureText {
-        if reached < 2 { return FigureText(title: "Not reached", sub: nil) }
-        guard artifacts.loaded, let a = art, a.folder != nil else { return FigureText(title: "—", sub: nil) }
+        if state.reached < 2 { return FigureText(title: "Not reached", sub: nil) }
+        guard let a = art, a.folder != nil else { return FigureText(title: "—", sub: nil) }
         guard let draft = a.draft else { return FigureText(title: "No review", sub: nil) }
         let count = draft.comments.count
         guard let verdict = draft.verdict else { return FigureText(title: "No verdict", sub: "First pass") }
@@ -594,35 +668,27 @@ struct ReviewDetail: View {
     }
 
     private var checkFigure: FigureText {
-        if reached < 3 { return FigureText(title: "Not reached", sub: nil) }
-        guard artifacts.loaded, let a = art, a.folder != nil, let final = a.final else {
-            return FigureText(title: "—", sub: nil)
-        }
+        if state.reached < 3 { return FigureText(title: "Not reached", sub: nil) }
+        guard let a = art, a.folder != nil, let final = a.final else { return FigureText(title: "—", sub: nil) }
         let delta = CheckerDelta.compute(drafts: a.drafts, final: final)
+        if delta.inferred { return FigureText(title: "Checked", sub: "Draft not kept") }
         var title = "\(delta.kept.count) kept"
         if !delta.added.isEmpty { title += " · \(delta.added.count) added" }
         if !delta.dropped.isEmpty { title += " · \(delta.dropped.count) dropped" }
-        return FigureText(title: title, sub: "Every quoted line re-opened")
+        let sub = delta.verdictChanged.map(Self.changeWords) ?? "Every quoted line re-opened"
+        return FigureText(title: title, sub: sub)
     }
 
-    private var landFigure: FigureText {
-        if row.draft { return FigureText(title: "Held as draft", sub: "Waiting for you to post") }
-        switch row.verdict {
-        case .skipped?: return FigureText(title: "Skipped", sub: row.reason)
-        case nil: return FigureText(title: "No result", sub: "Nothing posted")
-        case .approve?, .changes?:
-            if let postedAt = row.postedAt {
-                return FigureText(title: "Posted", sub: "at \(HeaderCopy.clock(postedAt))")
-            }
-            return FigureText(title: row.verdict == .approve ? "Approved" : "Posted", sub: nil)
-        }
+    /// "Verdict changed by the checker: changes → approve", for the Check figure and the Checker readout.
+    static func changeWords(_ change: (from: Verdict, to: Verdict)) -> String {
+        "Verdict changed by the checker: \(change.from.rawValue) → \(change.to.rawValue)"
     }
 
     // MARK: Verdict bar
 
     private var verdictWord: String {
         if row.tooLarge { return "Too large" }
-        if row.verdict == .skipped { return row.reason.map { "Skipped · \($0)" } ?? "Skipped" }
+        if row.verdict == .skipped { return "Skipped" }
         if text?.event == "COMMENT" { return "Comment" }
         switch row.verdict {
         case .changes: return "Changes requested"
@@ -632,18 +698,9 @@ struct ReviewDetail: View {
         }
     }
 
-    /// The reason (for a verdict) and the draft or posted state, joined. Legacy rows have no record, so they say nothing.
+    /// The reason behind the verdict or the skip. The Land figure says whether the review waits, posted or not.
     private var subtitle: String? {
-        var parts: [String] = []
-        if !row.tooLarge, row.verdict == .changes || row.verdict == .approve, let reason = row.reason {
-            parts.append(reason)
-        }
-        if row.draft {
-            parts.append("Waiting for you")
-        } else if row.postedAt != nil {
-            parts.append("Posted")
-        }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        row.tooLarge ? nil : row.reason
     }
 
     private var isCommentOnly: Bool { text?.event == "COMMENT" }
@@ -660,22 +717,27 @@ struct ReviewDetail: View {
 
     private var verdictBar: some View {
         HStack(spacing: WinMetrics.s12) {
-            // The verdict keeps its full width on one line; the subtitle gives way first when the bar is narrow.
+            // The verdict keeps its full width on one line; the reason is cut short before the buttons give way.
             Text(verdictWord)
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(barInk)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(1)
+                .layoutPriority(2)
             if let subtitle {
                 Text(subtitle)
                     .font(.system(size: 13))
                     .foregroundStyle(Gotham.mute)
                     .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .layoutPriority(0)
+            } else {
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: WinMetrics.s8)
             barActions
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
         }
         .padding(.leading, WinMetrics.s16)
         .padding(.trailing, WinMetrics.s12)
@@ -705,16 +767,22 @@ struct ReviewDetail: View {
             Text("Posted \(HeaderCopy.clock(postedAt))")
                 .font(.system(size: 13))
                 .foregroundStyle(Gotham.mute)
-        } else if reviewAgainOffered {
+        } else if state.reviewAgainOffered {
             WinButton(title: "Review again", style: .primary, small: true) { reviewAgain() }
                 .disabled(store.snap.running || store.snap.dryRunning)
         }
     }
 
-    /// Runs the PR's review again by hand, after the usual confirm. The sheet closes once the review starts.
+    /// Runs the PR's review again by hand, after the usual confirm. The sheet closes once the review starts; a refusal
+    /// or a failed start stays on the sheet, under the verdict bar.
     private func reviewAgain() {
-        guard Confirm.review(store, .prs([PRRef(slug: row.repo, n: row.number)])) else { return }
-        onClose()
+        flight.reviewError = nil
+        store.actionError = nil
+        if Confirm.review(store, .prs([PRRef(slug: row.repo, n: row.number)])) {
+            onClose()
+        } else {
+            flight.reviewError = store.actionError
+        }
     }
 
     // MARK: Readouts
@@ -736,10 +804,12 @@ struct ReviewDetail: View {
 
     @ViewBuilder
     private var reviewReadout: some View {
-        if !filtered || row.tooLarge {
+        if !state.filtered {
             readout(.review, "Review", landed ? "Final text" : nil) {
                 if row.tooLarge {
                     note("Too large: \((row.changedLines ?? 0).formatted()) lines, limit \(store.snap.maxChangedLines)")
+                } else if state.notPosted {
+                    note("Not posted, so nothing reached GitHub.")
                 } else if !landed {
                     note(row.verdict == .skipped ? "Nothing reviewed. The session skipped it." : stoppedWords)
                 } else if let text {
@@ -748,7 +818,8 @@ struct ReviewDetail: View {
                             prose(paragraph)
                         }
                     }
-                    ForEach(Array(text.comments.enumerated()), id: \.offset) { _, comment in
+                    ForEach(Array(RunArtifacts.cap(text.comments, RunArtifacts.commentCap).enumerated()), id: \.offset) {
+                        _, comment in
                         commentCard(comment)
                     }
                 } else {
@@ -758,9 +829,9 @@ struct ReviewDetail: View {
         }
     }
 
-    /// Where a review that stopped without a verdict got to.
+    /// Where a review that stopped without a verdict got to, from its last stage.
     private var stoppedWords: String {
-        let phase = ["after gathering", "during review", "during check", "before posting"][min(max(reached, 1), 4) - 1]
+        let phase = ["after gathering", "during review", "during check", "before posting"][row.stage.rank]
         return "Nothing reviewed. The session stopped \(phase)."
     }
 
@@ -768,18 +839,27 @@ struct ReviewDetail: View {
     private var checkerReadout: some View {
         if landed, let a = art, let final = a.final {
             let delta = CheckerDelta.compute(drafts: a.drafts, final: final)
-            readout(.checker, "Checker", "Draft to final") {
-                HStack(spacing: 22) {
-                    tally("\(delta.kept.count)", "kept", Gotham.fg)
-                    tally("\(delta.added.count)", "added", signal)
-                    tally("\(delta.dropped.count)", "dropped", Gotham.fg)
+            readout(.checker, "Checker", delta.inferred ? "Draft not kept" : "Draft to final") {
+                if !delta.inferred {
+                    HStack(spacing: 22) {
+                        tally("\(delta.kept.count)", "kept", Gotham.fg)
+                        tally("\(delta.added.count)", "added", signal)
+                        tally("\(delta.dropped.count)", "dropped", Gotham.fg)
+                    }
+                    .padding(.bottom, 12)
+                    if let change = delta.verdictChanged {
+                        Text(Self.changeWords(change))
+                            .font(.system(size: 13))
+                            .foregroundStyle(Gotham.fg)
+                            .padding(.bottom, 12)
+                    }
                 }
-                .padding(.bottom, 12)
                 let findings: [(tag: String, comment: RunArtifacts.Comment, tint: Color, dropped: Bool)] =
                     delta.added.map { ("ADDED", $0, signal, false) }
                     + delta.kept.map { ("KEPT", $0, Gotham.mute, false) }
                     + delta.dropped.map { ("DROPPED", $0, FlightText.faint, true) }
-                ForEach(Array(findings.enumerated()), id: \.offset) { index, item in
+                ForEach(Array(RunArtifacts.cap(findings, RunArtifacts.commentCap).enumerated()), id: \.offset) {
+                    index, item in
                     finding(item.tag, item.comment, tint: item.tint, dropped: item.dropped, first: index == 0)
                 }
                 if delta.bodyChanged {
@@ -874,7 +954,7 @@ struct ReviewDetail: View {
                 .fill(LinearGradient(colors: [Color.white.opacity(0.03), .clear], startPoint: .leading,
                                      endPoint: .trailing))
                 .opacity(flight.flashed == id ? 1 : 0)
-                .animation(.easeOut(duration: 0.3), value: flight.flashed == id)
+                .animation(reduced ? nil : .easeOut(duration: 0.3), value: flight.flashed == id)
         }
         .id(id)
     }
@@ -899,7 +979,7 @@ struct ReviewDetail: View {
 
     private func bullets(_ items: [String]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+            ForEach(Array(RunArtifacts.cap(items, RunArtifacts.bulletCap).enumerated()), id: \.offset) { _, item in
                 Text(FlightText.styled(item))
                     .font(.system(size: 13))
                     .lineSpacing(5)
@@ -988,35 +1068,55 @@ struct ReviewDetail: View {
 
     // MARK: Footer
 
+    /// The two links, right-aligned. Their underline grows under the pointer.
     private var footer: some View {
         HStack(spacing: WinMetrics.s16) {
-            Text(footerWords)
             Spacer(minLength: 0)
             if let folder = art?.folder {
-                WinButton(title: "Show files in Finder", style: .link) {
+                footerLink(.finder, "Show files in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: folder)])
                 }
             }
-            if RepoConfig.isValidSlug(row.repo) {
-                WinButton(title: "Open on GitHub", style: .link) { openOnGitHub() }
+            if pullURL != nil {
+                footerLink(.github, "Open on GitHub") { openOnGitHub() }
             }
         }
-        .font(.system(size: 12))
-        .foregroundStyle(Gotham.mute)
-        .monospacedDigit()
     }
 
-    /// "3 min 12 s · 427k tokens", each part only when known.
-    private var footerWords: String {
-        var parts: [String] = []
-        if row.verdict != .skipped, let duration = row.duration { parts.append(Self.duration(duration)) }
-        if row.tokens > 0 { parts.append("\(compactTokens(row.tokens)) tokens") }
-        return parts.joined(separator: " · ")
+    private func footerLink(_ link: FooterLink, _ title: String, _ action: @escaping () -> Void) -> some View {
+        let hot = flight.linkHot == link
+        return Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Gotham.fg)
+                .overlay(alignment: .bottomLeading) {
+                    Rectangle()
+                        .fill(Gotham.fg)
+                        .frame(height: 1)
+                        .scaleEffect(x: hot ? 1 : 0, anchor: .leading)
+                        .offset(y: 2)
+                }
+        }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            if inside {
+                flight.linkHot = link
+            } else if flight.linkHot == link {
+                flight.linkHot = nil
+            }
+        }
+        .animation(reduced ? nil : .easeOut(duration: 0.2), value: hot)
     }
 
-    /// Opens only the PR's own github.com page: the slug is validated and the number is an Int.
+    /// The PR's own github.com page, or nil unless the slug is valid. Open and copy both use it.
+    private var pullURL: String? {
+        guard RepoConfig.isValidSlug(row.repo) else { return nil }
+        return "https://github.com/\(row.repo)/pull/\(row.number)"
+    }
+
     private func openOnGitHub() {
-        guard let url = URL(string: "https://github.com/\(row.repo)/pull/\(row.number)") else { return }
+        guard let link = pullURL, let url = URL(string: link) else { return }
         NSWorkspace.shared.open(url)
     }
 
@@ -1035,7 +1135,7 @@ struct ReviewDetail: View {
         case .openOnGitHub:
             openOnGitHub()
         case .copyLink:
-            copy("https://github.com/\(row.repo)/pull/\(row.number)")
+            if let link = pullURL { copy(link) }
         case .copyReviewText:
             if let body = text?.body { copy(body) }
         default:
@@ -1089,11 +1189,12 @@ struct ReviewDetail: View {
         return out
     }
 
-    /// "3 min 12 s", or "42 s" under a minute.
+    /// "42 s" under a minute, "3 min 12 s" under ten minutes, then whole minutes: "31 min".
     static func duration(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
+        if total < 60 { return "\(total) s" }
         let minutes = total / 60
-        let rest = total % 60
-        return minutes > 0 ? "\(minutes) min \(rest) s" : "\(rest) s"
+        if minutes >= 10 { return "\(minutes) min" }
+        return "\(minutes) min \(total % 60) s"
     }
 }
