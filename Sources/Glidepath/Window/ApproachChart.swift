@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// The approach chart's layout, in the prototype's 1000 x 330 space. Pure, so the placement is tested without drawing.
 enum ApproachGeometry {
@@ -245,16 +246,16 @@ struct ApproachPainter {
         case .waiting:
             alpha = 0.8
         case .holding:
-            // Circles a racetrack loop, 34 by 12 units, every 5 s. Still, it holds at its marker.
+            // Circles a racetrack loop, 34 by 12 units, every 5 s. Still, it holds at the top of the loop, facing right.
             colour = signal
             let loopCentre = frame.point(p)
-            let theta = still ? 0 : 2 * Double.pi * t / 5
+            let theta = still ? -Double.pi / 2 : 2 * Double.pi * t / 5
             let ellipse = CGRect(x: loopCentre.x - frame.dx(34), y: loopCentre.y - frame.dy(12),
                                  width: frame.dx(68), height: frame.dy(24))
             ctx.stroke(Path(ellipseIn: ellipse), with: .color(signal.opacity(0.45)),
                        style: StrokeStyle(lineWidth: 1, dash: [3, 4]))
-            let along = frame.point(CGPoint(x: p.x + 34 * CGFloat(cos(theta)), y: p.y + 12 * CGFloat(sin(theta))))
-            at = CGPoint(x: along.x, y: along.y)
+            // In model units: `c` below maps it to the canvas once.
+            at = CGPoint(x: p.x + 34 * CGFloat(cos(theta)), y: p.y + 12 * CGFloat(sin(theta)))
             // The tangent of the loop, so the glyph faces along it.
             angle = atan2(12 * CGFloat(cos(theta)) * frame.sy, -34 * CGFloat(sin(theta)) * frame.sx)
         case .flying:
@@ -287,10 +288,10 @@ struct ApproachPainter {
         label(&ctx, headline, at: CGPoint(x: c.x + 12, y: c.y - 9), size: 12, weight: .semibold,
               color: Color(hex: "ECECEF"))
         if !follower {
-            let status = plane.label
             let amber = plane.phase == .holding || plane.phase == .cleared
             let statusColour: Color = amber ? signal : (plane.phase == .flying ? Gotham.fg.opacity(0.8) : Self.mute)
-            label(&ctx, status, at: CGPoint(x: c.x + 12, y: c.y + 8), size: 11, color: statusColour)
+            label(&ctx, fitted(plane.label, width: frame.dx(240)), at: CGPoint(x: c.x + 12, y: c.y + 8), size: 11,
+                  color: statusColour)
         }
     }
 
@@ -305,6 +306,17 @@ struct ApproachPainter {
         }
         path.closeSubpath()
         return path
+    }
+
+    /// The text cut to `width` points at 11 point, ending in an ellipsis when it is cut. Status labels are capped at
+    /// 240 units so one plane's status never runs into the next plane's.
+    private func fitted(_ text: String, width: CGFloat) -> String {
+        let font = NSFont.systemFont(ofSize: 11)
+        func fits(_ s: String) -> Bool { (s as NSString).size(withAttributes: [.font: font]).width <= width }
+        if fits(text) { return text }
+        var cut = text
+        while !cut.isEmpty && !fits(cut + "…") { cut.removeLast() }
+        return cut + "…"
     }
 
     private func label(_ ctx: inout GraphicsContext, _ text: String, at p: CGPoint, size: CGFloat,

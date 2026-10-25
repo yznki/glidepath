@@ -79,7 +79,7 @@ extension OpenPR {
 
 enum ApproachPhase: String, Codable, Equatable { case taxiing, flying, waiting, holding, cleared, landed }
 
-/// Whether a gate is passed (ok), waiting on someone else (wait), needs work (work), or does not apply (none).
+/// A gate's state: passed (ok), waiting on a person or GitHub (wait), Glidepath acting now (work), or not reached (none).
 enum GateState: String, Codable, Equatable { case ok, wait, work, none }
 
 struct Gate: Codable, Equatable {
@@ -148,36 +148,59 @@ enum Approach {
         return marker(pr) == 3 ? .cleared : .waiting
     }
 
-    /// The checks, reviews, threads and readiness, each as a gate. A failing CI gate names Glidepath as the one
-    /// working on it when tending may act on the PR.
+    /// The checks, reviews, threads and readiness, each as a gate, in words. `work` is Glidepath acting now: a failing
+    /// CI on a PR tend may act on, and not stuck or held. A gate that waits on someone names them in `who`: the
+    /// reviewers, or "you" when the PR is stuck or held.
     static func gates(_ pr: OpenPR, state: TendPR?) -> [Gate] {
+        let mine = state?.held != nil || state?.stuck != nil
+        func person(_ named: String?) -> String? { mine ? "you" : named }
         let ci: Gate
         switch pr.ciStatus {
-        case .none: ci = Gate(name: "CI", state: .none, detail: "No checks")
-        case .pending: ci = Gate(name: "CI", state: .wait, detail: "Running")
-        case .passed: ci = Gate(name: "CI", state: .ok, detail: "Passed")
+        case .none:
+            ci = Gate(name: "CI", state: .none, detail: "No checks")
+        case .pending:
+            let running = pr.checks.filter { $0.status != "COMPLETED" }.count
+            ci = Gate(name: "CI", state: .wait, detail: "\(running) running", who: person(nil))
+        case .passed:
+            let green = pr.checks.filter { ["SUCCESS", "NEUTRAL", "SKIPPED"].contains($0.conclusion ?? "") }.count
+            ci = Gate(name: "CI", state: .ok, detail: "\(green) of \(pr.checks.count) checks green")
         case .failed:
-            ci = Gate(name: "CI", state: .work, detail: pr.failedChecks.map(\.name).joined(separator: ", "),
-                      who: tendable(pr, state) ? "Glidepath" : nil)
+            let failing = pr.failedChecks.map(\.name).joined(separator: ", ")
+            if tendable(pr, state) && !mine {
+                ci = Gate(name: "CI", state: .work, detail: "\(failing) failing", who: "Glidepath")
+            } else {
+                ci = Gate(name: "CI", state: .wait, detail: "\(failing) failing", who: "you")
+            }
         }
         let open = pr.threads.filter { !$0.isResolved }
         let threads = open.isEmpty ? Gate(name: "Threads", state: .ok, detail: "All resolved")
-            : Gate(name: "Threads", state: .work, detail: "\(open.count) open", who: open.first?.comments.first?.author)
+            : Gate(name: "Threads", state: .wait, detail: "\(open.count) open",
+                   who: person(open.first?.comments.first?.author))
         let approval: Gate
         if pr.reviewDecision == "APPROVED" {
             approval = Gate(name: "Approval", state: .ok, detail: "Approved")
         } else if let changes = pr.reviews.first(where: { $0.state == "CHANGES_REQUESTED" }) {
-            approval = Gate(name: "Approval", state: .work, detail: "Changes requested", who: changes.author)
+            approval = Gate(name: "Approval", state: .wait, detail: "Changes requested by \(changes.author)",
+                            who: person(changes.author))
+        } else if !pr.requested.isEmpty {
+            let reviewers = pr.requested.joined(separator: ", ")
+            approval = Gate(name: "Approval", state: .wait, detail: "Waiting on \(reviewers)", who: person(reviewers))
         } else {
-            approval = Gate(name: "Approval", state: .wait, detail: "Needs approval", who: pr.requested.first)
+            approval = Gate(name: "Approval", state: .wait, detail: "No review yet", who: person(nil))
         }
         let ready: Gate
-        if pr.isDraft {
+        let base = pr.base
+        if pr.isDraft || pr.mergeStateStatus == "DRAFT" {
             ready = Gate(name: "Ready", state: .none, detail: "Draft")
-        } else if pr.mergeStateStatus == "CLEAN" {
-            ready = Gate(name: "Ready", state: .ok, detail: "Clean")
         } else {
-            ready = Gate(name: "Ready", state: .wait, detail: pr.mergeStateStatus?.lowercased() ?? "Unknown")
+            switch pr.mergeStateStatus {
+            case "CLEAN": ready = Gate(name: "Ready", state: .ok, detail: "No conflicts with \(base)")
+            case "DIRTY": ready = Gate(name: "Ready", state: .wait, detail: "Conflicts with \(base)", who: person(nil))
+            case "BEHIND": ready = Gate(name: "Ready", state: .wait, detail: "Behind \(base)", who: person(nil))
+            case "BLOCKED": ready = Gate(name: "Ready", state: .wait, detail: "Blocked by branch rules", who: person(nil))
+            case "UNSTABLE": ready = Gate(name: "Ready", state: .wait, detail: "Checks not all green", who: person(nil))
+            default: ready = Gate(name: "Ready", state: .wait, detail: "Waiting on GitHub", who: person(nil))
+            }
         }
         return [ci, threads, approval, ready]
     }

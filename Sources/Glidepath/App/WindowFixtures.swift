@@ -32,10 +32,10 @@ enum WindowFixtures {
     }
 
     static func run(_ id: String, _ start: Date, minutes: Double?, prs: [(String, PRState)], tokens: Int,
-                    kind: String? = nil, target: String? = nil) -> RunState {
+                    kind: String? = nil, target: String? = nil, tendAction: String? = nil, tendCheck: String? = nil) -> RunState {
         RunState(id: id, started: start, finished: minutes.map { start.addingTimeInterval($0 * 60) },
                  repos: repos.map { slug in RepoState(slug: slug, prs: prs.filter { $0.0 == slug }.map(\.1), error: nil) },
-                 tokens: tokens, error: nil, kind: kind, target: target)
+                 tokens: tokens, error: nil, kind: kind, target: target, tendAction: tendAction, tendCheck: tendCheck)
     }
 
     /// The 1:00 PM sweep: six reviewed (two held), one stopped, one too large. The earlier sweep the author run follows.
@@ -381,39 +381,45 @@ enum WindowFixtures {
         func gate(_ name: String, _ state: GateState, _ detail: String, who: String? = nil) -> Gate {
             Gate(name: name, state: state, detail: detail, who: who)
         }
-        let passed = [gate("CI", .ok, "Passed"), gate("Threads", .ok, "All resolved"),
-                      gate("Approval", .ok, "Approved"), gate("Ready", .ok, "Clean")]
+        let passed = [gate("CI", .ok, "4 of 4 checks green"), gate("Threads", .ok, "All resolved"),
+                      gate("Approval", .ok, "Approved"), gate("Ready", .ok, "No conflicts with main")]
         let planes = [
             plane(1301, "Notification schema: migration and backfill", phase: .cleared, marker: 3, lane: 0, stack: 1,
                   label: "Ready to land", ci: "passed", gates: passed),
             plane(1302, "Notification engine on the new schema", phase: .waiting, marker: 2, lane: 0, stack: 2,
                   label: "Waiting on Basem", waitingOn: "Basem", ci: "passed",
-                  gates: [gate("CI", .ok, "Passed"), gate("Threads", .ok, "All resolved"),
-                          gate("Approval", .wait, "Needs approval", who: "Basem"), gate("Ready", .wait, "behind")]),
+                  gates: [gate("CI", .ok, "4 of 4 checks green"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .wait, "Waiting on Basem", who: "Basem"),
+                          gate("Ready", .wait, "Behind notify/schema")]),
             plane(1303, "Notification digest emails", phase: .waiting, marker: 1, lane: 0, stack: 3,
                   label: "Waiting on Gadi", waitingOn: "Gadi", ci: "passed",
-                  gates: [gate("CI", .ok, "Passed"), gate("Threads", .ok, "All resolved"),
-                          gate("Approval", .wait, "Needs approval", who: "Gadi"), gate("Ready", .wait, "behind")]),
+                  gates: [gate("CI", .ok, "4 of 4 checks green"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .wait, "Waiting on Gadi", who: "Gadi"),
+                          gate("Ready", .wait, "Behind notify/engine")]),
             plane(1253, "feat(ops): picture card views for pilots, clients and sites", phase: .flying, marker: 0, lane: 2,
                   label: "Glidepath fixing Unit Tests · try 1 of 2", ci: "failed",
-                  gates: [gate("CI", .work, "Unit Tests", who: "Glidepath"), gate("Threads", .ok, "All resolved"),
-                          gate("Approval", .wait, "Needs approval", who: "Basem"), gate("Ready", .wait, "unstable")]),
+                  gates: [gate("CI", .work, "Unit Tests failing", who: "Glidepath"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .wait, "Waiting on Basem", who: "Basem"),
+                          gate("Ready", .wait, "Checks not all green")]),
             plane(1360, "fix(api): retries return the stored response", phase: .holding, marker: 1, lane: 1,
                   label: "Fix held · approved, pushing cancels it", ci: "passed",
-                  gates: [gate("CI", .ok, "Passed"), gate("Threads", .ok, "All resolved"),
-                          gate("Approval", .ok, "Approved"), gate("Ready", .wait, "behind")]),
+                  gates: [gate("CI", .ok, "3 of 3 checks green"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .ok, "Approved"), gate("Ready", .wait, "Behind main", who: "you")]),
             plane(1246, "fix(api): repeated create and retry requests return the first result", phase: .holding,
                   marker: 2, lane: 3, label: "Stuck · Unit Tests failed twice on this head", ci: "failed",
-                  gates: [gate("CI", .work, "Unit Tests"), gate("Threads", .work, "1 open", who: "Gadi"),
-                          gate("Approval", .work, "Changes requested", who: "Gadi"), gate("Ready", .wait, "dirty")]),
+                  gates: [gate("CI", .wait, "Unit Tests failing", who: "you"),
+                          gate("Threads", .wait, "1 open", who: "you"),
+                          gate("Approval", .wait, "Changes requested by Gadi", who: "you"),
+                          gate("Ready", .wait, "Conflicts with main", who: "you")]),
             plane(1318, "Card views: pilot certifications list", phase: .waiting, marker: 1, lane: 4,
                   label: "Waiting on Gadi · code owner · 26 h", waitingOn: "Gadi", ci: "passed",
-                  gates: [gate("CI", .ok, "Passed"), gate("Threads", .ok, "All resolved"),
-                          gate("Approval", .wait, "Code owner · 26 h", who: "Gadi"), gate("Ready", .wait, "blocked")]),
+                  gates: [gate("CI", .ok, "3 of 3 checks green"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .wait, "Waiting on Gadi", who: "Gadi"),
+                          gate("Ready", .wait, "Blocked by branch rules")]),
             plane(1330, "Certifications: draft for self-review", phase: .taxiing, marker: 0, lane: 0,
                   label: "Draft", ci: "pending",
-                  gates: [gate("CI", .wait, "Running"), gate("Threads", .ok, "All resolved"),
-                          gate("Approval", .wait, "Needs approval"), gate("Ready", .none, "Draft")]),
+                  gates: [gate("CI", .wait, "1 running"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .wait, "No review yet"), gate("Ready", .none, "Draft")]),
         ]
         let needs = [
             NeedsItem(id: "\(slug)#1360/held", slug: slug, n: 1360, title: "fix(api): retries return the stored response",
@@ -444,17 +450,17 @@ enum WindowFixtures {
         ]
     }
 
-    /// Two rounds today: a CI fix on #1253 and a thread round on #1246.
+    /// Two rounds today: a CI fix on #1246 and a CI fix on #1253, each titled as the CLI titles it.
     static func tendRounds(_ now: Date) -> [RunState] {
         [
             run("fixture-tend-1246", at(14, 20, now), minutes: 4,
                 prs: [row("lumen/api", 1246, "omar", "fix(api): repeated create and retry requests", verdict: nil,
-                          reason: "Agreed with 2 of 3 comments. Fixed both in one commit, replied, resolved.")],
-                tokens: 38_000, kind: "tend", target: "pr:lumen/api#1246"),
+                          reason: "Unit Tests failed on the retry path. Fixed the stored-response branch in one commit; pushed.")],
+                tokens: 38_000, kind: "tend", target: "pr:lumen/api#1246", tendAction: "fixed"),
             run("fixture-tend-1253", at(11, 40, now), minutes: 3,
                 prs: [row("lumen/api", 1253, "ines", "feat(ops): picture card views", verdict: nil,
                           reason: "Unit Tests failed on a stale snapshot. Updated it to the new contract; no assertion removed.")],
-                tokens: 22_000, kind: "tend", target: "pr:lumen/api#1253"),
+                tokens: 22_000, kind: "tend", target: "pr:lumen/api#1253", tendAction: "fixed"),
         ]
     }
 
