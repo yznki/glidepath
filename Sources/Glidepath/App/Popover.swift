@@ -211,12 +211,13 @@ struct PopoverView: View {
     }
 
     var body: some View {
-        let all = store.strips
+        let all = stackStrips
         let shown = capped(all)
         let copy = headerCopy
         let ids = ordered(all).map(\.id)
         VStack(alignment: .leading, spacing: 0) {
             stack(all: all, list: shown.cards, more: shown.more, copy: copy)
+            digestLine
             updateLine
             footer
         }
@@ -305,6 +306,58 @@ struct PopoverView: View {
         return .ignored
     }
 
+    /// What the stack shows: held drafts and PRs in flight. Finished reviews are in the digest line instead.
+    private var stackStrips: [Strip] {
+        store.strips.filter { $0.draft || ($0.active && $0.verdict == nil) }
+    }
+
+    /// The newest run's digest, from its own rows: carried rows are left out, so the counts match what the run did.
+    private var newestDigest: RunDigest? {
+        store.snap.run.map { RunDigest(run: $0, running: store.snap.running) }
+    }
+
+    /// The header count for a verdict in the newest run: approved, changes, or skipped.
+    private func newestCount(_ verdict: Verdict) -> Int {
+        guard let digest = newestDigest else { return 0 }
+        if verdict == .skipped { return digest.skipped.values.reduce(0) { $0 + $1.count } }
+        return digest.reviewed.filter { $0.pr.verdict == verdict }.count
+    }
+
+    /// The newest run in one line: its title, the digest sentence (two lines at most), and Open, which shows Now.
+    @ViewBuilder
+    private var digestLine: some View {
+        if let digest = newestDigest {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(digest.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(p.ink)
+                        .lineLimit(1)
+                    Text([digest.lead, digest.rest].filter { !$0.isEmpty }.joined(separator: " "))
+                        .font(.system(size: 12))
+                        .foregroundStyle(p.secondary)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 0)
+                openNowLink
+            }
+            .padding(.horizontal, StackGeometry.inset + 10)
+            .padding(.vertical, 10)
+        }
+    }
+
+    @ViewBuilder
+    private var openNowLink: some View {
+        if offscreen {
+            Text("Open").font(.system(size: 12, weight: .medium)).foregroundStyle(p.ink)
+        } else {
+            Button("Open") { WindowRouter.shared.open(.now) }
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(p.ink)
+        }
+    }
+
     // MARK: Header
 
     /// The header copy for states the stack cannot show (failure, pause, setup, a sweep starting). Nil for the
@@ -324,7 +377,7 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 2) {
                 ForEach([Verdict.approve, .changes, .skipped], id: \.self) { verdict in
-                    pip(verdict, count: all.filter { $0.verdict == verdict }.count)
+                    pip(verdict, count: newestCount(verdict))
                 }
                 runButton
                 windowButton
@@ -509,7 +562,7 @@ struct PopoverView: View {
                 .fill(Gotham.mute)
                 .frame(width: 40, height: 40)
                 .opacity(0.6)
-            Text(local.filter == nil ? "All clear" : "None here")
+            Text(local.filter == nil ? "Nothing needs you" : "None here")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Gotham.mute)
         }

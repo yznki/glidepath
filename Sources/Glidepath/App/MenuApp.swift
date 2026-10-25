@@ -347,8 +347,8 @@ enum Fixtures {
 
     static func idleChanges(_ now: Date) -> Snapshot {
         let r = run("fixture-idle", now: now, finished: true, prs: [
-            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
-            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes),
+            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve, draft: true),
+            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes, draft: true),
             pr("lumen/web", 88, "lea", "Fix the date picker timezone on CSV export", reason: "dates shift by a day", verdict: .changes),
             pr("lumen/web", 84, "sam", "Bump next to 15.1", reason: "draft", verdict: .skipped),
         ], tokens: 980_000)
