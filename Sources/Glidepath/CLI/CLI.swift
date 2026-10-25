@@ -179,40 +179,47 @@ enum Checks {
         let name: String
         let ok: Bool
         let fix: String
+        /// The command "Fix all in Terminal" runs. Nil when no single command fixes it.
+        var command: String? = nil
     }
 
-    /// `env` supplies the PATH the tools are looked up on; the app passes the job's PATH, since a Finder launch lacks Homebrew.
-    static func tools(env: [String: String] = ProcessInfo.processInfo.environment) -> [Item] {
+    /// `env` supplies the PATH the tools are looked up on. Callers pass `Runner.environment`, since a Finder launch lacks Homebrew.
+    static func tools(env: [String: String]) -> [Item] {
         [
             Item(name: "Xcode Command Line Tools", ok: Shell.run("xcode-select", ["-p"], env: env).ok,
-                 fix: "xcode-select --install"),
-            Item(name: "git", ok: Shell.find("git", path: env["PATH"]) != nil, fix: "xcode-select --install"),
-            Item(name: "gh (GitHub CLI)", ok: Shell.find("gh", path: env["PATH"]) != nil, fix: "brew install gh"),
-            Item(name: "gh signed in", ok: Shell.run("gh", ["auth", "status"], env: env).ok, fix: "gh auth login"),
+                 fix: "xcode-select --install", command: "xcode-select --install"),
+            Item(name: "git", ok: Shell.find("git", path: env["PATH"]) != nil,
+                 fix: "xcode-select --install", command: "xcode-select --install"),
+            Item(name: "gh (GitHub CLI)", ok: Shell.find("gh", path: env["PATH"]) != nil,
+                 fix: "brew install gh", command: "brew install gh"),
+            Item(name: "gh signed in", ok: Shell.run("gh", ["auth", "status"], env: env).ok,
+                 fix: "gh auth login", command: "gh auth login"),
             Item(name: "claude (Claude Code)", ok: Shell.find("claude", path: env["PATH"]) != nil,
-                 fix: "brew install --cask claude-code, then run claude once and log in"),
+                 fix: "brew install --cask claude-code, then run claude once and log in",
+                 command: "brew install --cask claude-code"),
             claudeVersion(env: env),
             ghRepoScope(env: env),
         ]
     }
 
     /// The review sessions use flags that exist from `Claude.minimumVersion` on.
-    static func claudeVersion(env: [String: String] = ProcessInfo.processInfo.environment) -> Item {
+    static func claudeVersion(env: [String: String]) -> Item {
         let r = Shell.run("claude", ["--version"], env: env, timeout: 30)
         let reported = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         let ok = r.ok && Claude.isVersion(reported, atLeast: Claude.minimumVersion)
         return Item(name: "claude version \(Claude.minimumVersion) or later (found \(reported.isEmpty ? "none" : reported))",
-                    ok: ok, fix: "claude update (Homebrew cask: brew upgrade --cask claude-code)")
+                    ok: ok, fix: "claude update (Homebrew cask: brew upgrade --cask claude-code)", command: "claude update")
     }
 
     /// Private repos need the `repo` scope. A token that does not list scopes (fine-grained) is flagged too.
-    static func ghRepoScope(env: [String: String] = ProcessInfo.processInfo.environment) -> Item {
+    static func ghRepoScope(env: [String: String]) -> Item {
         let r = Shell.run("gh", ["auth", "status"], env: env, timeout: 30)
         let text = r.stdout + r.stderr
         let line = text.split(separator: "\n").first { $0.contains("Token scopes:") }
         let ok = line.map { $0.contains("'repo'") } ?? false
         return Item(name: "gh token has the repo scope", ok: ok,
-                    fix: "gh auth refresh -s repo (a token without listed scopes needs repo access to private repos)")
+                    fix: "gh auth refresh -s repo (a token without listed scopes needs repo access to private repos)",
+                    command: "gh auth refresh -s repo")
     }
 
     /// Global settings still load inside review sessions under `--setting-sources user`.
@@ -228,20 +235,52 @@ enum Checks {
         let uid = getuid()
         return [
             Item(name: "config", ok: (try? Config.load(paths)) != nil, fix: "glidepath init"),
-            Item(name: "skill", ok: fm.fileExists(atPath: paths.skillDir + "/SKILL.md"), fix: "glidepath init"),
-            Item(name: "scheduled job file", ok: fm.fileExists(atPath: paths.plistFile), fix: "glidepath init"),
+            Item(name: "skill", ok: fm.fileExists(atPath: paths.skillDir + "/SKILL.md"), fix: "glidepath init",
+                 command: "glidepath init --refresh"),
+            Item(name: "scheduled job file", ok: fm.fileExists(atPath: paths.plistFile), fix: "glidepath init",
+                 command: "glidepath init --refresh"),
             Item(name: "scheduled job loaded",
                  ok: Shell.run("launchctl", ["print", "gui/\(uid)/\(Launchd.label)"]).ok,
                  fix: "launchctl bootstrap gui/\(uid) \(paths.plistFile)"),
-            Item(name: "menu bar app link", ok: fm.fileExists(atPath: paths.appLink), fix: "glidepath init"),
+            Item(name: "menu bar app link", ok: fm.fileExists(atPath: paths.appLink), fix: "glidepath init",
+                 command: "glidepath init --refresh"),
         ]
+    }
+
+    /// The commands for the failed items, in order, each once. `gh auth login` replaces `gh auth refresh`,
+    /// and the claude install replaces `claude update`.
+    static func fixCommands(_ failed: [Item]) -> [String] {
+        var commands = failed.compactMap(\.command)
+        if commands.contains("gh auth login") { commands.removeAll { $0 == "gh auth refresh -s repo" } }
+        if commands.contains("brew install --cask claude-code") { commands.removeAll { $0 == "claude update" } }
+        var seen = Set<String>()
+        return commands.filter { seen.insert($0).inserted }
+    }
+
+    /// The zsh script that runs the fixes for `missing`, or nil when none has a command. Only the fixed commands appear in it.
+    static func fixScript(_ missing: [Item]) -> String? {
+        let commands = fixCommands(missing)
+        guard !commands.isEmpty else { return nil }
+        var lines = ["#!/bin/zsh", #"export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH""#]
+        for command in commands {
+            lines.append(#"echo "→ \#(command)""#)
+            lines.append(command)
+        }
+        lines.append(#"echo; echo "Done. Back in Glidepath, click Check again.""#)
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// `Fix all: a && b` for the failed items, or nil when none has a command.
+    static func fixAllLine(_ failed: [Item]) -> String? {
+        let commands = fixCommands(failed)
+        return commands.isEmpty ? nil : "Fix all: " + commands.joined(separator: " && ")
     }
 }
 
 enum Doctor {
     static func main() -> Int32 {
         let paths = Paths()
-        let items = Checks.tools() + Checks.installed(paths)
+        let items = Checks.tools(env: Runner.environment(paths)) + Checks.installed(paths)
         for item in items {
             print(item.ok ? "ok    \(item.name)" : "FAIL  \(item.name): \(item.fix)")
         }
@@ -273,6 +312,7 @@ enum Doctor {
             print("FAIL  \(conflict.file) defines \(conflict.events.joined(separator: ", ")) hooks; run refuses until they are moved")
         }
         if conflicts.isEmpty { print("ok    no user hooks that would run inside review sessions") }
+        if let line = Checks.fixAllLine(items.filter { !$0.ok }) { print(line) }
         return items.allSatisfy(\.ok) && Claude.hookConflicts(paths: paths).isEmpty ? 0 : 1
     }
 }

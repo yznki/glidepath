@@ -210,6 +210,9 @@ struct OnboardingView: View {
             bar {
                 OnbButton(title: "Check again", style: .outline) { model.checkTools() }
                     .disabled(model.checkingTools)
+                if !model.fixableTools.isEmpty {
+                    OnbButton(title: "Fix all in Terminal", style: .outline) { model.fixTools() }
+                }
                 OnbButton(title: "Continue", style: .primary) { model.advance() }
                     .disabled(!model.state.canContinue(from: .tools))
             }
@@ -557,6 +560,7 @@ enum OnboardingChecks {
     struct Report: Sendable {
         let rows: [ToolRow]
         let status: ToolStatus
+        let items: [Checks.Item]
     }
 
     static func run(env: [String: String], home: String) -> Report {
@@ -598,7 +602,7 @@ enum OnboardingChecks {
                     fix: nexus ? nil : "npm install -g gitnexus"),
         ]
         let status = ToolStatus(claudeSignedIn: claudeIn, ghSignedIn: ghIn, gitReady: gitReady, gitNexus: nexus)
-        return Report(rows: rows, status: status)
+        return Report(rows: rows, status: status, items: items)
     }
 
     /// `claude auth status --json` reports `loggedIn`. Only the boolean is read.
@@ -625,6 +629,7 @@ enum OnboardingChecks {
 final class OnboardingModel: ObservableObject {
     @Published var state: OnboardingState
     @Published private(set) var toolRows: [ToolRow] = []
+    @Published private(set) var toolItems: [Checks.Item] = []
     @Published private(set) var checkingTools = false
     @Published var search = ""
     @Published var loginText = ""
@@ -721,9 +726,17 @@ final class OnboardingModel: ObservableObject {
                 OnboardingChecks.run(env: env, home: home)
             }.value
             toolRows = report.rows
+            toolItems = report.items
             state.tools = report.status
             checkingTools = false
         }
+    }
+
+    /// The missing checks that have a command: what "Fix all in Terminal" runs.
+    var fixableTools: [Checks.Item] { toolItems.filter { !$0.ok && $0.command != nil } }
+
+    func fixTools() {
+        FixInTerminal.open(fixableTools)
     }
 
     // MARK: Repos

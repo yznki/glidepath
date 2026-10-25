@@ -642,6 +642,9 @@ struct SettingsView: View {
         }
     }
 
+    /// The missing checks that have a command: what "Fix all in Terminal" runs.
+    private var fixable: [Checks.Item] { model.tools.filter { !$0.ok && $0.command != nil } }
+
     /// The onboarding tools list, live: each check with its status, and the fix with Copy for anything missing.
     private var toolsControl: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -654,7 +657,12 @@ struct SettingsView: View {
                     toolLine(item)
                 }
             }
-            SettingButton(title: "Check again", enabled: !model.checking) { model.runChecks(store.paths) }
+            HStack(spacing: 12) {
+                SettingButton(title: "Check again", enabled: !model.checking) { model.runChecks(store.paths) }
+                if !fixable.isEmpty {
+                    SettingButton(title: "Fix all in Terminal", prominent: true) { model.fix(fixable, store.paths) }
+                }
+            }
         }
     }
 
@@ -683,6 +691,9 @@ struct SettingsView: View {
                             .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                         SettingButton(title: "Copy") { model.copy(item.fix) }
+                        if item.command != nil {
+                            SettingButton(title: "Fix") { model.fix([item], store.paths) }
+                        }
                     }
                 }
             }

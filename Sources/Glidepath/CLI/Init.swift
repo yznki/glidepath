@@ -10,8 +10,9 @@ enum InitCommand {
         let fm = FileManager.default
 
         print("Checking requirements")
-        let missing = Checks.tools().filter { !$0.ok }
+        let missing = Checks.tools(env: Runner.environment(paths)).filter { !$0.ok }
         for item in missing { print("FAIL  \(item.name): \(item.fix)") }
+        if let line = Checks.fixAllLine(missing) { print(line) }
         guard missing.isEmpty else { return 1 }
 
         let config: Config
