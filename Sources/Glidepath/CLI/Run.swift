@@ -222,8 +222,9 @@ enum ReviewTarget: Equatable {
 
 /// `glidepath review owner/name N | PR-URL | --author login [--repo owner/name] [--dry-run] [--again]`: reviews one
 /// open PR now, including one over `max_changed_lines`, or every open PR by one author. A by-hand review ignores the
-/// authors list, the size limit, the per-sweep cap, and the draft and bot skips. It still skips your own PRs, PRs
-/// reviewed at this head and PRs with a held draft at this head. The run lock is taken, as for a sweep.
+/// authors list, the size limit, the per-sweep cap, and the draft and bot skips. A named PR is reviewed even when it
+/// is yours; author mode still skips your own PRs unless `include_own` is set. Both still skip PRs reviewed at this
+/// head and PRs with a held draft at this head. The run lock is taken, as for a sweep.
 enum ReviewCommand {
     static let usage = "usage: glidepath review owner/name N | PR-URL | --author login [--repo owner/name]  [--dry-run] [--again]"
 
@@ -381,8 +382,8 @@ final class Runner {
     var target: ReviewTarget?
     /// Set by `glidepath review --again`: an already reviewed head is reviewed again. Ignored for a sweep.
     var again = false
-    /// Set when a `glidepath review` target was skipped as the user's own PR, so the summary can say how to review it.
-    private var namedPRIsOwn = false
+    /// Set when an author review skipped one of the user's own PRs, so the summary can say how to include them.
+    private var ownPRSkipped = false
     /// A scheduled sweep (launchd's `run --scheduled`). Only these stop at the monthly token budget.
     var scheduled = false
     private var collaboratorCache: [String: Bool] = [:]
@@ -471,13 +472,19 @@ final class Runner {
             if failed { run.carryOver(from: earlier) }
         }
         printSummary()
-        if namedPRIsOwn {
+        if ownPRSkipped {
             print("To review your own PRs, set include_own = true under this repo in \(paths.configFile)")
         }
         return failed ? 1 : 0
     }
 
     // MARK: Per repo
+
+    /// Whether the user's own PRs are considered: always for a named PR, else only when the repo sets `include_own`.
+    static func includeOwn(_ repo: RepoConfig, target: ReviewTarget?) -> Bool {
+        if case .pr? = target { return true }
+        return repo.includeOwn
+    }
 
     /// Returns the tokens this repo's session used.
     private func process(_ repo: RepoConfig) throws -> Int {
@@ -499,7 +506,7 @@ final class Runner {
             let again = self.again && byHand
             let heldHeads = Set(drafts.filter { $0.draft.slug == repo.slug && $0.draft.n == pr.n }.map(\.draft.head))
             let decision = PRFilter.evaluate(
-                pr, me: me, includeOwn: repo.includeOwn, reviewDrafts: repo.reviewDrafts ?? config.reviewDrafts,
+                pr, me: me, includeOwn: Runner.includeOwn(repo, target: target), reviewDrafts: repo.reviewDrafts ?? config.reviewDrafts,
                 includeBots: config.includeBots, byHand: byHand, authors: repo.authors, limits: config.limits,
                 draftHeads: again ? [] : heldHeads,
                 isCollaborator: { self.isCollaborator(repo, login: pr.author) },
@@ -511,7 +518,7 @@ final class Runner {
                 skipped.append((pr, PRFilter.heldForNextSweep(cap: config.limits.maxPRsPerRun)))
             case .skip(let reason):
                 skipped.append((pr, reason))
-                if target != nil, reason == PRFilter.ownPRReason { namedPRIsOwn = true }
+                if case .author? = target, reason == PRFilter.ownPRReason { ownPRSkipped = true }
             }
         }
 

@@ -44,6 +44,19 @@ final class ReviewCommandTests: XCTestCase {
         XCTAssertEqual(byHand(info(3, lines: 100), draftHeads: ["h"]), .skip("draft waiting"))
     }
 
+    func testIncludeOwnIsForcedOnlyForANamedPR() {
+        let off = RepoConfig(slug: "acme/api", clone: "/fake")
+        var on = off
+        on.includeOwn = true
+        let pr = ReviewTarget.pr(slug: "acme/api", n: 2)
+        XCTAssertTrue(Runner.includeOwn(off, target: pr), "a named PR is reviewed even when it is yours")
+        XCTAssertFalse(Runner.includeOwn(off, target: .author("me")), "author mode skips your own PRs")
+        XCTAssertFalse(Runner.includeOwn(off, target: nil), "a sweep skips your own PRs")
+        XCTAssertTrue(Runner.includeOwn(on, target: pr))
+        XCTAssertTrue(Runner.includeOwn(on, target: .author("me")))
+        XCTAssertTrue(Runner.includeOwn(on, target: nil))
+    }
+
     func testParsePRAcceptsNumberAndLinkForms() {
         func pr(_ positional: [String]) -> String? { ReviewTarget.parsePR(positional).map { "\($0.slug)#\($0.n)" } }
         XCTAssertEqual(pr(["acme/api", "12"]), "acme/api#12")
