@@ -7,6 +7,8 @@ struct NowView: View {
     @ObservedObject var store: Store
     @ObservedObject var router: WindowRouter
     @AppStorage("signalColour") private var signalKey = "amber"
+    /// The "Review a PR or author…" sheet's state. Owned here, as `ReposView` owns its `ReposModel`.
+    @StateObject private var reviewModel = ReviewSheetModel()
 
     private var snap: Snapshot { store.snap }
     private var run: RunState? { snap.run }
@@ -75,6 +77,9 @@ struct NowView: View {
             .padding(.top, WinMetrics.titlebarZone)
             .padding(.bottom, 26)
         }
+        .sheet(isPresented: $reviewModel.open) {
+            ReviewNowSheet(store: store, model: reviewModel)
+        }
     }
 
     // MARK: Top
@@ -116,20 +121,25 @@ struct NowView: View {
                         .allowsHitTesting(false)
                 }
         } else {
-            Button {
-                Confirm.run(store)
-            } label: {
-                Text("Run now")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Gotham.fg)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(Capsule().fill(Gotham.row))
-                    .overlay(Capsule().strokeBorder(Gotham.edge, lineWidth: 1))
-                    .contentShape(Capsule())
+            VStack(spacing: 8) {
+                Button {
+                    Confirm.run(store)
+                } label: {
+                    Text("Run now")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Gotham.fg)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(Capsule().fill(Gotham.row))
+                        .overlay(Capsule().strokeBorder(Gotham.edge, lineWidth: 1))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(!snap.jobInstalled || snap.dryRunning)
+                WinButton(title: "Review a PR or author…", style: .link, small: true) {
+                    reviewModel.show(repos: snap.config?.repos.map(\.slug) ?? [])
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(!snap.jobInstalled || snap.dryRunning)
         }
     }
 

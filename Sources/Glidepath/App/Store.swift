@@ -571,20 +571,40 @@ final class Store: ObservableObject {
 
     /// Starts `glidepath run` with the PATH the job uses, output appended to the log. With a slug, only that repo.
     func runNow(repo: String? = nil) {
+        spawn(repo.map { ["run", "--repo", $0] } ?? ["run"], label: "run now")
+    }
+
+    /// Starts `glidepath review` for one PR or one author's PRs, as a terminal would. Refused while a sweep or a dry run
+    /// runs, since they take the same lock. A refusal from the lock lands in the log. False when it did not start.
+    @discardableResult
+    func review(_ target: ReviewTarget) -> Bool {
+        guard !snap.running && !snap.dryRunning else {
+            actionError = "a sweep is running; try again when it ends"
+            return false
+        }
+        return spawn(target.arguments, label: "review")
+    }
+
+    /// Starts the glidepath binary with `args`, the PATH the job uses, and output appended to the log. A failure to start
+    /// is shown as `label: reason`. False when it did not start.
+    @discardableResult
+    private func spawn(_ args: [String], label: String) -> Bool {
         guard let binary = Bundle.main.executablePath else {
             actionError = "cannot find the glidepath binary"
-            return
+            return false
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = repo.map { ["run", "--repo", $0] } ?? ["run"]
+        process.arguments = args
         process.environment = Runner.environment(paths)
         attachLog(process)
         do {
             try process.run()
             actionError = nil
+            return true
         } catch {
-            actionError = "run now: \(error.localizedDescription)"
+            actionError = "\(label): \(error.localizedDescription)"
+            return false
         }
     }
 

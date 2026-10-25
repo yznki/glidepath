@@ -50,16 +50,36 @@ final class StateTests: XCTestCase {
         sweep.finish(at: t0, error: nil)
 
         var review = RunState.new(id: "review", now: t0.addingTimeInterval(60), kind: "review")
-        review.carryRows(from: sweep, except: (slug: "acme/api", n: 2))
+        review.carryRows(from: sweep)
         XCTAssertEqual(review.kind, "review")
         XCTAssertEqual(review.repos.map(\.slug), ["acme/api", "acme/web"])
-        XCTAssertEqual(review.repos[0].prs.map(\.n), [1])
+        XCTAssertEqual(review.repos[0].prs.map(\.n), [1, 2])
         XCTAssertEqual(review.repos[0].prs[0].verdict, .approve)
         XCTAssertEqual(review.repos[0].prs[0].carriedFrom, t0, "a carried row says when it was decided")
         XCTAssertEqual(review.repos[1].prs.map(\.n), [9])
-        // The target is written by this run, so its row is not in the way.
+        // The target is written by this run, so its carried row is dropped first.
+        review.dropCarried(repo: "acme/api", numbers: [2])
+        XCTAssertEqual(review.repos[0].prs.map(\.n), [1])
         XCTAssertNoThrow(try review.setPR(repo: "acme/api", n: 2, stage: nil, author: "bo", title: "two",
                                           verdict: .changes, reason: "new"))
+    }
+
+    func testDropCarriedOnlyTouchesCarriedRowsInThatRepo() throws {
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        var sweep = RunState.new(id: "sweep", now: t0)
+        try sweep.setPR(repo: "a/x", n: 1, stage: nil, author: nil, title: nil, verdict: .approve, reason: nil)
+        try sweep.setPR(repo: "a/x", n: 2, stage: nil, author: "ines", title: "two", verdict: .changes, reason: nil)
+        try sweep.setPR(repo: "b/y", n: 1, stage: nil, author: "bo", title: "other", verdict: .approve, reason: nil)
+        sweep.finish(at: t0, error: nil)
+
+        var review = RunState.new(id: "review", now: t0.addingTimeInterval(60), kind: "review")
+        review.carryRows(from: sweep)
+        review.dropCarried(repo: "a/x", numbers: [1])
+        XCTAssertEqual(review.repos[0].prs.map(\.n), [2], "a/x #1 is written fresh, so only it is dropped")
+        XCTAssertEqual(review.repos[1].prs.map(\.n), [1], "b/y #1 is kept: its repo is not processed")
+        // Without the drop, the carried a/x #1 has a verdict and this throws "already has verdict".
+        XCTAssertNoThrow(try review.setPR(repo: "a/x", n: 1, stage: nil, author: nil, title: nil,
+                                          verdict: .approve, reason: nil))
     }
 
     func testHeldDraftsShowFromAnyRunAndKeepTheirRow() throws {

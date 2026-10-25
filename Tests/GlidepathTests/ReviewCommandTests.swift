@@ -9,33 +9,77 @@ final class ReviewCommandTests: XCTestCase {
                additions: lines, deletions: 0)
     }
 
-    func testOnlyTheNamedPRGetsTheSizeOverride() {
+    func testByHandKeepsPRsThatASweepSkips() {
         let base = Limits(maxPRsPerRun: 10, maxChangedLines: 3000, splitOverLines: 1500)
-        let big = info(1219, lines: 12_480)
-        func decide(_ pr: PRInfo, reviewing target: Int?) -> Decision {
-            PRFilter.evaluate(pr, me: "me", authors: .anyone,
-                              limits: Runner.limits(base, for: pr.n, reviewing: target),
-                              isCollaborator: { true }, reviewedHeads: { [] })
+        // By hand, the collaborator lookup never runs.
+        let noLookup: () -> Bool? = { XCTFail("isCollaborator is not read by hand"); return nil }
+        func byHand(_ pr: PRInfo, authors: AuthorPolicy = .anyone) -> Decision {
+            PRFilter.evaluate(pr, me: "me", byHand: true, authors: authors, limits: base,
+                              isCollaborator: noLookup, reviewedHeads: { [] })
         }
-        XCTAssertEqual(decide(big, reviewing: nil), .skip("too large (12480 changed lines)"))
-        XCTAssertEqual(decide(big, reviewing: 1219), .keep)
-        XCTAssertEqual(decide(info(1220, lines: 12_480), reviewing: 1219), .skip("too large (12480 changed lines)"),
-                       "another PR stays skipped")
+        func sweep(_ pr: PRInfo, authors: AuthorPolicy = .anyone) -> Decision {
+            PRFilter.evaluate(pr, me: "me", authors: authors, limits: base,
+                              isCollaborator: { false }, reviewedHeads: { [] })
+        }
+        XCTAssertEqual(sweep(info(1219, lines: 12_480)), .skip("too large (12480 changed lines)"))
+        XCTAssertEqual(byHand(info(1219, lines: 12_480)), .keep, "the size limit does not apply by hand")
+        XCTAssertEqual(byHand(info(2, lines: 10, draft: true)), .keep, "a draft is reviewed by hand")
+        XCTAssertEqual(byHand(info(3, lines: 10, author: "renovate[bot]")), .keep, "a bot is reviewed by hand")
+        XCTAssertEqual(sweep(info(3, lines: 10, author: "renovate[bot]")), .skip("bot author"))
+        XCTAssertEqual(byHand(info(4, lines: 10), authors: .collaborators), .keep, "a non-collaborator is reviewed by hand")
+        XCTAssertEqual(sweep(info(4, lines: 10), authors: .collaborators), .skip("author is not a collaborator"))
+        XCTAssertEqual(byHand(info(5, lines: 10, author: "ines"), authors: .logins(["x"])), .keep,
+                       "an author outside the list is reviewed by hand")
+        XCTAssertEqual(sweep(info(5, lines: 10, author: "ines"), authors: .logins(["x"])), .skip("author not in authors list"))
     }
 
-    func testOtherFiltersStillApplyToTheNamedPR() {
+    func testByHandStillSkipsOwnReviewedAndHeldPRs() {
         let base = Limits()
-        let draft = info(1219, lines: 12_480, draft: true)
-        XCTAssertEqual(PRFilter.evaluate(draft, me: "me", authors: .anyone,
-                                         limits: Runner.limits(base, for: 1219, reviewing: 1219),
-                                         isCollaborator: { true }, reviewedHeads: { [] }), .skip("draft"))
-        let mine = info(1220, lines: 100, author: "me")
-        XCTAssertEqual(PRFilter.evaluate(mine, me: "me", authors: .anyone, limits: base,
-                                         isCollaborator: { true }, reviewedHeads: { [] }), .skip("your own PR"))
-        XCTAssertEqual(PRFilter.evaluate(info(1219, lines: 12_480), me: "me", authors: .anyone,
-                                         limits: Runner.limits(base, for: 1219, reviewing: 1219),
-                                         isCollaborator: { true }, reviewedHeads: { ["h"] }),
-                       .skip("already reviewed at this head"))
+        func byHand(_ pr: PRInfo, draftHeads: Set<String> = [], reviewed: Set<String> = []) -> Decision {
+            PRFilter.evaluate(pr, me: "me", byHand: true, authors: .anyone, limits: base, draftHeads: draftHeads,
+                              isCollaborator: { true }, reviewedHeads: { reviewed })
+        }
+        XCTAssertEqual(byHand(info(1, lines: 100, author: "me")), .skip("your own PR"))
+        XCTAssertEqual(byHand(info(2, lines: 100), reviewed: ["h"]), .skip("already reviewed at this head"))
+        XCTAssertEqual(byHand(info(3, lines: 100), draftHeads: ["h"]), .skip("draft waiting"))
+    }
+
+    func testParsePRAcceptsNumberAndLinkForms() {
+        func pr(_ positional: [String]) -> String? { ReviewTarget.parsePR(positional).map { "\($0.slug)#\($0.n)" } }
+        XCTAssertEqual(pr(["acme/api", "12"]), "acme/api#12")
+        XCTAssertEqual(pr(["https://github.com/acme/api/pull/12"]), "acme/api#12")
+        XCTAssertEqual(pr(["https://github.com/acme/api/pull/12/files"]), "acme/api#12")
+        XCTAssertEqual(pr(["https://www.github.com/acme/api/pull/12#discussion_r1"]), "acme/api#12")
+        XCTAssertNil(pr(["acme/api", "012"]))
+        XCTAssertNil(pr(["acme/api", "0"]))
+        XCTAssertNil(pr(["https://gitlab.com/acme/api/pull/12"]))
+        XCTAssertNil(pr(["https://github.com/acme/api/issues/12"]))
+        XCTAssertNil(pr(["acme/api"]))
+    }
+
+    func testParseReadsEachFormAndRefusesTheRest() throws {
+        let author = try XCTUnwrap(ReviewCommand.parse(["--author", "ines"]))
+        XCTAssertEqual(author.target, .author("ines"))
+        XCTAssertNil(author.repo)
+        XCTAssertFalse(author.again)
+        let narrow = try XCTUnwrap(ReviewCommand.parse(["--author", "ines", "--repo", "acme/api", "--again"]))
+        XCTAssertEqual(narrow.target, .author("ines"))
+        XCTAssertEqual(narrow.repo, "acme/api")
+        XCTAssertTrue(narrow.again)
+        let number = try XCTUnwrap(ReviewCommand.parse(["acme/api", "3", "--dry-run"]))
+        XCTAssertEqual(number.target, .pr(slug: "acme/api", n: 3))
+        XCTAssertTrue(number.dryRun)
+        for args in [["--author"], ["--author", "bad login"], ["--author", "ines", "acme/api", "1"],
+                     ["acme/api", "1", "--repo", "acme/api"], ["acme/api", "1", "--force"]] {
+            XCTAssertNil(ReviewCommand.parse(args), "\(args) is refused")
+        }
+    }
+
+    func testIncludesIgnoresCaseForSlugsAndLogins() {
+        XCTAssertTrue(ReviewTarget.author("Ines").includes(slug: "acme/api", n: 1, author: "ines"))
+        XCTAssertFalse(ReviewTarget.author("ines").includes(slug: "acme/api", n: 1, author: nil))
+        XCTAssertTrue(ReviewTarget.pr(slug: "Acme/API", n: 4).includes(slug: "acme/api", n: 4, author: nil))
+        XCTAssertFalse(ReviewTarget.pr(slug: "acme/api", n: 4).includes(slug: "acme/api", n: 5, author: "ines"))
     }
 
     func testHeldRunLockRefusesAReview() throws {

@@ -70,12 +70,11 @@ struct RunState: Codable, Equatable {
     }
 
     /// A review run starts from the rows of the run it replaces, so the popover keeps the last sweep's results.
-    /// Rows for `target` (the PR this run reviews) are left out; this run writes them. Carried rows keep their
-    /// verdict and reason, and show when they were decided, as rows carried over from a failed run do.
-    mutating func carryRows(from previous: RunState, except target: (slug: String, n: Int)?) {
+    /// Carried rows keep their verdict and reason, and show when they were decided, as rows carried over from a
+    /// failed run do.
+    mutating func carryRows(from previous: RunState) {
         for repo in previous.repos {
             for old in repo.prs {
-                if let target, target.slug == repo.slug, target.n == old.n { continue }
                 let ri = repoIndex(repo.slug)
                 guard !repos[ri].prs.contains(where: { $0.n == old.n }) else { continue }
                 var row = old
@@ -84,6 +83,13 @@ struct RunState: Codable, Equatable {
                 repos[ri].prs.append(row)
             }
         }
+    }
+
+    /// A row about to be written fresh by this run is not kept from the run before. Drops the carried rows of `slug`
+    /// whose number is in `numbers`.
+    mutating func dropCarried(repo slug: String, numbers: Set<Int>) {
+        guard let ri = repoIndexIfExists(slug) else { return }
+        repos[ri].prs.removeAll { $0.carriedFrom != nil && numbers.contains($0.n) }
     }
 
     /// The popover's view of held drafts: every open draft on disk shows, whichever run wrote it. Its row gets the
