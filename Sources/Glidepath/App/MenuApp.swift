@@ -121,6 +121,7 @@ enum Snapshotter {
             ("approach-landing", .approach, nil, ""),
             ("reviews", .reviews, nil, ""), ("repos", .repos, nil, ""), ("schedule", .schedule, nil, ""),
             ("settings", .settings, nil, ""), ("settings-tending", .settings, nil, "tend"),
+            ("settings-playbook", .settings, nil, "playbook"),
         ]
         for entry in sections {
             let store = Store(snapshot: WindowFixtures.section(entry.name, now: now))

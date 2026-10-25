@@ -25,6 +25,16 @@ final class SettingsModel: ObservableObject {
     let saved = SavedFlash()
     /// The Claude account line under "Claude account": the signed-in email and plan, or why it is not known.
     @Published private(set) var accountStatus: String?
+    /// The Linear row: whether a key is in the Keychain (read on refresh, never in snapshots), and the typed key.
+    @Published private(set) var linearSaved: Bool?
+    @Published var linearDraft = ""
+    /// The Playbook section: the repo shown (nil until the first refresh picks a tended one), its playbook, the lesson whose
+    /// Edit field is open (by index), that field's text, and the teach field's text.
+    @Published var playbookRepo: String?
+    @Published private(set) var playbook: Playbook?
+    @Published private(set) var editingLesson: Int?
+    @Published var lessonDraft = ""
+    @Published var teachDraft = ""
 
     private var keyMonitor: Any?
     private var toastTask: Task<Void, Never>?
@@ -60,6 +70,10 @@ final class SettingsModel: ObservableObject {
         loginOn = store.loginItemOn
         refreshUsed(store)
         refreshAccount(store, dir: store.snap.config?.claudeConfigDir)
+        // Snapshots never reach the Keychain: the fixture's Linear state comes from the snapshot.
+        linearSaved = store.isFixture ? nil : LinearKey.read() != nil
+        if playbookRepo == nil { playbookRepo = store.snap.config?.repos.first(where: \.tend)?.slug }
+        playbook = playbookRepo.map { store.playbook($0) }
         if store.isFixture {
             tools = store.snap.tools ?? []
             return
@@ -296,6 +310,87 @@ final class SettingsModel: ObservableObject {
     }
 
     /// Runs `Checks.tools(env:)` and `Checks.installed(paths)` off the main thread. Shows "Checking…" until they return.
+    // MARK: Linear
+
+    /// Saves the typed key to the Keychain. The field clears on success. Snapshots never write the Keychain.
+    func saveLinearKey(_ store: Store) {
+        let key = linearDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, !store.isFixture else { return }
+        do {
+            try LinearKey.save(key)
+            linearDraft = ""
+            linearSaved = true
+            rowErrors["linear"] = nil
+        } catch {
+            rowErrors["linear"] = "Could not save the key: \(error)"
+        }
+    }
+
+    func removeLinearKey(_ store: Store) {
+        guard !store.isFixture else { return }
+        LinearKey.remove()
+        linearSaved = false
+        rowErrors["linear"] = nil
+    }
+
+    // MARK: Playbook
+
+    /// Shows another repo's playbook. An open lesson edit is dropped.
+    func selectPlaybookRepo(_ slug: String, store: Store) {
+        playbookRepo = slug
+        editingLesson = nil
+        playbook = store.playbook(slug)
+    }
+
+    func beginEdit(_ index: Int, text: String) {
+        editingLesson = index
+        lessonDraft = text
+    }
+
+    func cancelEdit() {
+        editingLesson = nil
+        lessonDraft = ""
+    }
+
+    /// Saves the open lesson's new text. Blank text keeps the edit open.
+    func saveEdit(_ store: Store, slug: String) {
+        guard let i = editingLesson else { return }
+        let text = lessonDraft.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return }
+        var book = store.playbook(slug)
+        guard book.lessons.indices.contains(i) else { return cancelEdit() }
+        book.lessons[i].text = text
+        cancelEdit()
+        savePlaybook(book, slug, store)
+    }
+
+    func deleteLesson(_ lesson: Playbook.Lesson, _ store: Store, slug: String) {
+        savePlaybook(store.playbook(slug).remove(lesson), slug, store)
+    }
+
+    /// Adds the teach field's text as a lesson the user taught.
+    func teach(_ store: Store, slug: String) {
+        let text = teachDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        teachDraft = ""
+        savePlaybook(store.playbook(slug).teach(text, source: "you taught", date: Date()), slug, store)
+    }
+
+    /// Writes the repo's playbook and shows it. Snapshots show the change without writing it.
+    private func savePlaybook(_ book: Playbook, _ slug: String, _ store: Store) {
+        guard !store.isFixture else {
+            playbook = book
+            return
+        }
+        do {
+            try book.save(slug, paths: store.paths)
+            playbook = book
+            rowErrors["playbook"] = nil
+        } catch {
+            rowErrors["playbook"] = "Could not save the playbook: \(error.localizedDescription)"
+        }
+    }
+
     func runChecks(_ paths: Paths) {
         guard !checking else { return }
         checking = true
