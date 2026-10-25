@@ -120,6 +120,14 @@ struct TendStore {
         try write(RunStore.encoder().encode(snapshot), to: dir + "/approach.json")
     }
 
+    /// Sets one PR's `off` in the approach snapshot now, so the switch moves before the next check.
+    func patchPlaneOff(_ slug: String, _ n: Int, _ off: Bool) {
+        guard var snapshot = loadApproach(), let i = snapshot.planes.firstIndex(where: { $0.slug == slug && $0.n == n })
+        else { return }
+        snapshot.planes[i].off = off
+        try? saveApproach(snapshot)
+    }
+
     func appendTower(_ line: TowerLine) throws {
         try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         var data = try TendStore.lineEncoder.encode(line)
@@ -186,7 +194,7 @@ enum TendDecision: Equatable {
         if !Approach.tendable(pr, state) { return .skip("hands off") }
         if state.held != nil { return .idle }
         guard pr.ciStatus == .failed, state.fingerprint != Fingerprint.ci(pr) else { return .idle }
-        return .round(pr.reviewDecision == "APPROVED" ? .urgent : .normal)
+        return .round(pr.approved ? .urgent : .normal)
     }
 
     /// True when the PR has a new head since its stuck mark was set, so the mark goes.

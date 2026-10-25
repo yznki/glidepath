@@ -885,4 +885,11 @@ final class Runner {
         let suffix = UUID().uuidString.prefix(6).lowercased()
         return f.string(from: now) + "-" + suffix
     }
+
+    /// The day part of a run id, `yyyyMMdd`, in local time. Ids of one day share it.
+    static func dayPrefix(_ now: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd"
+        return f.string(from: now)
+    }
 }

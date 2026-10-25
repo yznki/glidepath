@@ -141,7 +141,7 @@ struct TendConfig: Equatable {
     /// Second-opinion reviews a day. 0 means none.
     var councilPerDay = 10
     /// Hosts a fix session may reach. A `*.` prefix is a wildcard.
-    var registries = ["registry.npmjs.org", "*.pypi.org", "files.pythonhosted.org"]
+    var registries = ["registry.npmjs.org", "pypi.org", "files.pythonhosted.org"]
     /// Percent of the Claude usage window kept back for the user. 0 to 90.
     var usageReserve = 40
     var quietHours = QuietHours.parse("22:00-07:00,sat,sun")!

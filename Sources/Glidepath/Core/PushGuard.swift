@@ -14,13 +14,14 @@ struct ChangedFile: Equatable {
 /// Checks a fix's diff before it is pushed. Pure: the caller reads the diff.
 enum PushGuard {
     /// Parses `git diff --cached -U0 --no-color --no-renames`. Header lines are only read before a hunk, so a removed
-    /// line that starts with "--" still counts.
+    /// line that starts with "--" still counts. A file's path comes from its `+++ b/` line, or its `--- a/` line when
+    /// it is deleted. The `diff --git` header is only the fallback, for a change with no such lines (a binary file).
     static func parse(diff: String) -> [ChangedFile] {
         var files: [ChangedFile] = []
         var inHunk = false
         for line in diff.components(separatedBy: "\n") {
             if line.hasPrefix("diff --git ") {
-                // The path is what follows the last " b/".
+                // Fallback path: what follows the last " b/".
                 let path = line.range(of: " b/", options: .backwards).map { String(line[$0.upperBound...]) } ?? line
                 files.append(ChangedFile(path: path, status: "M", added: [], removed: 0))
                 inHunk = false
@@ -30,6 +31,10 @@ enum PushGuard {
             let last = files.count - 1
             if line.hasPrefix("@@") {
                 inHunk = true
+            } else if !inHunk && line.hasPrefix("--- a/") {
+                files[last].path = headerPath(line, prefix: "--- a/")
+            } else if !inHunk && line.hasPrefix("+++ b/") {
+                files[last].path = headerPath(line, prefix: "+++ b/")
             } else if inHunk && line.hasPrefix("+") {
                 files[last].added.append(String(line.dropFirst()))
             } else if inHunk && line.hasPrefix("-") {
@@ -58,6 +63,13 @@ enum PushGuard {
         let total = files.reduce(0) { $0 + $1.added.count + $1.removed }
         if maxLines > 0 && total > maxLines { return "\(total) changed lines, over max_fix_lines \(maxLines)" }
         return nil
+    }
+
+    /// The path after a `---`/`+++` prefix. Git adds a tab after a name with a space in it, which is not part of the name.
+    private static func headerPath(_ line: String, prefix: String) -> String {
+        var path = String(line.dropFirst(prefix.count))
+        if path.hasSuffix("\t") { path.removeLast() }
+        return path
     }
 
     /// A test by its folder (test, tests, __tests__, spec) or its name (*.test.*, *.spec.*, *_test.*, test_*.py, *Tests.swift).

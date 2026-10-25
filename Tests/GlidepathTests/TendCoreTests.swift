@@ -527,4 +527,99 @@ final class TendCoreTests: XCTestCase {
         XCTAssertEqual(Playbook.load("acme/api", paths: paths), pb)
         XCTAssertEqual(Playbook.load("acme/none", paths: paths), Playbook())
     }
+
+    func testPushGuardTakesPathsFromHeaderLines() {
+        let diff = """
+        diff --git a/docs/a b/c.md b/docs/a b/c.md
+        index 1111..2222 100644
+        --- a/docs/a b/c.md
+        +++ b/docs/a b/c.md
+        @@ -1 +1 @@
+        -old
+        +new
+        diff --git a/with space.md b/with space.md
+        --- a/with space.md\t
+        +++ b/with space.md\t
+        @@ -1 +1 @@
+        -x
+        +y
+        diff --git a/old/gone.swift b/old/gone.swift
+        deleted file mode 100644
+        index 3333..0000000
+        --- a/old/gone.swift
+        +++ /dev/null
+        @@ -1 +0,0 @@
+        -let z = 0
+        """
+        XCTAssertEqual(PushGuard.parse(diff: diff).map(\.path), ["docs/a b/c.md", "with space.md", "old/gone.swift"])
+    }
+
+    // MARK: Commit message and playbook commands
+
+    func testCommitMessageDropsAttributionLines() {
+        XCTAssertEqual(Tender.cleanCommitMessage("Import the CSV writer\n\nCo-Authored-By: Claude <x@y>\nclaude-session: 123\n🤖 Generated with [Claude Code]\n"),
+                       "Import the CSV writer")
+        XCTAssertEqual(Tender.cleanCommitMessage("Fix\n\nCO-AUTHORED-BY : someone"), "Fix")
+        XCTAssertEqual(Tender.cleanCommitMessage("  Co-Authored-By: a\n  Generated with x  "), "")
+        XCTAssertEqual(Tender.cleanCommitMessage("Keep the claude-session note: see docs"), "Keep the claude-session note: see docs")
+    }
+
+    func testPlaybookSanitizesCommands() {
+        XCTAssertEqual(Playbook.sanitize("  `npm test`  \nrm -rf /"), "npm test")
+        XCTAssertNil(Playbook.sanitize(" `` "))
+        XCTAssertNil(Playbook.sanitize(""))
+        XCTAssertEqual(Playbook.sanitize(String(repeating: "a", count: 300))?.count, 200)
+        let pb = Playbook().verify(["swift test\nnoise", "``", "swift test"], date: at(22, 0))
+        XCTAssertEqual(pb.commands, [Playbook.Command(command: "swift test", verified: 2, date: at(22, 0))])
+    }
+
+    // MARK: Approval, state and evidence
+
+    func testApprovedReadsDecisionOrLatestReviews() {
+        func pr(_ decision: String?, _ reviews: [(String, String)]) -> OpenPR {
+            var p = openPR(1, branch: "a", base: "main")
+            p.reviewDecision = decision
+            p.reviews = reviews.enumerated().map { ReviewInfo(id: "R\($0.offset)", author: $0.element.0, state: $0.element.1) }
+            return p
+        }
+        XCTAssertTrue(pr("APPROVED", []).approved)
+        XCTAssertFalse(pr("REVIEW_REQUIRED", [("a", "APPROVED")]).approved)
+        XCTAssertTrue(pr(nil, [("a", "APPROVED")]).approved)
+        // Bob's later approval replaces his change request.
+        XCTAssertTrue(pr(nil, [("bob", "CHANGES_REQUESTED"), ("a", "APPROVED"), ("bob", "APPROVED")]).approved)
+        XCTAssertFalse(pr(nil, [("a", "APPROVED"), ("bob", "CHANGES_REQUESTED")]).approved)
+        XCTAssertFalse(pr(nil, [("a", "COMMENTED")]).approved)
+        XCTAssertFalse(pr(nil, []).approved)
+    }
+
+    func testPatchPlaneOffChangesOnlyThatPlane() throws {
+        let paths = Paths(home: NSTemporaryDirectory() + "glidepath-off-\(UUID().uuidString)", env: [:])
+        let store = TendStore(paths: paths)
+        let a = Approach.plane(openPR(1, branch: "a", base: "main"), slug: "acme/api", state: nil, working: false,
+                               lane: 0, stackIndex: nil)
+        let b = Approach.plane(openPR(2, branch: "b", base: "main"), slug: "acme/api", state: nil, working: false,
+                               lane: 1, stackIndex: nil)
+        try store.saveApproach(ApproachSnapshot(updated: at(26, 9), planes: [a, b], needs: [], queued: 0, status: nil,
+                                                working: nil, nextLook: nil))
+        store.patchPlaneOff("acme/api", 2, true)
+        XCTAssertEqual(store.loadApproach()?.planes.map(\.off), [false, true])
+        store.patchPlaneOff("acme/api", 9, true)
+        XCTAssertEqual(store.loadApproach()?.planes.map(\.off), [false, true])
+    }
+
+    func testRunStoreLoadsOneDayByIdPrefix() throws {
+        let paths = Paths(home: NSTemporaryDirectory() + "glidepath-prefix-\(UUID().uuidString)", env: [:])
+        let store = RunStore(paths: paths)
+        try store.save(RunState.new(id: "20261026-090000-aaaaaa", now: at(26, 9)))
+        try store.save(RunState.new(id: "20261025-090000-bbbbbb", now: at(25, 9)))
+        XCTAssertEqual(store.loadAll(prefix: "20261026").map(\.id), ["20261026-090000-aaaaaa"])
+        XCTAssertEqual(store.loadAll(prefix: "202610").count, 2)
+        XCTAssertEqual(store.loadAll().count, 2)
+    }
+
+    func testCIEvidenceStripsColourCodes() {
+        let windows = CIEvidence.windows("\u{1B}[31m##[error]boom\u{1B}[0m")
+        XCTAssertTrue(windows.contains { $0.contains("##[error]boom") })
+        XCTAssertFalse(windows.joined().contains("\u{1B}"))
+    }
 }

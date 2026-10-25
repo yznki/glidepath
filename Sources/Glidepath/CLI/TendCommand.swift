@@ -136,7 +136,9 @@ final class Tender {
             print("paused; tend check skipped")
             return 0
         }
-        if TokenBudget.blocks(config, used: TokenBudget.used(RunStore(paths: paths).loadAll(), now: now)) {
+        // Run ids start with the day, so the month's runs are the ones whose ids start with its yyyyMM.
+        let month = String(Runner.dayPrefix(now).prefix(6))
+        if TokenBudget.blocks(config, used: TokenBudget.used(RunStore(paths: paths).loadAll(prefix: month), now: now)) {
             print("Monthly token budget reached; tend check skipped")
             return 0
         }
@@ -179,10 +181,7 @@ final class Tender {
             do {
                 let prs = try fetchOpen(repo.slug)
                 for pr in prs {
-                    var s = store.load(repo.slug, pr.n) ?? TendPR(slug: repo.slug, n: pr.n)
-                    TendLimits.rollDay(&s, now)
-                    if s.stuck != nil, TendDecision.clearsStuck(pr, state: s) { s.stuck = nil }
-                    states["\(repo.slug)#\(pr.n)"] = s
+                    states["\(repo.slug)#\(pr.n)"] = freshState(repo.slug, pr, now)
                 }
                 fetched.append((repo, prs))
             } catch {
@@ -193,10 +192,11 @@ final class Tender {
         guard !fetched.isEmpty else { return 0 }
         // Pass two decides each PR. Rounds run one at a time, in the order the PRs were listed.
         for (repo, prs) in fetched {
-            removeClosed(repo, open: Set(prs.map(\.n)))
+            removeClosed(repo, open: Set(prs.map(\.n)), listed: prs.count)
             for pr in prs {
                 let key = "\(repo.slug)#\(pr.n)"
-                guard var s = states[key] else { continue }
+                // Read again: the app or `act` may have changed this PR's state since pass one.
+                var s = freshState(repo.slug, pr, now)
                 let before = s
                 verifyPlaybook(repo, pr, &s, now)
                 do {
@@ -210,6 +210,14 @@ final class Tender {
         }
         publish(now)
         return 0
+    }
+
+    /// A PR's state as it is on disk, with the day rolled and a stale stuck mark cleared.
+    private func freshState(_ slug: String, _ pr: OpenPR, _ now: Date) -> TendPR {
+        var s = store.load(slug, pr.n) ?? TendPR(slug: slug, n: pr.n)
+        TendLimits.rollDay(&s, now)
+        if s.stuck != nil, TendDecision.clearsStuck(pr, state: s) { s.stuck = nil }
+        return s
     }
 
     /// A round's decision for one PR: stuck when a limit is hit, queued when usage or quiet hours say wait, or a round.
@@ -295,7 +303,10 @@ final class Tender {
             outcome = markStuck(&s, repo, pr, "\(error)", now: now)
         }
 
-        s.fingerprint = Fingerprint.ci(pr)
+        // After a rerun the checks are running again, so no fingerprint: a red result after it gets its own round.
+        s.fingerprint = outcome.action == "reran" ? nil : Fingerprint.ci(pr)
+        // The app or `act` may have switched the PR off during the session. Keep that.
+        s.off = store.load(repo.slug, pr.n)?.off ?? s.off
         try store.save(s)
         var run = RunState.new(id: id, now: now, kind: "tend", target: "pr:\(key)")
         run.repos = [RepoState(slug: repo.slug, prs: [PRState(n: pr.n, author: pr.author, title: pr.title, stage: .post,
@@ -340,6 +351,8 @@ final class Tender {
     /// Checks the session's change, commits it, and pushes it or holds it. A refused change is reset and the PR is stuck.
     private func fix(_ result: TendResult, _ repo: RepoConfig, _ pr: OpenPR, _ s: inout TendPR, check: String,
                      wt: String, now: Date) throws -> (action: String, summary: String) {
+        // The session may have left a `.git` redirect in the worktree. Put the link back before any git runs there.
+        try restoreGitLink(repo, wt)
         let refusal: String? = try locked(repo.slug) { () throws -> String? in
             _ = try gitOK(["-C", wt, "reset", "--soft", pr.head])
             _ = try gitOK(["-C", wt, "add", "-A"])
@@ -351,21 +364,22 @@ final class Tender {
         }
         if let refusal { return markStuck(&s, repo, pr, refusal, now: now) }
 
-        let given = (result.commitMessage ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let message = given.isEmpty ? "Fix \(check)" : given
+        let cleaned = Tender.cleanCommitMessage(result.commitMessage ?? "")
+        let message = cleaned.isEmpty ? "Fix \(check)" : cleaned
+        let ran = (result.ran ?? []).compactMap(Playbook.sanitize)
         let sha = try locked(repo.slug) { () throws -> String in
             _ = try gitOK(["-C", wt, "commit", "-q", "-m", message])
             return try gitOK(["-C", wt, "rev-parse", "HEAD"])
         }
-        let actor = Autopilot.actor(.pushFix(approved: pr.reviewDecision == "APPROVED"),
+        let actor = Autopilot.actor(.pushFix(approved: pr.approved),
                                     autopilot: config.tend.autopilot, push: config.tend.push)
         if actor == .you {
-            s.held = TendHeld(commit: sha, summary: result.summary, at: now, ran: result.ran)
+            s.held = TendHeld(commit: sha, summary: result.summary, at: now, ran: ran)
             tower(repo.slug, pr.n, "fix held · approved", amber: true, detail: commitDetail(wt), now: now)
             return ("held", result.summary)
         }
         let head = try locked(repo.slug) { try pushBranch(repo, branch: pr.branch, wt: wt) }
-        s.pendingRan = result.ran ?? []
+        s.pendingRan = ran
         s.pendingRanHead = head
         tower(repo.slug, pr.n, "fixed \(check) · pushed \(head.prefix(7))", amber: false, detail: commitDetail(wt), now: now)
         return ("fixed", result.summary)
@@ -382,7 +396,8 @@ final class Tender {
             let tip = try gitOK(["-C", repo.clone, "rev-parse", "origin/\(pr.branch)"])
             guard tip == pr.head else { return false }
             try FileManager.default.createDirectory(atPath: store.dir + "/wt", withIntermediateDirectories: true)
-            if FileManager.default.fileExists(atPath: wt + "/.git") {
+            if FileManager.default.fileExists(atPath: wt) {
+                try restoreGitLink(repo, wt)
                 _ = try gitOK(["-C", wt, "reset", "--hard", tip])
                 _ = try gitOK(["-C", wt, "clean", "-fdq"])
             } else {
@@ -468,6 +483,7 @@ final class Tender {
         switch action {
         case "push":
             guard let held = s.held else { throw RunError("no held fix on #\(n)") }
+            try restoreGitLink(repo, wt)
             guard try gitOK(["-C", wt, "rev-parse", "HEAD"]) == held.commit else {
                 throw RunError("the worktree is not at the held commit; discard the fix instead")
             }
@@ -480,9 +496,11 @@ final class Tender {
             tower(repo.slug, n, "held fix pushed · \(head.prefix(7))", amber: false, now: now)
         case "discard":
             guard let held = s.held else { throw RunError("no held fix on #\(n)") }
+            try restoreGitLink(repo, wt)
             // Back to the head the fix was made on. The next round resets the worktree to the branch anyway.
             try locked(repo.slug) { _ = try gitOK(["-C", wt, "reset", "--hard", held.commit + "^"]) }
             s.held = nil
+            s.stuck = "You discarded the fix"
             try store.save(s)
             dropNeeds(repo.slug, n)
             tower(repo.slug, n, "held fix discarded", amber: false, now: now)
@@ -496,6 +514,7 @@ final class Tender {
         default:
             s.off = action == "off"
             try store.save(s)
+            store.patchPlaneOff(repo.slug, n, s.off)
             print("\(repo.slug) #\(n): tending \(s.off ? "off" : "on")")
         }
     }
@@ -518,7 +537,9 @@ final class Tender {
             for chain in Approach.lanes(prs) {
                 for (k, pr) in chain.enumerated() {
                     let key = "\(repo.slug)#\(pr.n)"
-                    let s = states[key]
+                    // The PR being worked on has the state the round holds. Every other PR is read from disk, so a switch
+                    // or hold written during the check is kept.
+                    let s = working?.key == key ? states[key] : (store.load(repo.slug, pr.n) ?? states[key])
                     planes.append(Approach.plane(pr, slug: repo.slug, state: s, working: working?.key == key, lane: lane,
                                                  stackIndex: chain.count > 1 ? k + 1 : nil,
                                                  triesPerHead: config.tend.triesPerHead))
@@ -526,6 +547,21 @@ final class Tender {
                 }
                 lane += 1
             }
+        }
+        // A repo whose fetch failed this check keeps its last planes and needs, in lanes after the others.
+        let previous = store.loadApproach()
+        for repo in config.repos.filter(\.tend) where !fetched.contains(where: { $0.repo.slug == repo.slug }) {
+            var remap: [Int: Int] = [:]
+            for plane in previous?.planes.filter({ $0.slug == repo.slug }) ?? [] {
+                if remap[plane.lane] == nil {
+                    remap[plane.lane] = lane
+                    lane += 1
+                }
+                var kept = plane
+                kept.lane = remap[plane.lane] ?? lane
+                planes.append(kept)
+            }
+            needs += previous?.needs.filter { $0.slug == repo.slug } ?? []
         }
         let snapshot = ApproachSnapshot(updated: now, planes: planes, needs: needs, queued: queue.count,
                                         status: queue.first?.reason, working: working?.text,
@@ -535,9 +571,17 @@ final class Tender {
         try? RunStore.encoder().encode(queue).write(to: URL(fileURLWithPath: store.dir + "/queue.json"), options: .atomic)
     }
 
-    /// Drops the state and the worktree of a PR of this repo that is no longer open.
-    private func removeClosed(_ repo: RepoConfig, open: Set<Int>) {
+    /// Drops the state and the worktree of a PR of this repo that is no longer open. The search lists at most 30 PRs, so
+    /// a repo that filled it is not trusted for this. A PR with a held fix goes only when GitHub says it is not open.
+    private func removeClosed(_ repo: RepoConfig, open: Set<Int>, listed: Int) {
+        guard listed < 30 else { return }
         for s in store.all() where s.slug == repo.slug && !open.contains(s.n) {
+            if s.held != nil {
+                let r = Shell.run("gh", ["pr", "view", String(s.n), "-R", repo.slug, "--json", "state", "--jq", ".state"],
+                                  env: env, timeout: 120)
+                let state = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard r.ok, !state.isEmpty, state != "OPEN" else { continue }
+            }
             let wt = store.wtDir(repo.slug, s.n)
             try? locked(repo.slug) {
                 _ = git(["-C", repo.clone, "worktree", "remove", "--force", wt])
@@ -581,9 +625,20 @@ final class Tender {
         return name
     }
 
-    /// git with repo hooks off: a hook in the repo is untrusted code and would run outside the sandbox.
+    /// git with repo hooks and fsmonitor off: a hook or monitor in the repo is untrusted code and would run outside the
+    /// sandbox.
     private func git(_ args: [String], timeout: TimeInterval = 300) -> ShellResult {
-        Shell.run("git", ["-c", "core.hooksPath=/dev/null"] + args, env: env, timeout: timeout)
+        Shell.run("git", ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"] + args, env: env, timeout: timeout)
+    }
+
+    /// Puts the worktree's `.git` back to the link git reads: a file naming the clone's metadata for this worktree. A
+    /// session can replace it with a redirect of its own, which git must not follow. Does nothing when the worktree is gone.
+    private func restoreGitLink(_ repo: RepoConfig, _ wt: String) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: wt) else { return }
+        try? fm.removeItem(atPath: wt + "/.git")
+        let name = (wt as NSString).lastPathComponent
+        try "gitdir: \(repo.clone)/.git/worktrees/\(name)\n".write(toFile: wt + "/.git", atomically: true, encoding: .utf8)
     }
 
     /// git that must succeed. Its stdout, trimmed.
@@ -615,6 +670,17 @@ final class Tender {
         ... on StatusContext { context state targetUrl } } } } } } }
     } } } }
     """
+
+    /// The session's commit message without attribution lines (Co-Authored-By, Claude-Session, "Generated with"). The
+    /// caller falls back to a plain subject when nothing is left.
+    static func cleanCommitMessage(_ message: String) -> String {
+        let kept = message.components(separatedBy: "\n").filter { line in
+            let lower = line.lowercased()
+            if lower.range(of: #"^\s*(co-authored-by|claude-session)\s*:"#, options: .regularExpression) != nil { return false }
+            return !lower.contains("generated with")
+        }
+        return kept.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     /// The rows of the search response as OpenPR. A status context maps onto the check shape: pending is still running,
     /// and its state is its conclusion.
@@ -720,12 +786,16 @@ final class Tender {
     /// to the registries. Pure, so the flags can be pinned.
     static func sessionArguments(prompt: String, systemPrompt: String, scratch: String, worktree: String,
                                  config: Config) -> [String] {
+        var denyRead = ["~/.config/gh", "~/.ssh", "~/.git-credentials", "~/Library/Keychains",
+                        "~/.claude", "~/.npmrc", "~/.aws", "~/.netrc", "~/.docker", "~/.kube", "~/.gnupg",
+                        "~/.config/glidepath", "~/Library/Application Support"]
+        if let dir = config.claudeConfigDir { denyRead.append(dir) }
         let sandbox: [String: Any] = ["sandbox": [
             "enabled": true,
             "autoAllowBashIfSandboxed": true,
             "allowUnsandboxedCommands": false,
             "network": ["allowedDomains": config.tend.registries],
-            "filesystem": ["denyRead": ["~/.config/gh", "~/.ssh", "~/.git-credentials", "~/Library/Keychains"]],
+            "filesystem": ["denyRead": denyRead],
         ] as [String: Any]]
         let tree = Claude.permissionPath(worktree) + "/**"
         let notes = Claude.permissionPath(scratch) + "/**"
