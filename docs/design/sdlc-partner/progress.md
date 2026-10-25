@@ -10,7 +10,9 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | 1.6 | H1 core: config, usage guard, push guard, approach, tend state, autopilot, playbook + tests (423 pass) | done | 323f278 25b745c |
 | 1.6 | H2 CLI: tend command (CLI/TendCommand.swift), rounds, launchd job, review stream-json (430 pass) | done | ce59761 2e92169 c247736 |
 | 1.6 | live check: scratch PR #1 broken add → tend fixed + pushed ff37538, CI green, 30k tokens; rerun idle; hands-off label → no round. Found: usage events nest under unifiedWindows (fixed) | done | |
-| 1.6 | H3 App: Approach section, chart, drawer, popover, settings (isolated worktree) | in progress | |
+| 1.6 | H3 App: Approach section, chart, drawer, popover, settings — merged (cherry-picked, stub dropped), 433 pass, snapshots /tmp/gp-1.6 | done | 330cfdf..931f56d |
+| 1.6 | UI polish (compact hold, gates wording, round titles, settings rows) | in progress | |
+| 1.6 | real Actions live check (job logs + rerun) | in progress | |
 
 ## Decisions (Yazan should know)
 
