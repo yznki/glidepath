@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0
 
 - Now shows what needs you and what each run did, in one sentence per run.
 - Skipped PRs fold away.
