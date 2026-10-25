@@ -51,6 +51,10 @@ enum CLI {
       glidepath tend push|discard|retry|on|off owner/name N
                                              act on one tended PR: push or discard a held fix, retry a stuck one,
                                              or switch tending off or on for it
+      glidepath tend reply owner/name N CALL [--text TEXT]
+                                             post the draft (or TEXT) for a Your call item, and resolve its thread
+      glidepath tend dismiss owner/name N CALL
+                                             drop a Your call item without replying
       glidepath teach owner/name "text"   add a lesson to a repo's playbook for tend
       glidepath doctor                    check requirements and installed pieces
       glidepath uninstall [--purge]       remove the job, skill and app link; --purge also removes config and state
