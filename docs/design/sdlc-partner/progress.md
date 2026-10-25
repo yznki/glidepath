@@ -32,6 +32,11 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | 1.8 | CLI: land step, `tend land/revert`, conflict rounds, main watch, revert PRs, skill Conflicts (502 pass) | done | 8f58d78 be8c8dd 124aa2c |
 | 1.8 | App: land/revert rows, notifications, landing glide, drawer markers, Landing setting; snapshots /tmp/gp-1.8 | done | a733f64..9234ca8 |
 | 1.8 | live: scratch #3 landed (merge f1e5ff1), #4 retargeted with approval KEPT, stack-a deleted, #4 landed next check; #5 conflict resolved + pushed (15k tokens); watch → ok. Bugs: conflict check counted clean-merged files (fixed 22c0b31); revert of #3 conflicted with #4 (expected; abort + message 0418fae) | done | |
+| 1.8 | live re-check: #2 conflict resolved + pushed (not landed, unapproved, 13k tokens); revert of #4 opened scratch #6 (closed) | done | |
+| 1.8 | Sonnet review: 14 findings (watch verdict conclusions + completion + reruns, branch delete safety, forks, fresh re-read before land, unanswered asks, held merge push no rebase, landable carry-over, MERGED confirm, rebase-method revert, revert branch reuse, caption, watch timeout, merge message) — 13 fixed, explicit-off→ask kept as decision; 504 pass | done | 57a5a26..287bb12 |
+| 1.8 | live: scratch #7 landed, land-e deleted, main green watch | done | |
+| 1.8 | released 1.8.0: PR https://github.com/yznki/glidepath/pull/12, release https://github.com/yznki/glidepath/releases/tag/v1.8.0, tap bffe90a, sha256 7f35c047…, snapshots /tmp/gp-1.8 | done | 4fa784c |
+| 1.9 | branch sdlc-1.9 from main 9b11183; core: config, Linear, Nudge, Describe, Briefing, consolidation, self asks (542 pass) | done | 4bb7f71 |
 
 ## Decisions (Yazan should know)
 
@@ -63,6 +68,12 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 - 1.8: retargeting a stacked child to main kept its approval on the scratch repo (no rulesets there); Sager's
   rulesets were not tested (build never touches Sager repos).
 - 1.8: a child whose retarget fails keeps the merged branch alive (deleting it would make GitHub close the child).
+
+- 1.8: merge queues: if `gh pr merge` only queues the PR, Glidepath records nothing and tries again next check; a
+  PR the queue lands later is not watched. Neither scratch nor (as far as known) Sager uses merge queues.
+- 1.9: Linear key lives in the Keychain via `/usr/bin/security` (key passed on stdin), so the launchd job can read it
+  after brew upgrades without a prompt.
+- 1.9: turning tending on writes `self_review = true` (also over an explicit false), like `merge = "ask"`.
 
 ## Open issues
 

@@ -8,7 +8,7 @@ Git network only as `git -c credential.helper= -c credential.helper='!gh auth gi
 a. Bump `Sources/Glidepath/Core/Version.swift` and `Resources/Info.plist` (CFBundleShortVersionString and
    CFBundleVersion) to `1.X.0`. Commit `glidepath 1.X.0`.
 b. Push `sdlc-1.X` to yznki/glidepath. `gh pr create --repo yznki/glidepath --base main --head sdlc-1.X --title
-   "1.X.0: <name>" --body "<bullets>"`, then `gh pr merge <n> --repo yznki/glidepath --rebase --delete-branch`.
+   "1.X.0: <name>" --body "<bullets>"`, wait for its checks (`gh pr checks <n> --repo yznki/glidepath --watch`, all green), then `gh pr merge <n> --repo yznki/glidepath --rebase --delete-branch`.
 c. Fetch main; find the merged `glidepath 1.X.0` commit on origin/main; `git tag -a v1.X.0 -m "Glidepath 1.X.0"
    <sha>`; push the tag (`refs/tags/v1.X.0`).
 d. `curl -sL https://github.com/yznki/glidepath/archive/refs/tags/v1.X.0.tar.gz | shasum -a 256`. On a local
