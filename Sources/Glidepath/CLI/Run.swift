@@ -703,6 +703,7 @@ final class Runner {
         childEnv["PATH"] = Claude.pathPrepending(InitCommand.runningBinaryDirectory(), to: childEnv["PATH"])
         childEnv["GLIDEPATH_STATE_DIR"] = paths.stateDir
         childEnv["GLIDEPATH_CONFIG_FILE"] = paths.configFile
+        if let claudeDir = config.claudeConfigDir { childEnv["CLAUDE_CONFIG_DIR"] = claudeDir }
         // The session's agents must finish; the runner's 3600 s session timeout still bounds the run.
         childEnv = Claude.waitingForAgents(childEnv)
 
@@ -718,12 +719,18 @@ final class Runner {
             print("allowlist: " + allowlist.joined(separator: ","))
             print("disallowed: " + Claude.disallowed.joined(separator: ","))
         }
-        let result = Shell.run("claude", args, cwd: repo.clone, env: childEnv, timeout: 3600)
+        // stream-json gives every event, including the rate-limit reports the usage guard reads. The log keeps the
+        // session's final text, which is what the owner notes are read from.
+        let result = Shell.run("claude", args + ["--output-format", "stream-json", "--verbose"], cwd: repo.clone,
+                               env: childEnv, timeout: 3600)
         let logPath = scratch + "/claude.log"
-        try? (result.stdout + result.stderr).write(toFile: logPath, atomically: true, encoding: .utf8)
-        if dryRun { print(result.stdout) }
+        let text = UsageGuard.resultText(stream: result.stdout) ?? result.stdout
+        try? (text + result.stderr).write(toFile: logPath, atomically: true, encoding: .utf8)
+        if dryRun { print(text) }
+        recordUsage(stream: result.stdout)
 
-        let usage = Transcript.usage(paths: paths, cwd: repo.clone, sessionId: session, keptPRs: Set(numbers))
+        let usage = Transcript.usage(paths: paths, cwd: repo.clone, sessionId: session, keptPRs: Set(numbers),
+                                     claudeDir: config.claudeConfigDir)
         try update { run in
             for (n, tokens) in usage.byPR {
                 run.addTokens(repo: repo.slug, n: n, tokens: tokens)
@@ -733,6 +740,13 @@ final class Runner {
             }
         }
         return usage.total
+    }
+
+    /// Keeps the newest rate-limit window of each type, so the usage guard knows how much Claude usage is left.
+    func recordUsage(stream: String) {
+        var state = UsageState.load(paths)
+        state.record(UsageGuard.events(stream: stream, now: Date()))
+        try? state.save(paths)
     }
 
     /// Scratch directories older than seven days go, except the current run's.
@@ -764,7 +778,9 @@ final class Runner {
     }
 
     private func prepareClone(_ repo: RepoConfig) throws {
-        try RepoClone.sync(repo, env: env)
+        // Waits for a tend round that is working in the same clone.
+        let lock = try RunLock.acquire(paths.cloneLock(repo.slug), wait: true)
+        try withExtendedLifetime(lock) { try RepoClone.sync(repo, env: env) }
     }
 
     private struct GHPR: Decodable {

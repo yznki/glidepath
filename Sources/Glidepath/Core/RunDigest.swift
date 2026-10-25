@@ -61,6 +61,10 @@ struct RunDigest: Equatable {
         if let failed {
             lead = "Failed."
             rest = failed
+        } else if run.kind == "tend" {
+            // A tend round has one row, with no verdict: its summary is the sentence.
+            lead = title
+            rest = own.first?.pr.reason ?? ""
         } else {
             if running {
                 let toReviewCount = own.filter { $0.pr.verdict != .skipped }.count
@@ -80,6 +84,17 @@ struct RunDigest: Equatable {
 
     /// "Sweep" for a sweep, "<login>'s PRs" for an author, "owner/name #n" for one PR, "<k> PRs" for several.
     static func title(for run: RunState) -> String {
+        if run.kind == "tend" {
+            // The target is "pr:owner/name#n"; the number is what follows the last "#".
+            let number = "#" + (run.target?.split(separator: "#").last.map(String.init) ?? "?")
+            switch run.tendAction {
+            case "fixed": return "Fixed CI on \(number)"
+            case "reran": return "Reran \(run.tendCheck ?? "CI") on \(number)"
+            case "held": return "Fix held on \(number)"
+            case "stuck": return "Stuck on \(number)"
+            default: return "Tend on \(number)"
+            }
+        }
         guard run.kind != nil else { return "Sweep" }
         guard let target = run.target else { return "Review" }
         if target.hasPrefix("author:") { return "\(target.dropFirst("author:".count))'s PRs" }

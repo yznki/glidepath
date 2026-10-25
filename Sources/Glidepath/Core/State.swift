@@ -67,6 +67,10 @@ struct RunState: Codable, Equatable {
     /// What a by-hand review asked for: "author:<login>" or "prs:owner/name#n,...". nil for a sweep and for older run
     /// files. The run digest titles the run with it.
     var target: String? = nil
+    /// For a tend run: "fixed", "reran", "stuck" or "held". Optional so older run files decode.
+    var tendAction: String? = nil
+    /// For a tend run that reran: the check it reran. Optional so older run files decode.
+    var tendCheck: String? = nil
 
     static func new(id: String, now: Date, kind: String? = nil, target: String? = nil) -> RunState {
         RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil, kind: kind, target: target)
@@ -350,13 +354,15 @@ final class RunLock {
 
     private init(fd: Int32) { self.fd = fd }
 
-    static func acquire(_ path: String) throws -> RunLock? {
+    /// Takes the lock. Without `wait`, a lock that is held gives nil at once. With `wait`, the call blocks until it is free.
+    static func acquire(_ path: String, wait: Bool = false) throws -> RunLock? {
         try FileManager.default.createDirectory(
             atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
         let fd = open(path, O_CREAT | O_RDWR, 0o644)
         guard fd >= 0 else { throw StateError("cannot open lock file \(path)") }
-        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
+        guard flock(fd, wait ? LOCK_EX : LOCK_EX | LOCK_NB) == 0 else {
             close(fd)
+            if wait { throw StateError("cannot lock \(path)") }
             return nil
         }
         return RunLock(fd: fd)
