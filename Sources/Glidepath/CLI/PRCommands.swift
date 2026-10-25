@@ -271,11 +271,17 @@ enum PRCommands {
         do {
             raw = try GH.run(["pr", "diff", String(n), "--repo", slug])
         } catch {
-            // gh refuses a diff over 300 files. The same diff comes from the clone.
-            return try cloneDiff(binding, n: n, head: view.headRefOid, base: view.baseRefName, path: path)
+            // gh refuses a diff over 300 files. The same diff comes from the clone. If that fails too, both errors say why.
+            let ghError = "\(error)"
+            do {
+                return try cloneDiff(binding, n: n, head: view.headRefOid, base: view.baseRefName, path: path)
+            } catch {
+                throw CommandError("\(ghError)\nclone fallback also failed: \(error)")
+            }
         }
         guard let path else { return raw }
-        guard view.files.contains(where: { $0.path == path }) else {
+        // Checked against the full list: view.files is cut short on a large PR.
+        guard try GH.changedFiles(slug, n).contains(path) else {
             throw CommandError("\(path) is not a file in #\(n)")
         }
         return section(of: raw, path: path)
@@ -284,19 +290,35 @@ enum PRCommands {
     /// The PR's diff from the run's clone: the merge-base diff GitHub shows. The head and base are fetched under
     /// refs/glidepath, so the clone's branches do not move. The fetched head must be the recorded one.
     static func cloneDiff(_ binding: RunBinding, n: Int, head: String, base: String, path: String?) throws -> String {
-        let fetch = Shell.run("git", fetchArguments(clone: binding.clone, n: n, base: base), timeout: RepoClone.slowTimeout)
-        guard fetch.ok else { throw CommandError("could not fetch #\(n): \(fetch.stderr.trimmingCharacters(in: .whitespacesAndNewlines))") }
-        let fetched = try git(["-C", binding.clone, "rev-parse", "--verify", "--quiet", "refs/glidepath/pr/\(n)^{commit}"])
-        guard fetched.trimmingCharacters(in: .whitespacesAndNewlines) == head else {
+        let clone = binding.clone
+        let fetchedHead = resolve(clone, "refs/glidepath/pr/\(n)")
+        let baseFetched = resolve(clone, "refs/glidepath/base/\(n)") != nil
+        if needsFetch(fetchedHead, head: head, baseFetched: baseFetched) {
+            let fetch = Shell.run("git", fetchArguments(clone: clone, n: n, base: base), timeout: 600)
+            guard fetch.ok else { throw CommandError("could not fetch #\(n): \(fetch.stderr.trimmingCharacters(in: .whitespacesAndNewlines))") }
+        }
+        guard resolve(clone, "refs/glidepath/pr/\(n)") == head else {
             throw CommandError("head moved since gather for #\(n); refusing")
         }
-        guard let path else { return try git(diffArguments(clone: binding.clone, n: n, head: head, path: nil)) }
+        guard let path else { return try git(diffArguments(clone: clone, n: n, head: head, path: nil), timeout: 300) }
         // Checked against the clone's own file list: gh's list can be cut short on a PR this large.
-        let names = try git(diffNameArguments(clone: binding.clone, n: n, head: head))
+        let names = try git(diffNameArguments(clone: clone, n: n, head: head), timeout: 300)
         guard names.split(separator: "\0").contains(where: { $0.utf8.elementsEqual(path.utf8) }) else {
             throw CommandError("\(path) is not a file in #\(n)")
         }
-        return try git(diffArguments(clone: binding.clone, n: n, head: head, path: path))
+        return try git(diffArguments(clone: clone, n: n, head: head, path: path), timeout: 300)
+    }
+
+    /// The commit a ref resolves to, or nil when it does not exist.
+    static func resolve(_ clone: String, _ ref: String) -> String? {
+        let r = Shell.run("git", ["-C", clone, "rev-parse", "--verify", "--quiet", ref + "^{commit}"], timeout: 120)
+        guard r.ok else { return nil }
+        return r.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Fetch unless the PR head is already fetched at the recorded head and the base is there too.
+    static func needsFetch(_ fetchedHead: String?, head: String, baseFetched: Bool) -> Bool {
+        fetchedHead != head || !baseFetched
     }
 
     /// Fetches the PR head and its base branch into refs/glidepath. Same credential setup as the clone in `RepoClone.sync`.
@@ -306,19 +328,22 @@ enum PRCommands {
          "+refs/pull/\(n)/head:refs/glidepath/pr/\(n)", "+refs/heads/\(base):refs/glidepath/base/\(n)"]
     }
 
-    /// Three dots: the diff from the merge-base of base and head, as GitHub shows it.
+    /// Three dots: the diff from the merge-base of base and head, as GitHub shows it. `--literal-pathspecs` makes the
+    /// path match only that exact file (no globs, no `:` magic). `--no-renames` lists a renamed file under both names.
     static func diffArguments(clone: String, n: Int, head: String, path: String?) -> [String] {
-        ["-C", clone, "diff", "--no-color", "--no-ext-diff", "refs/glidepath/base/\(n)...\(head)"]
+        ["-C", clone, "--literal-pathspecs", "diff", "--no-color", "--no-ext-diff", "--no-renames",
+         "refs/glidepath/base/\(n)...\(head)"]
             + (path.map { ["--", $0] } ?? [])
     }
 
-    /// `-z`: names come NUL-terminated and unquoted, so an unusual path compares exactly.
+    /// `-z`: names come NUL-terminated and unquoted, so an unusual path compares exactly. Same options as `diffArguments`.
     static func diffNameArguments(clone: String, n: Int, head: String) -> [String] {
-        ["-C", clone, "diff", "--name-only", "-z", "refs/glidepath/base/\(n)...\(head)"]
+        ["-C", clone, "--literal-pathspecs", "diff", "--name-only", "-z", "--no-renames",
+         "refs/glidepath/base/\(n)...\(head)"]
     }
 
-    private static func git(_ args: [String]) throws -> String {
-        let r = Shell.run("git", args, timeout: 120)
+    private static func git(_ args: [String], timeout: TimeInterval = 120) throws -> String {
+        let r = Shell.run("git", args, timeout: timeout)
         guard r.ok else { throw CommandError("git failed: \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))") }
         return r.stdout
     }
