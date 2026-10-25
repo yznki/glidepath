@@ -219,8 +219,15 @@ Each repo gets a playbook file: `~/.config/glidepath/playbooks/<owner>-<name>.md
   resets 18:40".
 - **Config:** `usage_reserve = 40` and `quiet_hours = "22:00-07:00,sat,sun"`. Both are set in onboarding, with
   one plain question: "When do you usually not use Claude?"
-- **Spike (1.6):** confirm that `rate_limit_event` appears in headless stream-json for Pro and Max, and what
-  its fields are.
+- **Separate account (1.6).**
+  - Settings → Tending → "Claude account for Glidepath": choose "Same as my claude" (the default) or "Separate
+    account".
+  - Choosing a separate account sets `claude_config_dir = "~/.config/glidepath/claude"`, links that folder's
+    `skills` to the user's own, and opens Terminal through the existing `FixInTerminal` with
+    `CLAUDE_CONFIG_DIR=<dir> claude auth login`.
+  - `Claude.childEnvironment` passes `CLAUDE_CONFIG_DIR` when it is set.
+  - The settings pane shows the signed-in email and plan, read from `claude auth status`.
+  - With a separate account, the setup writer sets `usage_reserve = 0`. The user can still change it.
 
 ### Which phase brings what
 
@@ -236,16 +243,31 @@ Each repo gets a playbook file: `~/.config/glidepath/playbooks/<owner>-<name>.md
 
 ## 1.6: Watch + CI
 
-### Spike (main session)
+### Spike: done 2026-10-26, on the Sager account and the main account
 
-- Done: Claude Code 2.1.310's `sandbox` settings support everything the plan needs:
-  - `network.allowedDomains`;
-  - `filesystem.denyRead` and `filesystem.allowWrite`;
-  - by default, writes are allowed only in the working directory and the temp directory.
-- Still to confirm by hand:
-  - the sandbox actually blocks `api.github.com` from a test session;
-  - `denyRead` on `~/.config/gh` works;
-  - `gh run rerun --failed` and `gh run view --log-failed` work on Sager's runs.
+- **Sandbox: works.** With `--settings` turning the sandbox on, plus `network.allowedDomains =
+  ["registry.npmjs.org"]` and `filesystem.denyRead = ["~/.config/gh"]`:
+  - `curl api.github.com` was blocked: `CONNECT tunnel failed, response 403`;
+  - `wc ~/.config/gh/hosts.yml` was refused: `Operation not permitted`;
+  - the npm registry returned 200.
+- **Usage events: present.** `--output-format stream-json --verbose` emits
+  `{"type":"rate_limit_event","rate_limit_info":{"status","rateLimitType":"five_hour"|"seven_day","utilization":0..1,"surpassedThreshold",…}}`.
+  - A session reports one window, whichever is most relevant.
+  - `utilization` is a fraction from 0 to 1, not a percentage.
+  - `status` can be `allowed` or `allowed_warning`.
+- **Advisor: available on both accounts.** `--advisor opus` and `{"advisorModel":"opus"}` both log "Server-side
+  tool enabled with claude-opus-5-5 as the advisor model".
+- **CI logs: use the per-job API.** `gh run view --log-failed` fails on Sager's huge logs (`stream error … CANCEL`,
+  and one job's log is 127k lines).
+  - Use `gh run view <id> --json jobs`, then for each failed job
+    `gh api repos/<o>/<n>/actions/jobs/<job>/logs`.
+  - The evidence is a window around each `##[error]` line: the 60 lines before it and 20 after, at most 400
+    lines per job. Not the tail of the log.
+- **Rerun:** `gh run rerun` supports `--failed` and `--job <id>`. It was not run, because that's an action on
+  a real PR.
+- **Separate account:** a T3 instance with `CLAUDE_CONFIG_DIR=~/.claude-alt`, signed in with
+  `claude auth login`, was confirmed working. So Glidepath uses the same mechanism, and the token route is
+  dropped.
 
 ### Config
 
@@ -307,7 +329,8 @@ Rounds run one at a time.
    - It is reused across rounds and removed when the PR closes or merges.
 3. **Evidence.** Write `scratch/<round>/evidence.md` with:
    - the failing checks;
-   - `gh run view --log-failed`, trimmed to its last 300 lines per job;
+   - for each failed job, its log from the jobs API, cut to windows around each `##[error]` line (60 lines
+     before, 20 after, at most 400 per job);
    - the PR title, the body, and the diff stat.
    - Everything in it is marked as untrusted data.
 4. **Session.**
@@ -522,6 +545,4 @@ the deferred class, self-review, and tending. The only new part is choosing whic
 ## Open items to confirm in the spikes
 
 1. Whether retargeting a PR's base dismisses approvals under Sager's rulesets (1.8).
-2. Whether `gh` can rerun a single failed job for Sager's runners (1.6).
-3. Whether the sandbox blocks gh and git from reaching GitHub in practice, and not just on paper (1.6).
-4. Whether `rate_limit_event` appears in headless stream-json for Pro and Max, and what its fields are (1.6).
+2. Whether a real `gh run rerun --failed` on a throwaway PR in a scratch repo works (1.6 live check).
