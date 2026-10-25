@@ -82,6 +82,7 @@ updates). No analytics, no server. Set `check_updates = false` to turn the updat
 - [How a run works](#how-a-run-works)
 - [What it costs](#what-it-costs)
 - [The menu bar app](#the-menu-bar-app)
+- [Tending your own PRs](#tending-your-own-prs)
 - [Drafts](#drafts), [Dashboard](#dashboard), [Notifications](#notifications)
 - [Config](#config)
 - [Commands](#commands)
@@ -193,6 +194,35 @@ Schedule (a 24-hour dial with presets) and Settings (with search and a live view
 | Now | Reviews |
 | --- | --- |
 | ![Now](docs/shots/app/now-dark.png) | ![Reviews](docs/shots/app/reviews-dark.png) |
+
+## Tending your own PRs
+
+Off by default. Settings → Tending → "Tend my PRs", then switch on the repos. A second launchd job,
+`dev.glidepath.tend`, checks your open PRs every 5 minutes with `gh` only; Claude runs only when a PR's checks changed.
+
+- A failing check is rerun once when it looks like infrastructure, or fixed in a worktree inside Glidepath's clone. The
+  session runs in Claude Code's sandbox: it writes only in that worktree, reaches only package registries, and has no
+  GitHub credentials. Glidepath checks the diff (no test skips, no CI config, no secrets, size cap), then commits with
+  your git identity and pushes. It never force-pushes.
+- `push = "until_approved"` (the default) holds a fix on an approved PR, since a push dismisses the approval.
+- Limits: `rounds_per_day` (5 per PR), `tries_per_head` (2), `max_usd_per_session` (2), and `usage_reserve` (40):
+  Glidepath never spends the last 40% of your 5-hour and weekly Claude windows. Deferred work waits for
+  `quiet_hours` ("22:00-07:00,sat,sun").
+- Stop it per PR with the switch in its drawer or the `glidepath:hands-off` label, or everywhere with Pause.
+- `glidepath teach owner/name "never edit migrations"` adds a lesson to the repo's playbook
+  (`~/.config/glidepath/playbooks/`), which every session reads.
+
+```toml
+[tend]
+enabled = true
+push = "always"          # or "until_approved"
+advisor = "opus"         # Sonnet fixes, Opus consulted at hard points; "off" to skip
+usage_reserve = 40
+
+[[repo]]
+slug = "owner/name"
+tend = true
+```
 
 ## Drafts
 
