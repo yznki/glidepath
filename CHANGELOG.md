@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The review sheet is a flight recorder: the PR's approach through its run (gather, review, check, land), its verdict, and readouts for the checker's changes, blast radius and the session's notes.
+- A review the run left without a verdict, or a PR it skipped, has a Review again button; the sheet shows the notes the run left on what stopped it.
+
 ## 1.3.8
 
 - A review session waits for its agents before it ends, so their reviews are no longer dropped when the session finishes early.

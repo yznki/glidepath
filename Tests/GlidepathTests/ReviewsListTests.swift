@@ -6,7 +6,7 @@ final class ReviewsListTests: XCTestCase {
     private func row(_ n: Int, _ verdict: Verdict?, _ reason: String? = nil, size: Bool = false, draft: Bool = false) -> ReviewRow {
         ReviewRow(runId: "run-1", repo: "acme/api", number: n, author: "sam", title: "PR \(n)", reason: reason,
                   verdict: verdict, draft: draft, skipReason: size ? "size" : nil, changedLines: nil, head: nil,
-                  flagged: false, tokens: 0, duration: nil, postedAt: nil)
+                  flagged: false, tokens: 0, duration: nil, postedAt: nil, stage: .post)
     }
 
     private let tooLarge = "too large (4000 changed lines)"

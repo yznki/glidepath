@@ -196,6 +196,87 @@ enum WindowFixtures {
         return run("fixture-first-sweep", now, minutes: landed ? 3.2 : nil, prs: reviewed + skipped, tokens: 120_000)
     }
 
+    /// The review sheet, landed: a changes review held as a draft, checked (4 kept, 1 added), with grep-only blast radius.
+    /// The copy is the flight recorder prototype's.
+    static func reviewLanded() -> (row: ReviewRow, text: ReviewTextRecord, artifacts: RunArtifacts) {
+        let body = """
+        Went through this at `9c86e39`, skipping what's already open in the threads or fixed by the author. Wiring is real now: the runner only passes the shared fetcher and spool to adapters that set `accepts_evidence`, so the other adapters keep their no-arg constructors.
+
+        Five things inline: no byte cap on the spool, the pin only tries the first approved address, previews share the four process-wide DNS slots with the device paths, the age cap trusts a wall clock that can jump, and the Host header is malformed for IPv6 literals.
+        """
+        let comments = [
+            PayloadComment(path: "evidence.py", line: 482, side: "RIGHT",
+                           body: "`MAX_ITEMS = 64` is the only bound on the spool, and each item can be up to 8 MB, so the worst case is about 512 MB on a disk the docstring calls small and shared."),
+            PayloadComment(path: "evidence.py", line: 321, side: "RIGHT",
+                           body: "`address = approved[0]` pins the whole fetch to the first resolved address, so a dual-stack name whose first answer is unreachable never falls back."),
+            PayloadComment(path: "evidence.py", line: 326, side: "RIGHT",
+                           body: "`parsed.hostname` strips the brackets from an IPv6 literal, so the Host header goes out as `fd00::1:8080`."),
+            PayloadComment(path: "evidence.py", line: 282, side: "RIGHT",
+                           body: "Previews share the 4 resolver slots with device paths."),
+            PayloadComment(path: "evidence_upload.py", line: 265, side: "RIGHT",
+                           body: "Age cap trusts a wall clock that can jump."),
+        ]
+        let row = ReviewRow(runId: "fixture-landed", repo: "lumen/api", number: 1258, author: "waelananzeh98",
+                            title: "ENG-710 M3.4 (2 of 2): fetch an alarm's preview under bounds, spool it, upload it",
+                            reason: "Spool disk cap, single-address pin, shared DNS slots", verdict: .changes, draft: true,
+                            skipReason: nil, changedLines: 3466, head: "9c86e39", flagged: false, tokens: 427_000,
+                            duration: 31 * 60, postedAt: nil, stage: .post)
+        let text = ReviewTextRecord(event: "REQUEST_CHANGES", body: body, comments: comments, head: "9c86e39", posted: nil)
+        // Two drafts, merged by the checker. Their findings are the four the checker kept; the fifth is its addition.
+        let draftA = RunArtifacts.Review(
+            verdict: .changes, reason: "Spool disk cap, single-address pin",
+            body: body + "\n\nThe bus comment is the same pattern as the spool, so it needs the same cap.",
+            comments: [
+                RunArtifacts.Comment(path: "evidence_upload.py", line: 265, body: "Age cap trusts a wall clock that can jump."),
+                RunArtifacts.Comment(path: "evidence.py", line: 282, body: "Previews share the 4 resolver slots with device paths."),
+            ])
+        let draftB = RunArtifacts.Review(
+            verdict: .changes, reason: nil, body: "",
+            comments: [
+                RunArtifacts.Comment(path: "evidence.py", line: 482, body: "No byte cap on the spool."),
+                RunArtifacts.Comment(path: "evidence.py", line: 321, body: "Fetch pinned to the first approved address."),
+            ])
+        let final = RunArtifacts.Review(
+            verdict: .changes, reason: "Spool disk cap, single-address pin", body: body,
+            comments: [
+                RunArtifacts.Comment(path: "evidence.py", line: 326, body: comments[2].body),
+                RunArtifacts.Comment(path: "evidence.py", line: 482, body: comments[0].body),
+                RunArtifacts.Comment(path: "evidence.py", line: 321, body: comments[1].body),
+                RunArtifacts.Comment(path: "evidence.py", line: 282, body: comments[3].body),
+                RunArtifacts.Comment(path: "evidence_upload.py", line: 265, body: comments[4].body),
+            ])
+        let blast = """
+        Callers from grep, partial. Changed symbols were searched by name.
+        - `net.py` is shared network policy. Device paths that call `assert_endpoint_allowed` may be affected.
+        - `reconciler.py` changed (+22 −2). Callers in `soak.py` and tests still construct it with defaults.
+        - Stacked on #1257. Routes it calls live there, not on main.
+        """
+        let artifacts = RunArtifacts(
+            folder: "/fixture/review-landed", fileCount: 13, additions: 3460, deletions: 6, headSha: "9c86e39f1d2e",
+            baseRef: "main", reviewCount: 9, reviewCommentCount: 71, issueCommentCount: 22,
+            drafts: [draftA, draftB], final: final, blast: blast,
+            notes: ["Feature freeze runs to 2026-11-15; flagged once for whoever merges. Not a blocker.",
+                    "Couldn't check the `/pulse/gateway/event-artifacts` routes: they live in #1257."],
+            diffParts: 13)
+        return (row, text, artifacts)
+    }
+
+    /// The review sheet, no result: the run stopped at gather because GitHub refused the diff of a 300-plus-file PR.
+    static func reviewNoResult() -> (row: ReviewRow, artifacts: RunArtifacts) {
+        let row = ReviewRow(runId: "fixture-noresult", repo: "lumen/api", number: 808, author: "abdeen-1",
+                            title: "ENG-424", reason: nil, verdict: nil, draft: false, skipReason: nil,
+                            changedLines: 46_265, head: "bb8113d", flagged: false, tokens: 58_000,
+                            duration: 2 * 60, postedAt: nil, stage: .gather)
+        let artifacts = RunArtifacts(
+            folder: "/fixture/review-noresult", fileCount: 100, headSha: "bb8113d9a0c4", reviewCount: 19,
+            reviewCommentCount: 36, issueCommentCount: 3,
+            blast: "NOT COMPLETE: no diff, so no changed symbols to search for.",
+            notes: ["`glidepath pr diff` got HTTP 406: \"diff exceeded the maximum number of files (300)\". GitHub refuses diffs over 300 files, so the diff could not be read.",
+                    "No review was posted: a verdict with no diff would be a guess.",
+                    "The PR is 46k changed lines. It likely needs splitting before anyone can review it well."])
+        return (row, artifacts)
+    }
+
     /// The onboarding model for one step. `repos` and the tool rows are what the step's checks would have found.
     @MainActor static func onboarding(_ step: OnboardingStep, now: Date, paths: Paths, running: Bool = false) -> OnboardingModel {
         var state = OnboardingState()
