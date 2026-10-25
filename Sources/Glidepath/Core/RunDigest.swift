@@ -94,6 +94,9 @@ struct RunDigest: Equatable {
             case "reran": return "Reran \(run.tendCheck ?? "CI") on \(number)"
             case "held": return "Fix held on \(number)"
             case "stuck": return "Stuck on \(number)"
+            case "landed": return "Landed \(number)"
+            case "merged": return "Merged the base into \(number)"
+            case "broke": return "Main broke after \(number)"
             default: return "Tend on \(number)"
             }
         }
