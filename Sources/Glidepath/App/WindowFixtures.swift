@@ -170,6 +170,8 @@ enum WindowFixtures {
         api.tend = true
         config.tend.enabled = true
         config.tend.autopilot = true
+        // Landing asks first: #1301 waits in Needs you to be landed.
+        config.tend.merge = .ask
         config.tend.roundsPerDay = 5
         config.repos = [api, web]
         return config
@@ -215,8 +217,12 @@ enum WindowFixtures {
             snap.dryRunning = true
             snap.dryRun = firstSweepRun(now, landed: false)
         }
-        if name == "approach" || name == "approach-drawer" {
+        if ["approach", "approach-drawer", "approach-landing"].contains(name) {
             addTend(&snap, now: now)
+        }
+        if name == "approach-landing" {
+            // #1240 landed a moment ago and its glide is at 0.6 of the way to the runway.
+            snap.landedSeen[landedID] = now.addingTimeInterval(-0.6 * ApproachGeometry.landingDuration)
         }
         return snap
     }
@@ -360,7 +366,7 @@ enum WindowFixtures {
 
     /// Adds tend's state to a fixture snapshot: the approach chart, the tower, today's rounds, the user's call and a
     /// playbook. The planes are one morning in lumen/api: a stack of three landing in order, a fix in flight, a held fix,
-    /// a stuck PR, a PR waiting on Gadi, and a draft.
+    /// a stuck PR, a PR waiting on Gadi, a draft, and #1240 landed and watching main.
     static func addTend(_ snap: inout Snapshot, now: Date) {
         snap.tendOn = true
         snap.approach = approachSnapshot(now)
@@ -368,6 +374,22 @@ enum WindowFixtures {
         snap.tendRounds = tendRounds(now)
         snap.calls = ["lumen/api#1246/\(gadiCallID)": gadiCall(now)]
         snap.playbooks = ["lumen/api": playbook(now)]
+        snap.landed = landedRecords(now)
+        // Seen long ago, so the chart shows #1240 on the runway without a glide.
+        snap.landedSeen = [landedID: .distantPast]
+    }
+
+    /// The id of the landed PR on the runway: #1240, as `ApproachPlane.id` and `Snapshot.landedSeen` key it.
+    static let landedID = "lumen/api#1240"
+
+    /// Landed PRs: #1240 merged 20 min ago and is watching main; #1238 merged 3 h ago and broke main, so it needs a revert.
+    static func landedRecords(_ now: Date) -> [TendLanded] {
+        [TendLanded(slug: "lumen/api", n: 1240, title: "Audit log for certification changes",
+                    sha: "9c2e41d7f0a3c5b8e1d24a6f7b0c93e5a1d2f4b6", parent: "e41b07c93a2d5f8e0c16b4a7d9e2f3051c8b6a74",
+                    at: now.addingTimeInterval(-20 * 60), status: "watching"),
+         TendLanded(slug: "lumen/api", n: 1238, title: "Idempotency keys for create requests",
+                    sha: "4fa0c81e9b7d2a6f3c5e0d8b1a4f7c9e2d6b3a58", parent: "7d3b92f0c8e1a4d6b2f9e7c0a5d3b1f8e6c4a290",
+                    at: now.addingTimeInterval(-3 * 3600), status: "broke", failing: ["Unit tests"])]
     }
 
     /// The call id of Gadi's thread on #1246, as tend keeps it in the PR's state.
@@ -431,8 +453,16 @@ enum WindowFixtures {
                   label: "Draft", ci: "pending",
                   gates: [gate("CI", .wait, "1 running"), gate("Threads", .ok, "All resolved"),
                           gate("Approval", .wait, "No review yet"), gate("Ready", .none, "Draft")]),
+            Approach.landedPlane(landedRecords(now)[0], lane: 0),
         ]
+        // #1301 is cleared and stacked: its land need names the two PRs above it.
+        let landing = NeedsItem(id: "\(slug)#1301/land", slug: slug, n: 1301,
+                                title: "Notification schema: migration and backfill", kind: "land",
+                                detail: "Ready to land · approved · 4 checks green · then #1302, #1303")
         let needs = [
+            landing,
+            NeedsItem(id: "\(slug)#1238/revert", slug: slug, n: 1238, title: "Idempotency keys for create requests",
+                      kind: "revert", detail: "Main broke after #1238 · Unit tests"),
             NeedsItem(id: "\(slug)#1360/held", slug: slug, n: 1360, title: "fix(api): retries return the stored response",
                       kind: "held", detail: "Fix held · approved, pushing cancels the approval"),
             NeedsItem(id: "\(slug)#1246/stuck", slug: slug, n: 1246,
