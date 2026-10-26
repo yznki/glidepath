@@ -22,108 +22,6 @@ private final class OutputTail: @unchecked Sendable {
     }
 }
 
-/// One PR as the popover and the radar draw it.
-struct Strip: Identifiable, Equatable {
-    let repo: String
-    let number: Int
-    var author: String?
-    var title: String?
-    var reason: String?
-    var stage: Int          // 1...4: gather, review, check, post
-    var active: Bool
-    var verdict: Verdict?
-    var tokens: Int
-    var carriedFrom: Date? = nil
-    var draft = false
-    var flagged = false
-    /// A draft post or discard is running for this row: the status reads "Posting…" or "Discarding…".
-    var draftAction: DraftAction? = nil
-    var posting: Bool { draftAction == .posting }
-    /// The last draft post or discard failed: its last output line, shown on line 3.
-    var draftError: String? = nil
-    /// "size" on a PR skipped for size: its row offers Review.
-    var skipReason: String? = nil
-    var changedLines: Int? = nil
-    /// GitHub lists the PR as a draft. Not the same as `draft`, which marks a held review on disk.
-    var isDraftPR = false
-
-    var id: String { "\(repo)#\(number)" }
-}
-
-/// A draft command the app is running for one row.
-enum DraftAction: Equatable {
-    case posting, discarding
-}
-
-/// The menu bar app's own update work. `updating` runs `glidepath update --wait`; `failed` stays until the next try.
-enum UpdatePhase: Equatable {
-    case idle, updating, failed
-}
-
-/// Everything the popover shows. `Store` fills it from disk; snapshot rendering fills it with fixtures.
-struct Snapshot {
-    var run: RunState?
-    var running = false
-    /// A dry run holds the lock but is not the current run (dry runs never become current).
-    var dryRunning = false
-    /// The dry run's run file while it holds the lock. Snapshot-only fixtures set it directly.
-    var dryRun: RunState?
-    var paused = false
-    var pausedSince: Date?
-    var jobInstalled = true
-    var nextRun: Date?
-    /// Snapshot rendering only: the clock the window reads for "in 2 h 41 min", in place of Date().
-    var now: Date?
-    var postsReviews = false
-    var schedule: [ScheduleTime] = []
-    var repoCount = 0
-    /// The parsed config, for the Repos section. Nil when there is no config or it does not parse.
-    var config: Config?
-    /// `max_changed_lines`, for the Review warning.
-    var maxChangedLines = 3000
-    var hovered: String?
-    /// The cached latest release. The popover offers it when it is newer than this build.
-    var update: UpdateCache?
-    var checkUpdates = true
-    var updateChecking = false
-    var updatePhase: UpdatePhase = .idle
-    /// The result of "Check for updates…", shown for 4 s.
-    var updateNote: String?
-    /// Snapshot rendering only: the runs the window reads in place of the run files. Nil in the live app.
-    var runs: [RunState]?
-    /// Snapshot rendering only: review text by "runId|repo#n", in place of the text store.
-    var reviewTexts: [String: ReviewTextRecord] = [:]
-    /// Snapshot rendering only: the tool checks Settings shows, in place of running them.
-    var tools: [Checks.Item]?
-    /// Snapshot rendering only: the login item state, in place of reading it.
-    var loginOn = false
-    /// Tending is on in config.toml.
-    var tendOn = false
-    /// What tend's last sweep saw, from `stateDir/tend/approach.json`. Nil until tend has written it.
-    var approach: ApproachSnapshot?
-    /// The newest 30 tower lines, newest first.
-    var tower: [TowerLine] = []
-    /// The user's calls by `NeedsItem.id`, read from each PR's tend state: who asked, and the draft reply if any.
-    var calls: [String: YourCall] = [:]
-    /// Tend rounds started today, from the run files.
-    var tendRounds: [RunState] = []
-    /// The PRs tend landed, from `tend/landed.json`: watched, ok, broke or reverted.
-    var landed: [TendLanded] = []
-    /// When the app first saw each landed PR, by `ApproachPlane.id`. The chart glides a plane in once, from its first
-    /// sighting. Snapshot rendering sets it directly.
-    var landedSeen: [String: Date] = [:]
-    /// Snapshot rendering only: the playbooks by repo, in place of reading them.
-    var playbooks: [String: Playbook] = [:]
-    /// The morning briefing from `tend/briefing.json`, when tend has written one.
-    var briefing: Briefing?
-    /// Each approach plane's tend state, by `ApproachPlane.id`: its changes since review, and when each reviewer was pinged.
-    var prStates: [String: TendPR] = [:]
-    /// Each approach plane's split plan, by `ApproachPlane.id`, from `tend/split/`. Only planes that have one.
-    var splits: [String: SplitPlan] = [:]
-    /// Snapshot rendering only: whether a Linear key is saved, in place of reading the Keychain. Nil in the live app.
-    var linearKey: Bool?
-}
-
 extension NeedsItem {
     /// The call's id: the part of `id` after "<slug>#<n>/". Tend's commands take it.
     var callID: String { String(id.dropFirst("\(slug)#\(n)/".count)) }
@@ -252,11 +150,8 @@ final class Store: ObservableObject {
         }
     }
 
-    /// The PRs of the running dry run, for the Overview while one holds the lock.
-    var dryStrips: [Strip] { Store.strips(from: snap.dryRun) }
-
     var strips: [Strip] {
-        Store.strips(from: snap.run).map { strip in
+        Presentation.strips(from: snap.run).map { strip in
             var s = strip
             s.draftAction = draftBusy[strip.id]
             s.draftError = draftErrors[strip.id]
@@ -282,7 +177,6 @@ final class Store: ObservableObject {
         if case .homebrew = InstallKind.of(binary: path) { return true }
         return false
     }
-    var errorText: String? { actionError ?? jobError ?? snap.run.flatMap { Presentation.failureMessage($0) } }
     var headerKind: HeaderKind { Presentation.headerKind(snap, now: Date()) }
 
     /// Changes waiting: the last finished run had changes and the popover has not been opened since.
@@ -369,7 +263,7 @@ final class Store: ObservableObject {
         // Held drafts are shown from disk, whichever run wrote them. Notifications above used the run alone.
         s.run?.showDrafts(Drafts.all(paths))
         s.landedSeen = landedSeen(s, config: config)
-        let landed = Set(Store.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
+        let landed = Set(Presentation.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
         if popoverOpen && !landed.isEmpty {
             justLanded = landed
             let ids = landed
@@ -383,7 +277,7 @@ final class Store: ObservableObject {
         notifyBriefing(config: config)
         reconcileJob()
         syncLiveTokens()
-        hovered = hovered.flatMap { h in Store.strips(from: s.run).contains { $0.id == h } ? h : nil }
+        hovered = hovered.flatMap { h in Presentation.strips(from: s.run).contains { $0.id == h } ? h : nil }
     }
 
     /// Reads tend's approach snapshot, tower and today's rounds. Rounds are read only while tending is on.
@@ -591,10 +485,6 @@ final class Store: ObservableObject {
         popoverOpen = false
     }
 
-    func setHovered(_ id: String?) {
-        hovered = id
-    }
-
     /// Stops the running sweep: signals its process group, then records the run as finished. Reviews already
     /// posted stay posted; the PRs not yet reviewed show "No result". A stopped run is not a failed run.
     func stopRun() {
@@ -696,25 +586,6 @@ final class Store: ObservableObject {
         draftBusy[id] = nil
         draftErrors[id] = ok ? nil : (message.isEmpty ? "failed; see the log" : message)
         reload()
-    }
-
-    /// Writes the HTML dashboard and opens it. The CLI does the work, so the page is the same either way.
-    func openDashboard() {
-        guard let binary = Bundle.main.executablePath else {
-            actionError = "cannot find the glidepath binary"
-            return
-        }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = ["dashboard"]
-        process.environment = Runner.environment(paths)
-        attachLog(process)
-        do {
-            try process.run()
-            actionError = nil
-        } catch {
-            actionError = "dashboard: \(error.localizedDescription)"
-        }
     }
 
     func togglePause() {
@@ -951,20 +822,6 @@ final class Store: ObservableObject {
             try? SMAppService.mainApp.unregister()
             try? SMAppService.mainApp.register()
             UserDefaults.standard.set(bundlePath, forKey: "loginItemPath")
-        }
-    }
-
-    // MARK: Derivation
-
-    nonisolated static func strips(from run: RunState?) -> [Strip] {
-        guard let run else { return [] }
-        return run.repos.flatMap { repo in
-            repo.prs.map { pr in
-                Strip(repo: repo.slug, number: pr.n, author: pr.author, title: pr.title, reason: PRFilter.displayReason(pr.reason),
-                      stage: pr.stage.rank + 1, active: pr.active, verdict: pr.verdict, tokens: pr.tokens,
-                      carriedFrom: pr.carriedFrom, draft: pr.draft ?? false, flagged: pr.flagged ?? false,
-                      skipReason: pr.skipReason, changedLines: pr.changedLines, isDraftPR: pr.isDraftPR ?? false)
-            }
         }
     }
 }

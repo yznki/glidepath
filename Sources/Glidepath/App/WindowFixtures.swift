@@ -622,9 +622,9 @@ enum WindowFixtures {
             state.repos = ["lumen/api"]
             if running {
                 state.firstSweep = .running
-                strips = Store.strips(from: firstSweepRun(now, landed: false))
+                strips = Presentation.strips(from: firstSweepRun(now, landed: false))
             } else {
-                strips = Store.strips(from: firstSweepRun(now, landed: true))
+                strips = Presentation.strips(from: firstSweepRun(now, landed: true))
                 let landing = OnboardingSummary.landing(strips, posting: .comment, repo: "lumen/api")
                 state.firstSweep = .finished(reviews: landing.reviews, summary: landing.text)
             }

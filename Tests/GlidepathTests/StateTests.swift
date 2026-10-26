@@ -262,7 +262,7 @@ final class AtomicCounter: @unchecked Sendable {
         """
         let run = try RunStore.decoder().decode(RunState.self, from: Data(json.utf8))
         XCTAssertNil(run.repos[0].prs[0].isDraftPR)
-        XCTAssertFalse(Store.strips(from: run)[0].isDraftPR)
+        XCTAssertFalse(Presentation.strips(from: run)[0].isDraftPR)
     }
 
     func testUnstampedKeptPRsGetAReasonUnlessTheSessionLeftOne() throws {

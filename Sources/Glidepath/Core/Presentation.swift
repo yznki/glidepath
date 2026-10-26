@@ -55,9 +55,21 @@ enum Presentation {
     /// Stage words in the status idiom, capitalised, and as the profile's stage labels.
     static let phaseWords = ["Gather", "Review", "Check", "Land"]
 
+    static func strips(from run: RunState?) -> [Strip] {
+        guard let run else { return [] }
+        return run.repos.flatMap { repo in
+            repo.prs.map { pr in
+                Strip(repo: repo.slug, number: pr.n, author: pr.author, title: pr.title, reason: PRFilter.displayReason(pr.reason),
+                      stage: pr.stage.rank + 1, active: pr.active, verdict: pr.verdict, tokens: pr.tokens,
+                      carriedFrom: pr.carriedFrom, draft: pr.draft ?? false, flagged: pr.flagged ?? false,
+                      skipReason: pr.skipReason, changedLines: pr.changedLines, isDraftPR: pr.isDraftPR ?? false)
+            }
+        }
+    }
+
     static func headerKind(_ snap: Snapshot, now: Date) -> HeaderKind {
         if !snap.jobInstalled { return .notScheduled }
-        let strips = Store.strips(from: snap.run)
+        let strips = Presentation.strips(from: snap.run)
         let changes = strips.filter { $0.verdict == .changes }.count
         if snap.running, let run = snap.run {
             if strips.isEmpty { return .preparing(phase: run.phase, started: run.started) }
@@ -102,7 +114,7 @@ enum Presentation {
     /// sweep with nothing reviewed says nothing, unless it failed.
     /// The notice for a finished dry run: what it would have posted. Nothing was posted.
     static func dryRunNotice(_ run: RunState) -> SweepNotice {
-        let strips = Store.strips(from: run)
+        let strips = Presentation.strips(from: run)
         let changes = strips.filter { $0.verdict == .changes }.count
         let approvals = strips.filter { $0.verdict == .approve }.count
         return SweepNotice(title: "Dry run done",
@@ -254,5 +266,14 @@ enum Presentation {
             }
             return ProfileMark(id: s.id, kind: kind, label: "#\(s.number)", carried: s.carriedFrom != nil)
         }
+    }
+}
+
+/// "1.2k", "84k", "3.1M". Token counts in the menu.
+func compactTokens(_ n: Int) -> String {
+    switch n {
+    case 1_000_000...: return String(format: "%.1fM", Double(n) / 1_000_000)
+    case 1_000...: return String(format: "%.0fk", Double(n) / 1_000)
+    default: return "\(n)"
     }
 }

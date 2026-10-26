@@ -904,7 +904,7 @@ final class OnboardingModel: ObservableObject {
         let paths = self.paths
         let run = await Task.detached(priority: .utility) { currentSweepRun(paths: paths, since: started) }.value
         guard generation == sweepGeneration else { return }
-        liveStrips = Store.strips(from: run)
+        liveStrips = Presentation.strips(from: run)
     }
 
     /// Turns the schedule on: unpauses the job and opens Overview.
