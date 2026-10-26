@@ -139,7 +139,6 @@ final class PresentationTests: XCTestCase {
 
     func testRowFactsUsePassThreeLabels() {
         XCTAssertEqual(Presentation.phaseWords, ["Gather", "Review", "Check", "Land"])
-        XCTAssertEqual(ApproachRowText.skipped("draft"), "Draft, skipped")
     }
 
     func testRowOrderIsChangesNoResultInFlightApprovedSkipped() {
@@ -166,51 +165,8 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(Presentation.status(strip(1, stage: 2, active: true), running: true), .active(phase: "Review"))
         XCTAssertEqual(Presentation.status(strip(1), running: true), .queued)
         XCTAssertEqual(Presentation.status(strip(1), running: false), .noResult)
-        XCTAssertEqual(ApproachRowText.skipped("draft"), "Draft, skipped")
         XCTAssertNil(Presentation.meter(strip(1, verdict: .approve)), "finished rows show no meter")
         XCTAssertEqual(Presentation.meter(strip(1, stage: 3, active: true)), [.done, .done, .current, .future])
-    }
-
-    func testProfileMarksFollowTheRules() {
-        let groups = Presentation.rows(from: [
-            strip(1, stage: 2, active: true), strip(2, verdict: .changes), strip(3),
-        ], running: true, repos: [RepoState(slug: "acme/api", prs: [], error: nil)])
-        let marks = Presentation.marks(groups, running: true)
-        // Rows sort changes first, then in flight with the latest stage first: #2 (changes), #1 (review), #3 (queued).
-        XCTAssertEqual(marks.map(\.kind), [.landed(.changes), .active(stage: 2), .queued])
-    }
-
-    func testProfilePlacesStagesLeftToRightAndLandedOnTheRunway() {
-        let marks = [
-            ProfileMark(id: "a", kind: .active(stage: 1)),
-            ProfileMark(id: "b", kind: .active(stage: 4)),
-            ProfileMark(id: "c", kind: .landed(.approve)),
-            ProfileMark(id: "d", kind: .landed(.changes)),
-        ]
-        let placed = Profile.place(marks, running: true)
-        let a = placed.first { $0.id == "a" }!, b = placed.first { $0.id == "b" }!
-        XCTAssertLessThan(a.centre.x, b.centre.x, "later stages sit further right")
-        XCTAssertGreaterThanOrEqual(b.centre.x, Profile.runwayX - 40, "stage 4 is near the runway")
-        let c = placed.first { $0.id == "c" }!, d = placed.first { $0.id == "d" }!
-        XCTAssertEqual(c.centre.y, Profile.runwayTop(running: true) - c.side / 2, accuracy: 0.01, "marks sit on the runway")
-        XCTAssertLessThan(c.centre.x, d.centre.x, "landed marks pack left to right in list order")
-        XCTAssertEqual(c.side, Profile.markSide)
-        XCTAssertEqual(d.centre.x - c.centre.x, Profile.markStep, accuracy: 0.01, "landed marks are 16 pt apart (6 pt gap)")
-        XCTAssertEqual(c.centre.x - c.side / 2, Profile.runwayX, accuracy: 0.01, "the first mark starts at the land label")
-    }
-
-    func testSameStageCirclesSpreadApart() {
-        let marks = (0..<3).map { ProfileMark(id: "p\($0)", kind: .active(stage: 2)) }
-        let xs = Profile.place(marks, running: true).map(\.centre.x).sorted()
-        XCTAssertEqual(xs[1] - xs[0], Profile.spread, accuracy: 0.01)
-        XCTAssertEqual(xs[2] - xs[1], Profile.spread, accuracy: 0.01)
-    }
-
-    func testManyLandedSquaresShrinkToFitTheRunway() {
-        let marks = (0..<10).map { ProfileMark(id: "s\($0)", kind: .landed(.approve)) }
-        let placed = Profile.place(marks, running: false)
-        XCTAssertLessThan(placed.map(\.side).max() ?? 0, 8)
-        XCTAssertLessThanOrEqual((placed.last?.centre.x ?? 0) + (placed.last?.side ?? 0) / 2, Profile.runwayX + Profile.runwayLength + 0.01)
     }
 
     func testPausedSinceReadsTheMarker() throws {
@@ -253,9 +209,4 @@ final class PresentationTests: XCTestCase {
         failed.kind = "review"
         XCTAssertEqual(Presentation.notice(failed), SweepNotice(title: "Review failed", body: "claude exited 1"))
     }
-}
-
-/// The text the row shows for a skipped PR.
-enum ApproachRowText {
-    static func skipped(_ reason: String) -> String { PRRow.skippedText(reason) }
 }

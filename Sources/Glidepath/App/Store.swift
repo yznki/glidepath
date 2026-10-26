@@ -71,7 +71,6 @@ final class DirectoryWatcher {
 @MainActor
 final class Store: ObservableObject {
     static let shared = Store()
-    static let ackKey = "acknowledgedRunID"
     static let lastLookedKey = "lastLookedAt"
 
     @Published private(set) var snap: Snapshot
@@ -85,9 +84,6 @@ final class Store: ObservableObject {
     let isFixture: Bool
     /// Errors from actions in this app (run now, login item), shown until the next reload.
     @Published var actionError: String?
-    /// Stamps that landed while the popover was open. The stamp settles once, then this clears.
-    @Published private(set) var justLanded: Set<String> = []
-    @Published var hovered: String?
     /// Draft posts and discards running from this app, and the last error of each.
     @Published private(set) var draftBusy: [String: DraftAction] = [:]
     @Published private(set) var draftErrors: [String: String] = [:]
@@ -103,10 +99,7 @@ final class Store: ObservableObject {
     private var liveTokenSession: String?
 
     let paths = Paths()
-    let profileMotion: ProfileMotion
-    var popoverOpen = false
     private var watcher: DirectoryWatcher?
-    private var acknowledgedRunID: String?
     private var loggedUpdateFailure = false
     /// The dry run seen running most recently. When the lock is free, its notification goes out once.
     private var pendingDryRunID: String?
@@ -130,20 +123,14 @@ final class Store: ObservableObject {
 
     /// `snapshot == nil` is the live app: registers at login and watches the state folders.
     /// A non-nil snapshot is fixed state for snapshot rendering.
-    /// Fixtures pass a snapshot, and may pass the PRs that just landed and a shared motion (the hero GIF renders
-    /// frames one after another with one motion, so landings animate across frames).
-    init(snapshot: Snapshot? = nil, justLanded: Set<String> = [], motion: ProfileMotion = ProfileMotion()) {
-        profileMotion = motion
+    init(snapshot: Snapshot? = nil) {
         isFixture = snapshot != nil
         if let snapshot {
             snap = snapshot
-            hovered = snapshot.hovered
-            self.justLanded = justLanded
             derive()
             return
         }
         snap = Snapshot()
-        acknowledgedRunID = UserDefaults.standard.string(forKey: Store.ackKey)
         try? FileManager.default.createDirectory(atPath: paths.runsDir, withIntermediateDirectories: true)
         registerLoginItemIfMoved()
         Notifier.setUp()
@@ -192,29 +179,9 @@ final class Store: ObservableObject {
         if case .homebrew = InstallKind.of(binary: path) { return true }
         return false
     }
-    var headerKind: HeaderKind { Presentation.headerKind(snap, now: Date()) }
-
-    /// Changes waiting: the last finished run had changes and the popover has not been opened since.
-    var changesWaiting: Bool {
-        guard let run = snap.run, run.finished != nil, run.id != acknowledgedRunID else { return false }
-        return strips.contains { $0.verdict == .changes }
-    }
-
-    var glyph: GlyphState {
-        if !snap.jobInstalled { return .failed }
-        if snap.running { return .running(active: strips.filter(\.active).count) }
-        if snap.dryRunning { return .running(active: 0) }
-        if snap.paused { return .paused }
-        if let run = snap.run, run.finished != nil, Presentation.failureMessage(run) != nil { return .failed }
-        if changesWaiting {
-            return .changesWaiting(count: strips.filter { $0.verdict == .changes }.count)
-        }
-        return .idle
-    }
 
     func reload() {
         var s = Snapshot()
-        let previous = Set(strips.filter { $0.verdict != nil }.map(\.id))
         do {
             s.run = try RunStore(paths: paths).loadCurrent()
         } catch {
@@ -237,7 +204,6 @@ final class Store: ObservableObject {
         s.config = config
         // The shortcut follows the config as it is now, not only as it was at launch.
         if !isFixture { GlobalHotkey.shared.apply(config?.hotkey ?? .on) }
-        s.hovered = snap.hovered
         s.update = Updates.cached(paths)
         s.checkUpdates = config?.checkUpdates ?? true
         s.maxChangedLines = config?.limits.maxChangedLines ?? 3000
@@ -279,14 +245,6 @@ final class Store: ObservableObject {
         // Held drafts are shown from disk, whichever run wrote them. Notifications above used the run alone.
         s.run?.showDrafts(Drafts.all(paths))
         s.landedSeen = landedSeen(s, config: config)
-        let landed = Set(Presentation.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
-        if popoverOpen && !landed.isEmpty {
-            justLanded = landed
-            let ids = landed
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                self?.justLanded.subtract(ids)
-            }
-        }
         snap = s
         derive()
         // Releasing tend's lock writes nothing the watcher sees, so while a tend check runs the store looks again.
@@ -296,7 +254,6 @@ final class Store: ObservableObject {
         notifyBriefing(config: config)
         reconcileJob()
         syncLiveTokens()
-        hovered = hovered.flatMap { h in Presentation.strips(from: s.run).contains { $0.id == h } ? h : nil }
     }
 
     /// Reads tend's approach snapshot, tower and today's rounds. Rounds are read only while tending is on.
@@ -492,13 +449,8 @@ final class Store: ObservableObject {
         jobReinstallTimer = nil
     }
 
-    /// Called when the popover appears. Opening it after a run ends clears "changes waiting".
+    /// Called when the popover appears: reads the state fresh and what happened since the last look.
     func popoverOpened() {
-        popoverOpen = true
-        if let run = snap.run, run.finished != nil {
-            acknowledgedRunID = run.id
-            UserDefaults.standard.set(run.id, forKey: Store.ackKey)
-        }
         reload()
         loadSinceLastLooked()
         checkIfDue(maxAge: Updates.popoverMaxAge)
@@ -506,7 +458,6 @@ final class Store: ObservableObject {
 
     /// Closing the popover is a look: the next "Since you last looked" starts here.
     func popoverClosed() {
-        popoverOpen = false
         guard !isFixture else { return }
         UserDefaults.standard.set(Date(), forKey: Store.lastLookedKey)
     }

@@ -20,7 +20,8 @@ macros.
 `./make-app.sh` builds the app bundle with the Command Line Tools. Pass `--no-build` to reuse an existing
 `.build/release` binary.
 
-For screenshots and the design states, run `glidepath --snapshot <dir>`. It renders from fixtures, in light and dark.
+For screenshots and the design states, run `glidepath --snapshot <dir>` (window, light and dark) and
+`glidepath --kit-gallery <dir>` (menu bar popover and glyphs). Both render from fixtures.
 
 The 2.0 kit (`Sources/Glidepath/Kit`) has its own gallery: `glidepath --kit-gallery <dir>` writes every component in
 every state to PNGs (as in `docs/design/v2-ux/kit-shots`). Without a directory it opens the pages as windows;

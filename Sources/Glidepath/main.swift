@@ -25,7 +25,7 @@ if argv.isEmpty || argv == ["app"] {
 if argv.first == "--kit-gallery" {
     MainActor.assumeIsolated { KitGallery.run(argv.dropFirst().first) }
 }
-if argv.first == "--snapshot" || argv.first == "--hero-gif" {
+if argv.first == "--snapshot" {
     GlidepathApp.main()
 }
 exit(CLI.main(argv))

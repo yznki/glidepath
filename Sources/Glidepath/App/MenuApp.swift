@@ -13,27 +13,15 @@ struct GlidepathApp: App {
             MainActor.assumeIsolated { Snapshotter.run(outDir: outDir) }
             exit(0)
         }
-        // README hero: the running popover as a looping GIF, with injected time.
         if args.count == 1 || args.dropFirst().first == "app" {
             MainActor.assumeIsolated { GlobalHotkey.shared.applyConfig(Paths()) }
-        }
-        if let i = args.firstIndex(of: "--hero-gif"), i + 1 < args.count {
-            let path = args[i + 1]
-            let ok = MainActor.assumeIsolated { HeroGIF.render(to: path) }
-            print(ok ? "wrote \(path)" : "hero gif failed: \(path)")
-            exit(ok ? 0 : 1)
         }
     }
 
     var body: some Scene {
-        MenuBarExtra {
-            PopoverView(store: Store.shared)
-                .background(OpenWindowBridge())
-        } label: {
-            MenuBarLabel(store: Store.shared)
-                .background(OpenWindowBridge(opensWhenUnconfigured: true))
-        }
-        .menuBarExtraStyle(.window)
+        // SwiftUI opens the first scene at launch. This one is never inserted, so the app starts with no window; the
+        // status item (MenuBar) opens the main window when it is wanted.
+        MenuBarExtra("Glidepath", isInserted: .constant(false)) { EmptyView() }
         Window("Glidepath", id: "main") {
             MainWindowView()
         }
@@ -51,37 +39,6 @@ enum Snapshotter {
         let dir = URL(fileURLWithPath: outDir, isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let now = Date()
-        let states: [(String, Snapshot)] = [
-            ("running", Fixtures.running(now)),
-            ("idle-changes", Fixtures.idleChanges(now)),
-            ("idle-clear", Fixtures.idleClear(now)),
-            ("paused", Fixtures.paused(now)),
-            ("failed", Fixtures.failed(now)),
-            ("empty", Fixtures.empty(now)),
-            ("first-run", Fixtures.firstRun(now)),
-            ("dry-run", Fixtures.dryRun(now)),
-            ("hover", Fixtures.hover(now)),
-            ("drafts", Fixtures.drafts(now)),
-            ("flagged", Fixtures.flagged(now)),
-            ("too-large", Fixtures.tooLarge(now)),
-            ("update", Fixtures.update(now)),
-            ("updating", Fixtures.updating(now)),
-            ("tend", WindowFixtures.popoverTend(now)),
-        ]
-        for (name, var snap) in states {
-            snap.repoCount = 2
-            let store = Store(snapshot: snap)
-            for dark in [false, true] {
-                let suffix = dark ? "dark" : "light"
-                write(PopoverView(store: store, offscreen: true), dark: dark,
-                      to: dir.appendingPathComponent("\(name)-\(suffix).png"), scale: 2)
-                if ["running", "drafts"].contains(name), let first = store.strips.first {
-                    write(PopoverView(store: store, offscreen: true, startOpen: first.id), dark: dark,
-                          to: dir.appendingPathComponent("\(name)-open-\(suffix).png"), scale: 2)
-                }
-            }
-        }
-        writeMenuBar(to: dir.appendingPathComponent("menubar.png"))
         writeDashboard(to: dir.appendingPathComponent("index.html"), now: now)
         writeWindowShots(to: dir.appendingPathComponent("app", isDirectory: true), now: now)
         writeShortcutsSheet(to: dir.appendingPathComponent("app", isDirectory: true))
@@ -257,60 +214,6 @@ enum Snapshotter {
             print("write failed: \(url.path): \(error.localizedDescription)")
         }
     }
-
-    /// The glyph family on a light and a dark menu bar ground: a 4x row and a 1x row (the real size), in one PNG.
-    static func writeMenuBar(to url: URL) {
-        let states: [(String, GlyphState, Bool)] = [
-            ("idle", .idle, false), ("running", .running(active: 3), false), ("changes", .changesWaiting(count: 2), false),
-            ("paused", .paused, false), ("failed", .failed, false), ("update", .idle, true),
-        ]
-        let strip = VStack(alignment: .leading, spacing: 0) {
-            bar(states, dark: false)
-            bar(states, dark: true)
-        }
-        guard let rows4 = render(strip, scale: 4), let rows1 = render(strip, scale: 1) else {
-            print("render failed: menubar")
-            return
-        }
-        let width = max(rows4.width, rows1.width), height = rows4.height + rows1.height
-        guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-                                  space: CGColorSpaceCreateDeviceRGB(),
-                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
-        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
-        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
-        ctx.draw(rows1, in: CGRect(x: 0, y: 0, width: rows1.width, height: rows1.height))
-        ctx.draw(rows4, in: CGRect(x: 0, y: rows1.height, width: rows4.width, height: rows4.height))
-        guard let out = ctx.makeImage(), let png = NSBitmapImageRep(cgImage: out).representation(using: .png, properties: [:]) else {
-            print("render failed: menubar")
-            return
-        }
-        try? png.write(to: url)
-        print("wrote \(url.path)")
-    }
-
-    private static func render<V: View>(_ view: V, scale: CGFloat) -> CGImage? {
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = scale
-        return renderer.cgImage
-    }
-
-    private static func bar(_ states: [(String, GlyphState, Bool)], dark: Bool) -> some View {
-        let ground = dark ? Color(hex: "1E1E1E") : Color(hex: "ECECEC")
-        let ink = dark ? NSColor.white : NSColor.black
-        return HStack(spacing: 28) {
-            ForEach(0..<states.count, id: \.self) { i in
-                let (label, state, update) = states[i]
-                VStack(spacing: 4) {
-                    Image(nsImage: MenuGlyph.image(state, progress: 0.45, ink: ink, template: false, update: update))
-                    Text(label).font(.system(size: 9)).foregroundColor(dark ? .white : .black).fixedSize()
-                }
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(ground)
-    }
-
 }
 
 /// Fixtures for the design states. Repos are lumen/api and lumen/web; authors use first names.
@@ -355,19 +258,6 @@ enum Fixtures {
         ScheduleTimes.nextSweep(after: now, times: [ScheduleTime("13:00")!]) ?? now
     }
 
-    static func running(_ now: Date) -> Snapshot {
-        let r = run("fixture-running", now: now, finished: false, prs: [
-            pr("lumen/api", 1125, "ines", "Add rate limit headers to /v2 responses for partners", stage: .check, active: true, tokens: 212_000),
-            pr("lumen/api", 1113, "tom", "Migrate invoices table to UUID keys, batched backfill", stage: .review, active: true, tokens: 96_000),
-            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve, tokens: 310_000),
-            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes, tokens: 260_000),
-            pr("lumen/web", 88, "lea", "Fix the date picker timezone on CSV export", reason: "dates shift by a day", verdict: .changes, tokens: 240_000),
-            pr("lumen/web", 91, "kai", "Redesign the empty states for the projects list", stage: .gather, active: true, tokens: 40_000),
-            pr("lumen/web", 84, "sam", "Bump next to 15.1", reason: "draft", verdict: .skipped),
-        ], tokens: 1_200_000)
-        return Snapshot(run: r, running: true, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
-    }
-
     static func idleChanges(_ now: Date) -> Snapshot {
         let r = run("fixture-idle", now: now, finished: true, prs: [
             pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve, draft: true),
@@ -387,13 +277,6 @@ enum Fixtures {
         return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
     }
 
-    static func paused(_ now: Date) -> Snapshot {
-        var s = idleChanges(now)
-        s.paused = true
-        s.pausedSince = clockToday(10, 35, now)
-        return s
-    }
-
     static func failed(_ now: Date) -> Snapshot {
         let r = run("fixture-failed", now: now, finished: true, prs: [
             pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
@@ -401,28 +284,6 @@ enum Fixtures {
             pr("lumen/web", 91, "kai", "Redesign the empty states for the projects list", verdict: .approve, carried: true),
         ], error: "claude exited 1: see the log for details\nFull log: ~/Library/Logs/glidepath.log", tokens: 70_000)
         return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
-    }
-
-    static func empty(_ now: Date) -> Snapshot {
-        let r = run("fixture-empty", now: now, finished: true, prs: [])
-        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
-    }
-
-    static func firstRun(_ now: Date) -> Snapshot {
-        Snapshot(run: nil, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
-    }
-
-    /// The first sweep's dry run: the lock is held, but the run is not current, so no run is shown.
-    static func dryRun(_ now: Date) -> Snapshot {
-        var s = firstRun(now)
-        s.dryRunning = true
-        return s
-    }
-
-    static func hover(_ now: Date) -> Snapshot {
-        var s = running(now)
-        s.hovered = "lumen/api#1113"
-        return s
     }
 
     /// A newer release is out: the dot on the glyph, the line above the footer, and the first menu item.
@@ -435,30 +296,6 @@ enum Fixtures {
             pr("lumen/web", 84, "sam", "Bump next to 15.1", reason: "draft", verdict: .skipped),
         ], tokens: 980_000)
         return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
-    }
-
-    /// Flag paths without drafts: the Flagged label after the author, on approved and changes rows.
-    static func flagged(_ now: Date) -> Snapshot {
-        let r = run("fixture-flagged", now: now, finished: true, prs: [
-            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve, flagged: true),
-            pr("lumen/api", 1212, "omar", "Cache org permissions per request in the audit log", reason: "missing RLS test", verdict: .changes, flagged: true),
-            pr("lumen/web", 91, "kai", "Redesign the empty states for the projects list", verdict: .approve),
-        ], tokens: 610_000)
-        return Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
-    }
-
-    /// A PR over max_changed_lines: "Too large" on line 3 and Review on line 2.
-    static func tooLarge(_ now: Date) -> Snapshot {
-        var (repo, big) = pr("lumen/api", 1219, "tom", "Rewrite the invoice ledger as an append-only log", reason: "too large (12480 changed lines)", verdict: .skipped)
-        big.skipReason = "size"
-        big.changedLines = 12_480
-        let r = run("fixture-too-large", now: now, finished: true, prs: [
-            (repo, big),
-            pr("lumen/api", 1229, "dana", "Bump Postgres driver to 3.4", verdict: .approve),
-        ], tokens: 610_000)
-        var s = Snapshot(run: r, jobInstalled: true, nextRun: nextThirteen(now), schedule: schedule)
-        s.maxChangedLines = 8_000
-        return s
     }
 
     /// Four finished runs for the dashboard, newest first, and the draft from the newest one.
@@ -487,16 +324,4 @@ enum Fixtures {
         return [Drafts.Found(runId: "fixture-drafts", path: "", draft: draft)]
     }
 
-    /// A newer release is out: the dot on the glyph, the line above the footer, and the first menu item.
-    static func update(_ now: Date) -> Snapshot {
-        var s = idleChanges(now)
-        s.update = UpdateCache(checked: now, latest: "1.2.0", url: "https://github.com/yznki/glidepath/releases/tag/v1.2.0")
-        return s
-    }
-
-    static func updating(_ now: Date) -> Snapshot {
-        var s = update(now)
-        s.updatePhase = .updating
-        return s
-    }
 }

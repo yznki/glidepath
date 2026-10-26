@@ -14,6 +14,7 @@ enum KitGallery {
     struct Page {
         let name: String
         let width: CGFloat
+        var padding: CGFloat = 28
         let view: AnyView
     }
 
@@ -67,7 +68,46 @@ enum KitGallery {
         ]
     }
 
-    static var all: [Page] { [statusHeaders, popoverHeaders, holdButtons, undoBanner] }
+    static var all: [Page] { [statusHeaders, popoverHeaders, holdButtons, undoBanner] + popovers }
+
+    /// The menu bar popover in every state, from fixtures. The real popover's glass is drawn by the system; here the
+    /// smoked window stands in for it.
+    static var popovers: [Page] {
+        states.map { name, shown in
+            var state = shown
+            var needs: [Need] = []
+            var since = ""
+            switch state {
+            case .needs:
+                needs = sampleNeeds
+                state = .needs(count: needs.count)
+            case .checking: needs = Array(sampleNeeds.prefix(2))
+            case .quiet, .holdingBack: since = "Posted 4 reviews, pushed a fix to #1253, merged #1246"
+            default: break
+            }
+            if case .paused = state { needs = Array(sampleNeeds.prefix(1)) }
+            let slug = name.lowercased().replacingOccurrences(of: " ", with: "-")
+            return Page(name: "popover-\(slug)", width: PopoverContent.width, padding: 0, view: AnyView(
+                PopoverContent(state: state, needs: needs, since: since, autopilot: false,
+                               paused: { if case .paused = state { return true }; return false }(), act: { _ in })))
+        }
+    }
+
+    /// Five Needs-you items, so the needs page shows four rows and "and 1 more".
+    static var sampleNeeds: [Need] {
+        func need(_ kind: NeedKind, _ repo: String, _ n: Int, _ title: String, _ author: String?) -> Need {
+            Need(id: "\(repo)#\(n)", kind: kind, repo: repo, number: n, title: title, author: author, reason: "",
+                 action: .post, outward: true, since: nil)
+        }
+        // Logins GitHub cannot have, so the rows show initials and no real person's picture.
+        return [
+            need(.reviewReady(.changes), "lumen/web", 1276, "Selection race in the upload picker", "ellie_"),
+            need(.fixReady, "lumen/api", 1253, "Export certifications as CSV", nil),
+            need(.readyToMerge, "lumen/api", 1301, "Notification schema: migration and backfill", nil),
+            need(.replyReady(to: "gadi"), "lumen/web", 1250, "Keyboard focus in the upload picker", nil),
+            need(.reviewReady(.approve), "lumen/web", 1290, "Bump the image library", "dana_"),
+        ]
+    }
 
     /// The window header in every state: title, sentence, control, the line at full size.
     static var statusHeaders: Page {
@@ -122,7 +162,7 @@ enum KitGallery {
     @discardableResult
     private static func show(_ page: Page, index: Int) -> NSWindow {
         let root = page.view
-            .padding(28)
+            .padding(page.padding)
             .frame(width: page.width, alignment: .topLeading)
             .background(SmokedGlass())
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))

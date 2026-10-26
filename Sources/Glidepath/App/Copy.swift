@@ -38,6 +38,22 @@ enum Copy {
     static let offerLookAfterMyPRs = "Look after my PRs"
     static let offerAutopilot = "Turn on Autopilot"
 
+    // MARK: Menu bar
+
+    static let openGlidepath = "Open Glidepath"
+    static let settings = "Settings…"
+    static let quit = "Quit Glidepath"
+    static let pauseOneHour = "For 1 hour"
+    static let pauseUntilResume = "Until I resume"
+
+    /// "Until tomorrow 9:00 AM": the Pause menu's overnight choice.
+    static func pauseUntilTomorrow(_ date: Date, calendar: Calendar = .current) -> String {
+        "Until tomorrow \(clock(date, calendar: calendar))"
+    }
+
+    /// The popover footer's mode word.
+    static func mode(autopilot: Bool) -> String { autopilot ? autopilotOn : askFirst }
+
     // MARK: Status
 
     /// The one sentence under every title: is it fine, and does it need me?

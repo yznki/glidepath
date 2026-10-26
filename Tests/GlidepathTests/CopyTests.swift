@@ -76,7 +76,8 @@ final class CopyTests: XCTestCase {
 
     /// The files whose string literals must be clean: the new model, Copy, and every file in these folders.
     /// Later phases add their folders.
-    static let files = ["Core/NeedsYou.swift", "Core/Status.swift", "App/Copy.swift"]
+    static let files = ["Core/NeedsYou.swift", "Core/Status.swift", "App/Copy.swift", "App/MenuBar.swift",
+                         "App/MenuPopover.swift", "App/AppDelegate.swift", "App/GlobalHotkey.swift"]
     static let folders = ["Kit"]
 
     static func hits(in literal: String) -> [String] {

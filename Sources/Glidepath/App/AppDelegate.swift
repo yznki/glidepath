@@ -14,6 +14,10 @@ final class GlidepathAppDelegate: NSObject, NSApplicationDelegate {
         updateBadge()
     }
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        MenuBar.install()
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model = ScheduleModel.live, model.hasPendingSave else { return .terminateNow }
         Task { @MainActor in
@@ -32,28 +36,10 @@ final class GlidepathAppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    /// Check now, Pause and Open, the same items as the menu bar's right-click menu.
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
-        let store = Store.shared
-        let menu = NSMenu()
-        menu.addItem(item("Open Glidepath", #selector(openWindow)))
-        let review = item("Review now", #selector(reviewNow))
-        review.isEnabled = !store.snap.running && store.snap.jobInstalled
-        menu.addItem(review)
-        menu.addItem(item(store.snap.paused ? "Resume" : "Pause", #selector(togglePause)))
-        return menu
+        MenuBar.shared?.menu(full: false)
     }
-
-    private func item(_ title: String, _ action: Selector) -> NSMenuItem {
-        let mi = NSMenuItem(title: title, action: action, keyEquivalent: "")
-        mi.target = self
-        return mi
-    }
-
-    @objc private func openWindow() { WindowRouter.shared.open(nil) }
-
-    @objc private func reviewNow() { Confirm.run(Store.shared) }
-
-    @objc private func togglePause() { Store.shared.togglePause() }
 
     /// The Needs-you count on the Dock icon. Nil (no badge) when nothing needs the user.
     private func updateBadge() {

@@ -496,9 +496,9 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test   # XCTest n
 ./make-app.sh                                      # release build and app bundle
 ```
 
-The app has two render modes that need no UI. `glidepath --snapshot <dir>` draws the design states from fixtures to
-PNG files, light and dark, plus the menu bar glyphs. `glidepath --hero-gif <path>` writes the hero animation as a
-looping GIF, with injected time.
+The app has two render modes for screenshots. `glidepath --snapshot <dir>` draws the window's design states from
+fixtures to PNG files, light and dark. `glidepath --kit-gallery <dir>` draws the menu bar popover in every state, the
+menu bar glyphs and the shared components.
 
 CI runs `swift build` and `swift test` on macOS.
 

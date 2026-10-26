@@ -8,8 +8,8 @@ the go-ahead for that release.
 - `main` is green in CI (`swift build` and `swift test` on macOS).
 - Release build with the Command Line Tools: `DEVELOPER_DIR=/Library/Developer/CommandLineTools swift build -c release`.
 - Tests with Xcode: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test`.
-- `docs/shots/*.png` and `docs/media/hero.gif` match the current design. Re-render with `glidepath --snapshot docs/shots`
-  and `glidepath --hero-gif docs/media/hero.gif` if the popover changed.
+- `docs/shots/*.png` match the current design. Re-render with `glidepath --snapshot docs/shots`, and the popover and
+  menu bar glyphs with `glidepath --kit-gallery <dir>`.
 
 ## 2. Tag (remote)
 

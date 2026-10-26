@@ -73,20 +73,6 @@ final class GlobalHotkey {
 @MainActor
 enum PopoverToggle {
     static func toggle() {
-        // The status item's button lives in the status bar window that SwiftUI's MenuBarExtra creates.
-        let buttons = NSApp.windows
-            .filter { String(describing: type(of: $0)).contains("StatusBar") }
-            .compactMap { $0.contentView }
-            .flatMap { descendants(of: $0) }
-            .compactMap { $0 as? NSStatusBarButton }
-        if let button = buttons.first {
-            button.performClick(nil)
-        } else {
-            WindowRouter.shared.open(nil)
-        }
-    }
-
-    private static func descendants(of view: NSView) -> [NSView] {
-        view.subviews + view.subviews.flatMap { descendants(of: $0) }
+        if let menuBar = MenuBar.shared { menuBar.toggle() } else { WindowRouter.shared.open(nil) }
     }
 }

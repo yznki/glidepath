@@ -249,24 +249,6 @@ enum Presentation {
         let current = min(max(s.stage, 1), 4) - 1
         return (0..<4).map { $0 < current ? .done : ($0 == current ? .current : .future) }
     }
-
-    /// Profile marks in display order. Each in-flight mark is labelled with its PR number.
-    static func marks(_ groups: [RepoGroup], running: Bool) -> [ProfileMark] {
-        groups.flatMap(\.rows).map { row in
-            let s = row.strip
-            let kind: MarkKind
-            if let verdict = s.verdict {
-                kind = .landed(verdict)
-            } else if s.active {
-                kind = .active(stage: min(max(s.stage, 1), 4))
-            } else if running {
-                kind = .queued
-            } else {
-                kind = .dropped
-            }
-            return ProfileMark(id: s.id, kind: kind, label: "#\(s.number)", carried: s.carriedFrom != nil)
-        }
-    }
 }
 
 /// "1.2k", "84k", "3.1M". Token counts in the menu.

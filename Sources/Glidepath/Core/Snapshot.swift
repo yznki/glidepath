@@ -61,7 +61,6 @@ struct Snapshot {
     var config: Config?
     /// `max_changed_lines`, for the Review warning.
     var maxChangedLines = 3000
-    var hovered: String?
     /// The cached latest release. The popover offers it when it is newer than this build.
     var update: UpdateCache?
     var checkUpdates = true

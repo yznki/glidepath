@@ -24,7 +24,7 @@ struct NowView: View {
     private var held: [Strip] { store.strips.filter { $0.draft && $0.verdict != nil } }
 
     /// The newest run's own PRs skipped for size: each waits for Review anyway.
-    private var tooLarge: [Strip] { store.strips.filter { $0.offersReview && $0.carriedFrom == nil } }
+    private var tooLarge: [Strip] { store.strips.filter { $0.skipReason == "size" && $0.verdict == .skipped && $0.carriedFrom == nil } }
 
     /// Tend's held fixes and stuck PRs, the same items the Approach section lists.
     private var tendNeeds: [NeedsItem] { snap.approach?.needs ?? [] }
