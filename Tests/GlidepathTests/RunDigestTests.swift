@@ -20,6 +20,16 @@ final class RunDigestTests: XCTestCase {
 
     private let alreadyReviewed = "already reviewed at this head"
 
+    func testTitleForSelfReviewAndTidyingRuns() {
+        XCTAssertEqual(RunDigest.title(for: run(kind: "self-review", target: "prs:lumen/api#7", repos: [])), "Self-review of #7")
+        var selfRound = RunState.new(id: "r", now: t0, kind: "tend", target: "pr:lumen/api#7")
+        selfRound.tendAction = "self-review"
+        XCTAssertEqual(RunDigest.title(for: selfRound), "Self-review of #7")
+        var tidy = RunState.new(id: "r", now: t0, kind: "tend", target: "repo:lumen/api")
+        tidy.tendAction = "consolidated"
+        XCTAssertEqual(RunDigest.title(for: tidy), "Lessons tidied for lumen/api")
+    }
+
     func testTitleForEachTargetForm() {
         XCTAssertEqual(RunDigest.title(for: run(kind: nil, target: nil, repos: [])), "Sweep")
         XCTAssertEqual(RunDigest.title(for: run(kind: "review", target: nil, repos: [])), "Review")

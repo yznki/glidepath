@@ -126,6 +126,16 @@ final class SecurityTests: XCTestCase {
                         "refs/glidepath/base/7...abc"])
     }
 
+    func testMaxBudgetIsPassedOnlyWhenSet() {
+        func args(_ budget: Int?) -> [String] {
+            Claude.arguments(prompt: "p", systemPrompt: "s", sessionId: "s", scratch: scratch, mcpConfig: "/m.json",
+                             agents: "{}", settings: "{}", allowlist: list(), model: "haiku", maxBudgetUSD: budget)
+        }
+        XCTAssertFalse(args(nil).contains("--max-budget-usd"))
+        let capped = args(2)
+        XCTAssertEqual(capped[capped.firstIndex(of: "--max-budget-usd")! + 1], "2")
+    }
+
     func testArgumentsCarrySkillAsSystemPromptAndNoSlashCommand() {
         let args = Claude.arguments(prompt: "Review run. repo=a/b", systemPrompt: "SKILL TEXT", sessionId: "s",
                                     scratch: scratch, mcpConfig: "/m.json", agents: "{}", settings: "{}",

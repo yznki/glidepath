@@ -84,6 +84,14 @@ final class ReviewCommandTests: XCTestCase {
         XCTAssertNil(refs([]))
     }
 
+    func testSelfFlagIsADryRunThatReviewsAgain() throws {
+        let own = try XCTUnwrap(ReviewCommand.parse(["acme/api", "3", "--self"]))
+        XCTAssertTrue(own.selfReview)
+        XCTAssertTrue(own.dryRun)
+        XCTAssertTrue(own.again)
+        XCTAssertFalse(try XCTUnwrap(ReviewCommand.parse(["acme/api", "3"])).selfReview)
+    }
+
     func testParseReadsEachFormAndRefusesTheRest() throws {
         let author = try XCTUnwrap(ReviewCommand.parse(["--author", "ines"]))
         XCTAssertEqual(author.target, .author("ines"))

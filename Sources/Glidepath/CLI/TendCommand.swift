@@ -247,6 +247,8 @@ final class Tender {
     private var rounded: Set<String> = []
     /// The PRs whose landing is offered to the user this check (`merge = ask`), by `owner/name#n`.
     private var landable: Set<String> = []
+    /// Set once this check has started a self-review: at most one per check.
+    private var selfReviewedThisCheck = false
 
     init(paths: Paths, config: Config) {
         self.paths = paths
@@ -1694,7 +1696,10 @@ final class Tender {
             s.wasDraft = true
             return
         }
-        guard config.tend.selfReview, !pr.isFork, Approach.tendable(pr, s), s.selfReview == nil || s.wasDraft else { return }
+        guard config.tend.selfReview, !pr.isFork, Approach.tendable(pr, s), s.selfReview == nil || s.wasDraft,
+              (s.selfReviewRetry ?? .distantPast) <= now, !selfReviewedThisCheck else { return }
+        // A review run in progress holds run.lock. The self-review waits for a later check instead of failing against it.
+        guard !RunLock.isHeld(paths.lockFile) else { return }
         switch UsageGuard.decide(.deferred, UsageState.load(paths), reserve: config.tend.usageReserve,
                                  quiet: config.tend.quietHours, now: now) {
         case .now:
@@ -1707,23 +1712,31 @@ final class Tender {
             return
         }
         let startCalls = Set(s.calls.map(\.id))
+        selfReviewedThisCheck = true
         let review = selfReviewOf(repo, pr, now: now)
         // The review took a while: what is on disk is merged in under the PR's lock, as a round does.
         try? withPRLock(repo.slug, pr.n) {
-            s.selfReview = review
-            s.wasDraft = false
-            // New findings are new asks, which the PR's fingerprint must not hide.
-            if !review.findings.isEmpty { s.fingerprint = nil }
+            if let review {
+                s.selfReview = review
+                s.wasDraft = false
+                s.selfReviewRetry = nil
+                // New findings are new asks, which the PR's fingerprint must not hide.
+                if !review.findings.isEmpty { s.fingerprint = nil }
+            } else {
+                // Nothing is stored for a review that did not run. The PR is tried again in an hour.
+                s.selfReviewRetry = now.addingTimeInterval(3600)
+            }
             s = s.merged(disk: store.load(repo.slug, pr.n) ?? s, startCalls: startCalls)
             try store.save(s)
         }
     }
 
-    /// Runs `glidepath review` on the PR's head as a dry run and reads its verdict. A run that fails gives a review that
-    /// did not run, so the PR is not tried again until its next ready transition.
-    private func selfReviewOf(_ repo: RepoConfig, _ pr: OpenPR, now: Date) -> SelfReview {
-        let r = Shell.run(InitCommand.binaryPath(), ["review", repo.slug, String(pr.n), "--dry-run", "--again"],
-                          env: env, timeout: 1800)
+    /// Runs `glidepath review --self` on the PR's head: a dry run that posts nothing, with the tend's budget, under a
+    /// timeout above the session's own. Its verdict is read from the run's final.json. Nil when the review did not run
+    /// (a failed exit, no run id, or no final.json); the caller retries later.
+    private func selfReviewOf(_ repo: RepoConfig, _ pr: OpenPR, now: Date) -> SelfReview? {
+        let r = Shell.run(InitCommand.binaryPath(), ["review", repo.slug, String(pr.n), "--self"],
+                          env: env, timeout: 3900)
         let runId = Tender.selfReviewRunID(r.stdout)
         let draft = runId.flatMap { id in
             FileManager.default.contents(atPath: paths.scratchDir + "/" + id + "/" + repo.owner + "-" + repo.name + "/\(pr.n)/final.json")
@@ -1731,16 +1744,20 @@ final class Tender {
         guard r.ok, let runId, let draft else {
             let why = r.ok ? "no review written" : "review exited with \(r.status)"
             tower(repo.slug, pr.n, "self-review did not run · \(why)", amber: false, now: now)
-            return SelfReview(head: pr.head, at: now, verdict: "failed", findings: [], done: true)
+            return nil
         }
         let changes = draft.verdict == "changes"
-        let findings = changes ? draft.comments : []
+        var findings = changes ? draft.comments : []
+        // Changes asked with no inline comment: the body is the one finding, with no place in the diff.
+        if changes && findings.isEmpty {
+            findings = [DraftComment(path: "", line: 0, side: nil, body: draft.body)]
+        }
         let line = findings.isEmpty ? "self-review · clean"
             : "self-review · \(findings.count) \(findings.count == 1 ? "finding" : "findings")"
         tower(repo.slug, pr.n, line, amber: false, now: now)
-        let tokens = (try? RunStore(paths: paths).load(runId))?.tokens ?? 0
+        // The review's own run counts its tokens, so this record counts none.
         try? saveRun(Runner.makeID(now), now: now, repo: repo, pr: pr, summary: line, action: "self-review", check: nil,
-                     tokens: tokens)
+                     tokens: 0)
         return SelfReview(head: pr.head, at: now, verdict: changes ? "changes" : "clean", findings: findings,
                           done: findings.isEmpty)
     }

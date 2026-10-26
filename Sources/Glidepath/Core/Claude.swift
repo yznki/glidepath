@@ -150,8 +150,8 @@ enum Claude {
     /// arguments are the user prompt. Nothing is passed as a slash command. `model` is a `ReviewModel` raw value.
     static func arguments(prompt: String, systemPrompt: String, sessionId: String, scratch: String,
                           mcpConfig: String, agents: String, settings: String, allowlist: [String],
-                          model: String) -> [String] {
-        [
+                          model: String, maxBudgetUSD: Int? = nil) -> [String] {
+        var args = [
             "-p", prompt,
             "--append-system-prompt", systemPrompt,
             "--model", model,
@@ -168,6 +168,8 @@ enum Claude {
             "--add-dir", scratch,
             "--allowedTools", allowlist.joined(separator: ","),
         ]
+        if let maxBudgetUSD { args += ["--max-budget-usd", String(maxBudgetUSD)] }
+        return args
     }
 
     /// True when `reported` (for example "2.1.306 (Claude Code)") is at least `minimum`.

@@ -85,10 +85,15 @@ struct RunDigest: Equatable {
 
     /// "Sweep" for a sweep, "<login>'s PRs" for an author, "owner/name #n" for one PR, "<k> PRs" for several.
     static func title(for run: RunState) -> String {
+        if run.kind == "self-review" {
+            return "Self-review of #" + (run.target?.split(separator: "#").last.map(String.init) ?? "?")
+        }
         if run.kind == "tend" {
             // The target is "pr:owner/name#n"; the number is what follows the last "#".
             let number = "#" + (run.target?.split(separator: "#").last.map(String.init) ?? "?")
             switch run.tendAction {
+            case "self-review": return "Self-review of \(number)"
+            case "consolidated": return "Lessons tidied for " + (run.target?.replacingOccurrences(of: "repo:", with: "") ?? "")
             case "fixed": return "Fixed CI on \(number)"
             case "answered": return "Answered threads on \(number)"
             case "reran": return "Reran \(run.tendCheck ?? "CI") on \(number)"

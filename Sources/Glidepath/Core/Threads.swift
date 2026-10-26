@@ -84,7 +84,10 @@ enum Threads {
         return review.findings.enumerated().compactMap { i, f in
             let id = "self-\(head7)-\(i)"
             guard !answered.contains(id) else { return nil }
-            return Ask(id: id, kind: "self", author: "self-review", isBot: false, body: f.body, path: f.path, line: f.line)
+            // A finding with no file (a review with changes and no inline comment) has no path or line.
+            let placed = !f.path.isEmpty
+            return Ask(id: id, kind: "self", author: "self-review", isBot: false, body: f.body,
+                       path: placed ? f.path : nil, line: placed ? f.line : nil)
         }
     }
 }
