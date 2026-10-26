@@ -47,6 +47,9 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | 1.10 | CLI: plan session (Opus, read-only), auto trigger, `tend split plan/build/keep`, per-part checks, chained PRs, autopilot council (597 pass) | done | 52fcb01 ab8d2c7 19731a3 |
 | 1.10 | App: split needs, drawer Split…, builder overlay (drag + move menu, live validation); snapshots /tmp/gp-1.10 | done | 8817493..c15e215 |
 | 1.10 | live: scratch #9 → plan 3 parts (8.7k tokens) → build #10→#11→#12 chained, stack tables, #9 drafted + comment, CI green (31k tokens); all closed after. Gap: per-part check recorded once | done | |
+| 1.10 | Sonnet review: 17 findings (app timeout, moved base, partial-build cleanup, checks by exit code, head re-read, literal pathspecs, edits via CLI, plan/build guards, staleness, one auto plan per PR, council run record, manual vs auto council, tendable checks, public text limits, -z paths, source off after build) fixed, 605 pass | done | c65892e 9ac79e8 c232017 |
+| 1.10 | live re-check: scratch #13 → plan 3 parts → edited parts via `--parts` → #14→#15→#16, checks by exit code ok, source drafted + off; 37k tokens; all closed | done | |
+| 1.10 | released 1.10.0: PR https://github.com/yznki/glidepath/pull/14, release https://github.com/yznki/glidepath/releases/tag/v1.10.0, tap 7faa5f6, sha256 cefe50a2…, snapshots /tmp/gp-1.10 | done | cfba214 |
 
 ## Decisions (Yazan should know)
 
@@ -89,6 +92,10 @@ Resume here after a compaction. One line per step; decisions and open issues bel
   person). Linear posting was not tried live (only Sager's Linear exists); mechanism parts verified locally.
 - 1.9: review token counts were 0 for any clone path under /tmp (symlink to /private/tmp); fixed in 1.9.0. Yazan's
   clones are under his home, so his past counts were not affected.
+
+- 1.10: split checks run in the Claude sandbox (repo commands are untrusted); Glidepath reads each command's exit
+  code from a file the shell writes. Autopilot builds only with verified playbook commands. Automatic planning
+  happens at most once per PR; Split… replans.
 
 ## Open issues
 
