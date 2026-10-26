@@ -46,7 +46,8 @@ final class KitTests: XCTestCase {
         XCTAssertEqual(HoldModel.release(after: 0.05), .tap)
         XCTAssertEqual(HoldModel.release(after: 0.29), .tap)
         XCTAssertEqual(HoldModel.release(after: 0.3), .cancel)
-        XCTAssertEqual(HoldModel.release(after: 0.59), .cancel)
+        XCTAssertEqual(HoldModel.release(after: 0.57), .cancel)
+        XCTAssertEqual(HoldModel.release(after: 0.598), .done, "a release a frame short of full still fires")
         XCTAssertEqual(HoldModel.release(after: 0.6), .done)
     }
 
@@ -89,6 +90,15 @@ final class KitTests: XCTestCase {
         var acted = 0
         model.press(at: t) { acted += 1 }
         XCTAssertEqual(model.release(at: t.addingTimeInterval(0.65)), .done)
+        XCTAssertEqual(acted, 1)
+    }
+
+    @MainActor
+    func testLettingGoAFrameShortOfFullStillActs() {
+        let model = HoldModel(), t = Date()
+        var acted = 0
+        model.press(at: t) { acted += 1 }
+        XCTAssertEqual(model.release(at: t.addingTimeInterval(0.598)), .done)
         XCTAssertEqual(acted, 1)
     }
 

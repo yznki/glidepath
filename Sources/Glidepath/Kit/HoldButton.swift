@@ -4,9 +4,11 @@ import SwiftUI
 /// early drains it. A quick tap shows the hint ("Hold to post") with a small shake instead.
 @MainActor
 final class HoldModel: ObservableObject {
-    static let duration: TimeInterval = 0.6
+    nonisolated static let duration: TimeInterval = 0.6
     /// Shorter than this is a tap: show the hint.
-    static let tapLimit: TimeInterval = 0.3
+    nonisolated static let tapLimit: TimeInterval = 0.3
+    /// A release this close to full counts as full: the gesture and the timer can end a frame apart.
+    nonisolated static let tolerance: TimeInterval = 0.02
     static let hintShown: TimeInterval = 1.8
 
     enum Release: Equatable { case tap, cancel, done }
@@ -25,7 +27,7 @@ final class HoldModel: ObservableObject {
 
     /// What letting go after `held` seconds means.
     nonisolated static func release(after held: TimeInterval) -> Release {
-        held >= duration ? .done : held < tapLimit ? .tap : .cancel
+        held >= duration - tolerance ? .done : held < tapLimit ? .tap : .cancel
     }
 
     var isPressed: Bool { pressedAt != nil }
@@ -130,7 +132,7 @@ private struct HoldFace: View {
             }
             label
                 .modifier(Shake(animatableData: model.shakes))
-                .onLongPressGesture(minimumDuration: HoldModel.duration, maximumDistance: 24, perform: {}) { down in
+                .onLongPressGesture(minimumDuration: HoldModel.duration, maximumDistance: 24, perform: { model.fire() }) { down in
                     if down { press() } else { model.release() }
                 }
                 .focusable()

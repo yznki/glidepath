@@ -71,7 +71,6 @@ struct UndoBanner: View {
                     Text(item.text).font(Ladder.body)
                     Button(Copy.undo) { center.undoNow() }
                         .glassButtonStyle()
-                        .keyboardShortcut("z", modifiers: .command)
                 }
                 .padding(.leading, 18)
                 .padding(.trailing, 8)
