@@ -54,6 +54,14 @@ final class LandingTests: XCTestCase {
         XCTAssertEqual(ConfigEditor.setTendMerge(c, .off).tend.merge, .off)
     }
 
+    func testSelfReviewSwitchTurnsOffAfterTendingOn() {
+        var c = ConfigEditor.setTendEnabled(try! Config.parse(base, home: home), true)
+        XCTAssertTrue(c.tend.selfReview)
+        c = ConfigEditor.setTendSelfReview(c, false)
+        XCTAssertFalse(c.tend.selfReview)
+        XCTAssertTrue(c.tend.enabled)
+    }
+
     // MARK: Autopilot
 
     func testAutopilotLandConflictAndRevertAcrossSettings() {

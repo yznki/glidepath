@@ -215,6 +215,40 @@ final class ExtrasTests: XCTestCase {
         XCTAssertEqual(Lessons.parseList("- " + String(repeating: "x", count: 160), max: 5), [String(repeating: "x", count: 160)])
     }
 
+    func testMergeInputsLeaveTaughtEditedAndPushbackLessonsOut() {
+        let now = Date()
+        let book = Playbook(commands: [], lessons: [
+            Playbook.Lesson(text: "use gofmt", source: "pr 4", date: now.addingTimeInterval(-86_400)),
+            Playbook.Lesson(text: "never touch migrations", source: "you taught", date: now),
+            Playbook.Lesson(text: "shorter titles", source: "from your edit", date: now),
+            Playbook.Lesson(text: "reviewer hates nits", source: "pushback", date: now),
+            Playbook.Lesson(text: "old note", source: "pr 2", date: now.addingTimeInterval(-90 * 86_400)),
+        ])
+        XCTAssertEqual(Lessons.mergeInputs(book, now: now).map(\.text), ["use gofmt"])
+    }
+
+    func testConsolidateReplacesOnlyTheInputs() {
+        let now = Date()
+        let older = now.addingTimeInterval(-3 * 86_400), newer = now.addingTimeInterval(-86_400)
+        let inputs = [Playbook.Lesson(text: "a", source: "pr 1", date: older), Playbook.Lesson(text: "b", source: "pr 2", date: newer)]
+        var book = Playbook(commands: [], lessons: [Playbook.Lesson(text: "never touch migrations", source: "you taught", date: older)] + inputs)
+        book.lessons.append(Playbook.Lesson(text: "added meanwhile", source: "from your edit", date: now))
+        let out = Lessons.consolidate(book: book, inputs: inputs, output: "- merged a and b", now: now)
+        XCTAssertEqual(out?.lessons.map(\.text), ["never touch migrations", "added meanwhile", "merged a and b"])
+        XCTAssertEqual(out?.lessons.last?.source, "consolidated")
+        XCTAssertEqual(out?.lessons.last?.date, newer)
+    }
+
+    func testConsolidateRefusesFewLinesOrNoList() {
+        let now = Date()
+        let inputs = (1...6).map { Playbook.Lesson(text: "lesson \($0)", source: "pr \($0)", date: now) }
+        let book = Playbook(commands: [], lessons: inputs)
+        XCTAssertNil(Lessons.consolidate(book: book, inputs: inputs, output: "- one", now: now))
+        XCTAssertNotNil(Lessons.consolidate(book: book, inputs: inputs, output: "- one\n- two", now: now))
+        XCTAssertNil(Lessons.consolidate(book: book, inputs: inputs, output: "Here is the list:\n- one\n- two", now: now))
+        XCTAssertNil(Lessons.consolidate(book: book, inputs: inputs, output: "- a\n- b\n- c\n- d\n- e\n- f\n- g", now: now))
+    }
+
     // MARK: Config
 
     func testSelfReviewConfigDefaultsWhenTableAbsent() throws {

@@ -43,4 +43,29 @@ enum Lessons {
         guard lines.count <= max, lines.allSatisfy({ !$0.isEmpty && $0.count <= 160 }) else { return nil }
         return lines
     }
+
+    /// Sources the merge never touches: pushback keeps its own heading, and what the user taught or edited stays as written.
+    static let untouchedSources: Set<String> = ["pushback", "you taught", "from your edit"]
+    static let staleDays = 60
+
+    /// The lessons the merge reads: not untouched, and not older than `staleDays`.
+    static func mergeInputs(_ book: Playbook, now: Date) -> [Playbook.Lesson] {
+        book.dropStale(now: now, days: staleDays).lessons.filter { !untouchedSources.contains($0.source) }
+    }
+
+    /// The playbook with the merged inputs in place of the inputs. `book` is read after the model answered, so a lesson
+    /// added meanwhile stays. Untouched lessons stay; other lessons older than `staleDays` go. The merged lines keep the
+    /// newest date among the inputs and the source "consolidated". Nil when the answer is refused: it is not a bullet list
+    /// within the input count, or it has fewer than a third of the inputs (and at least one).
+    static func consolidate(book: Playbook, inputs: [Playbook.Lesson], output: String, now: Date) -> Playbook? {
+        guard let merged = parseList(output, max: inputs.count), merged.count >= max(1, inputs.count / 3) else { return nil }
+        let cutoff = now.addingTimeInterval(-Double(staleDays) * 86_400)
+        var out = book
+        out.lessons = book.lessons.filter { lesson in
+            untouchedSources.contains(lesson.source) || (lesson.date >= cutoff && !inputs.contains(lesson))
+        }
+        let newest = inputs.map(\.date).max() ?? now
+        out.lessons += merged.map { Playbook.Lesson(text: $0, source: "consolidated", date: newest) }
+        return out
+    }
 }

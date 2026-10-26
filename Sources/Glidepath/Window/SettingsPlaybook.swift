@@ -64,8 +64,8 @@ struct PlaybookSection: View {
             line(Text("No lessons yet").font(.system(size: 13)).foregroundStyle(Gotham.mute),
                  "Teach Glidepath a rule below.") { EmptyView() }
         }
-        ForEach(Array(book.lessons.enumerated()), id: \.offset) { i, lesson in
-            if model.editingLesson == i {
+        ForEach(Array(book.lessons.enumerated()), id: \.offset) { _, lesson in
+            if model.editingLesson == lesson {
                 editRow(slug: slug)
             } else {
                 line(Text(lesson.text)
@@ -74,7 +74,7 @@ struct PlaybookSection: View {
                         .fixedSize(horizontal: false, vertical: true),
                      "\(lesson.source) · \(lesson.date.formatted(.dateTime.day().month(.abbreviated)))") {
                     HStack(spacing: 8) {
-                        SettingButton(title: "Edit") { model.beginEdit(i, text: lesson.text) }
+                        SettingButton(title: "Edit") { model.beginEdit(lesson) }
                         Button("Delete") { model.deleteLesson(lesson, store, slug: slug) }
                             .buttonStyle(.plain)
                             .font(.system(size: 12, weight: .semibold))

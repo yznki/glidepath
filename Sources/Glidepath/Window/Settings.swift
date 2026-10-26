@@ -69,6 +69,7 @@ enum SettingsCopy {
     static let tendRounds = Row(label: "Rounds per PR a day", caption: "Each PR gets at most this many tending rounds a day.")
     static let tendLanding = Row(label: "Landing", caption: "Off never merges unless Autopilot is on, and Autopilot lands on its own. Ask me puts a ready PR in Needs you. Automatically lands it at the next check.")
     static let tendAutopilot = Row(label: "Autopilot", caption: "Tending lands ready PRs, replies and resolves without asking. Hard stops still come to you.")
+    static let tendSelfReview = Row(label: "Self-review my PRs", caption: "Glidepath reviews each of your PRs once it is ready. Its findings become asks for the next round.")
     static let tendDisagree = Row(label: "When Glidepath disagrees",
                                   caption: "Tending leaves the reply as a draft for you, or posts it and resolves the thread.")
     static let tendAccount = Row(label: "Claude account", caption: "Tending and reviews sign in as this account.")
@@ -76,8 +77,8 @@ enum SettingsCopy {
     static let tendQuiet = Row(label: "Quiet hours", caption: "Heavy tending waits for these hours.")
     static let tendLinear = Row(label: "Linear", caption: "Tending comments on a blocked PR's Linear issue. The key stays in your Keychain.")
     static let tending = Block(id: "tending", title: "Tending",
-                               rows: [tendOn, tendRepos, tendPush, tendRounds, tendLanding, tendAutopilot, tendDisagree, tendAccount,
-                                      tendReserve, tendQuiet, tendLinear])
+                               rows: [tendOn, tendRepos, tendPush, tendRounds, tendLanding, tendAutopilot, tendSelfReview,
+                                      tendDisagree, tendAccount, tendReserve, tendQuiet, tendLinear])
     // Playbook. Its rows show together whenever the block matches, so the search "playbook" shows the whole section.
     static let playbookRepo = Row(label: "Playbook repo", caption: "Each repo keeps its own playbook. Only repos with the switch on appear here.")
     static let playbookCommands = Row(label: "Commands", caption: "Checks Glidepath ran in this repo and saw pass. Read-only.")
@@ -459,6 +460,11 @@ struct SettingsView: View {
                 row(SettingsCopy.tendAutopilot, error: model.rowErrors["autopilot"]) {
                     SettingSwitch(isOn: tend.autopilot, label: "Autopilot") {
                         model.commit("autopilot", store: store) { ConfigEditor.setAutopilot($0, !$0.tend.autopilot) }
+                    }
+                }
+                row(SettingsCopy.tendSelfReview, error: model.rowErrors["tendSelfReview"]) {
+                    SettingSwitch(isOn: tend.selfReview, label: "Self-review my PRs") {
+                        model.commit("tendSelfReview", store: store) { ConfigEditor.setTendSelfReview($0, !$0.tend.selfReview) }
                     }
                 }
                 row(SettingsCopy.tendDisagree, error: model.rowErrors["tendDisagree"]) {

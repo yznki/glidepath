@@ -29,10 +29,10 @@ final class SettingsModel: ObservableObject {
     @Published private(set) var linearSaved: Bool?
     @Published var linearDraft = ""
     /// The Playbook section: the repo shown (nil until the first refresh picks a tended one), its playbook, the lesson whose
-    /// Edit field is open (by index), that field's text, and the teach field's text.
+    /// Edit field is open (by identity: text, source and date), that field's text, and the teach field's text.
     @Published var playbookRepo: String?
     @Published private(set) var playbook: Playbook?
-    @Published private(set) var editingLesson: Int?
+    @Published private(set) var editingLesson: Playbook.Lesson?
     @Published var lessonDraft = ""
     @Published var teachDraft = ""
 
@@ -342,9 +342,9 @@ final class SettingsModel: ObservableObject {
         playbook = store.playbook(slug)
     }
 
-    func beginEdit(_ index: Int, text: String) {
-        editingLesson = index
-        lessonDraft = text
+    func beginEdit(_ lesson: Playbook.Lesson) {
+        editingLesson = lesson
+        lessonDraft = lesson.text
     }
 
     func cancelEdit() {
@@ -352,13 +352,14 @@ final class SettingsModel: ObservableObject {
         lessonDraft = ""
     }
 
-    /// Saves the open lesson's new text. Blank text keeps the edit open.
+    /// Saves the open lesson's new text. The lesson is found on disk by its identity, so an edit lands on the right lesson
+    /// even when the list changed. Blank text keeps the edit open.
     func saveEdit(_ store: Store, slug: String) {
-        guard let i = editingLesson else { return }
+        guard let target = editingLesson else { return }
         let text = lessonDraft.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
         var book = store.playbook(slug)
-        guard book.lessons.indices.contains(i) else { return cancelEdit() }
+        guard let i = book.lessons.firstIndex(of: target) else { return cancelEdit() }
         book.lessons[i].text = text
         cancelEdit()
         savePlaybook(book, slug, store)
@@ -376,7 +377,8 @@ final class SettingsModel: ObservableObject {
         savePlaybook(store.playbook(slug).teach(text, source: "you taught", date: Date()), slug, store)
     }
 
-    /// Writes the repo's playbook and shows it. Snapshots show the change without writing it.
+    /// Writes the repo's playbook. Snapshots show the change without writing it. The shown copy is read from disk after the
+    /// save, so it is what the file holds.
     private func savePlaybook(_ book: Playbook, _ slug: String, _ store: Store) {
         guard !store.isFixture else {
             playbook = book
@@ -384,11 +386,11 @@ final class SettingsModel: ObservableObject {
         }
         do {
             try book.save(slug, paths: store.paths)
-            playbook = book
             rowErrors["playbook"] = nil
         } catch {
             rowErrors["playbook"] = "Could not save the playbook: \(error.localizedDescription)"
         }
+        playbook = store.playbook(slug)
     }
 
     func runChecks(_ paths: Paths) {

@@ -693,12 +693,13 @@ struct ApproachDrawer: View {
     private var rounds: some View {
         let target = "pr:\(plane.slug)#\(plane.n)"
         let runs = store.snap.tendRounds.filter { $0.target == target }
+        let used = runs.filter(RunDigest.isRound).count
         let limit = store.snap.config?.tend.roundsPerDay ?? TendConfig().roundsPerDay
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 capLabel("Rounds today")
                 Spacer(minLength: 0)
-                Text("\(runs.count) of \(limit)")
+                Text("\(used) of \(limit)")
                     .font(.system(size: 11))
                     .foregroundStyle(approachFaint)
             }
