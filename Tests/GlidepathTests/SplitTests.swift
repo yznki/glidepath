@@ -96,13 +96,68 @@ final class SplitTests: XCTestCase {
 
     // MARK: due
 
-    func testDueWhenOverTheLimitAndNoPlanForTheHead() {
+    func testDueWhenOverTheLimitAndNoPlanYet() {
         let big = OpenPR(n: 12, title: "Big", branch: "feat", head: "sha1", base: "main", additions: 1000, deletions: 600)
         XCTAssertTrue(Split.due(big, plan: nil, overLines: 1500))
         XCTAssertFalse(Split.due(big, plan: nil, overLines: 1600))
-        let planned = plan(head: "sha1", status: "proposed")
-        XCTAssertFalse(Split.due(big, plan: planned, overLines: 1500))
-        XCTAssertTrue(Split.due(big, plan: plan(head: "old", status: "proposed"), overLines: 1500))
+    }
+
+    func testNotDueOnceAnyPlanExistsForThePR() {
+        let big = OpenPR(n: 12, title: "Big", branch: "feat", head: "sha1", base: "main", additions: 1000, deletions: 600)
+        XCTAssertFalse(Split.due(big, plan: plan(head: "sha1", status: "proposed"), overLines: 1500))
+        XCTAssertFalse(Split.due(big, plan: plan(head: "old", status: "proposed"), overLines: 1500))
+        XCTAssertFalse(Split.due(big, plan: plan(head: "old", status: "kept"), overLines: 1500))
+    }
+
+    func testNotDueForAPartBranch() {
+        var part = OpenPR(n: 13, title: "Part", branch: "feat-part-2", head: "sha2", base: "feat-part-1",
+                          additions: 1000, deletions: 600)
+        XCTAssertFalse(Split.due(part, plan: nil, overLines: 1500))
+        part.branch = "feat-parts"
+        XCTAssertTrue(Split.due(part, plan: nil, overLines: 1500))
+    }
+
+    func testStaleAfterTwoHoursWhileRunning() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var running = plan(head: "sha1", status: "planning")
+        running.at = now.addingTimeInterval(-3600)
+        XCTAssertFalse(Split.isStale(running, now: now))
+        running.at = now.addingTimeInterval(-3 * 3600)
+        XCTAssertTrue(Split.isStale(running, now: now))
+        XCTAssertEqual(Split.effective(running, now: now).status, "failed")
+        XCTAssertEqual(Split.effective(running, now: now).failed, "Interrupted")
+        running.status = "building"
+        XCTAssertTrue(Split.isStale(running, now: now))
+        running.status = "proposed"
+        XCTAssertFalse(Split.isStale(running, now: now))
+        XCTAssertEqual(Split.effective(running, now: now), running)
+    }
+
+    // MARK: text
+
+    func testValidateLimitsTheTitleAndWhy() {
+        var long = part("One", ["Core/A.swift"])
+        let rest = [part("Two", ["Core/B.swift", "Tests/BTests.swift"])]
+        let titleProblem = "Part 1's title is over 120 characters or has a line break"
+        long.title = String(repeating: "t", count: 121)
+        XCTAssertEqual(Split.validate([long] + rest, changed: changed), titleProblem)
+        long.title = "One\nTwo"
+        XCTAssertEqual(Split.validate([long] + rest, changed: changed), titleProblem)
+        long.title = "One"
+        long.why = String(repeating: "w", count: 501)
+        XCTAssertEqual(Split.validate([long] + rest, changed: changed), "Part 1's why is over 500 characters")
+        long.why = String(repeating: "w", count: 500)
+        XCTAssertNil(Split.validate([long] + rest, changed: changed))
+    }
+
+    func testPublicTextRefusesMentionsAndLinks() {
+        var parts = [part("Types", ["Core/A.swift"]), part("Caller", ["Core/B.swift", "Tests/BTests.swift"])]
+        XCTAssertNil(Split.publicTextRefusal(parts, slug: "acme/api", n: 12))
+        parts[1].why = "Thanks @gadi for the review."
+        XCTAssertEqual(Split.publicTextRefusal(parts, slug: "acme/api", n: 12),
+                       "Part 2 has a mention, a link or markup, which a PR may not carry")
+        parts[1].why = "See https://example.com/x"
+        XCTAssertNotNil(Split.publicTextRefusal(parts, slug: "acme/api", n: 12))
     }
 
     func testNotDueForDraftForkOrHandsOff() {
@@ -141,6 +196,7 @@ final class SplitTests: XCTestCase {
         XCTAssertEqual(decoded.parts[1], SplitPart(title: "Caller", why: "Uses types.", files: ["Core/B.swift"], dependsOn: 1))
         XCTAssertEqual(decoded.parts[0].why, "")
         XCTAssertEqual(decoded.prs, [])
+        XCTAssertEqual(decoded.checks, [])
         XCTAssertNil(decoded.failed)
         let again = try RunStore.decoder().decode(SplitPlan.self, from: RunStore.encoder().encode(decoded))
         XCTAssertEqual(again, decoded)
