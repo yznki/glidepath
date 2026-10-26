@@ -277,7 +277,7 @@ enum InitCommand {
     static func installSkill(from source: String, to dest: String) throws {
         let fm = FileManager.default
         try fm.createDirectory(atPath: dest, withIntermediateDirectories: true)
-        for file in ["SKILL.md", "rubric.md", "tend.md"] {
+        for file in ["SKILL.md", "rubric.md", "tend.md", "split.md"] {
             let target = dest + "/" + file
             try? fm.removeItem(atPath: target)
             try fm.copyItem(atPath: source + "/" + file, toPath: target)

@@ -311,11 +311,12 @@ enum Approach {
         return "Self-review: clean"
     }
 
-    /// The Needs items for a PR: a held fix or a stuck PR first, then one per comment the user must answer. Empty when
-    /// none.
+    /// The Needs items for a PR: a held fix or a stuck PR first, then one per comment the user must answer, then a
+    /// proposed split. Empty when none.
     /// `landable` is set when the PR is ready and the merge setting is `ask`; `prs` names the stack above it.
     static func needs(_ slug: String, _ pr: OpenPR, state: TendPR?, landable: Bool = false,
-                      prs: [OpenPR] = [], nudges: [(login: String, hours: Int)] = []) -> [NeedsItem] {
+                      prs: [OpenPR] = [], nudges: [(login: String, hours: Int)] = [],
+                      split: SplitPlan? = nil) -> [NeedsItem] {
         func item(_ id: String, _ kind: String, _ detail: String) -> NeedsItem {
             NeedsItem(id: "\(slug)#\(pr.n)/\(id)", slug: slug, n: pr.n, title: pr.title, kind: kind, detail: detail)
         }
@@ -328,6 +329,9 @@ enum Approach {
         for call in state?.calls ?? [] {
             let detail = "Your call · \(call.author): \"\(call.quote)\"" + (call.draft != nil ? " · draft reply ready" : "")
             items.append(item(call.id, "call", detail))
+        }
+        if let plan = split, plan.status == "proposed" {
+            items.append(item("split", "split", "Split proposed · \(plan.parts.count) parts"))
         }
         // A ping is offered only where tending may act on the PR: not switched off, not hands-off, not a draft.
         for nudge in nudges where tendable(pr, state) && !pr.isDraft {
