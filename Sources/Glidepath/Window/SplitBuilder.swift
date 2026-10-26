@@ -171,9 +171,9 @@ struct SplitBuilderCard: View {
     }
 
     /// One part: its number and title, why, and its file chips. The column takes a dropped file.
-    private func column(_ k: Int) -> some View {
+    @ViewBuilder private func column(_ k: Int) -> some View {
         let part = model.parts[k]
-        return VStack(alignment: .leading, spacing: 8) {
+        let body = VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Text(String(k + 1))
                     .font(.system(size: 12, weight: .semibold, design: .monospaced))
@@ -196,13 +196,18 @@ struct SplitBuilderCard: View {
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Gotham.row))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
             .strokeBorder(model.target == k ? signal : Gotham.edge, lineWidth: 1))
-        .onDrop(of: [UTType.plainText], isTargeted: targeting(k)) { providers in
-            guard let provider = providers.first else { return false }
-            _ = provider.loadObject(ofClass: String.self) { path, _ in
-                guard let path else { return }
-                Task { @MainActor in model.move(path, to: k) }
+        // A drop target is drawn as a prohibition sign offscreen, so a snapshot leaves it off; the chips still show.
+        if offscreen {
+            body
+        } else {
+            body.onDrop(of: [UTType.plainText], isTargeted: targeting(k)) { providers in
+                guard let provider = providers.first else { return false }
+                _ = provider.loadObject(ofClass: String.self) { path, _ in
+                    guard let path else { return }
+                    Task { @MainActor in model.move(path, to: k) }
+                }
+                return true
             }
-            return true
         }
     }
 
