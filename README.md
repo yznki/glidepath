@@ -215,6 +215,9 @@ Off by default. Settings → Tending → "Tend my PRs", then switch on the repos
 - Extras: a private self-review before others review (`self_review`), a "Changes since review" block in the PR body,
   Ping for reviewers waiting over `nudge_hours`, Linear comments when blocked (key in the Keychain), and a morning
   briefing at `briefing_time`. Settings → Playbook shows and edits what Glidepath learned.
+- Split big PRs: over `split_over_lines`, Glidepath proposes a stack of 2 to 6 parts by file. Edit it in the Split
+  builder, then build: each part is checked with your playbook's commands and opened as a stacked PR. The original
+  PR becomes a draft; it is never closed.
 - Limits: `rounds_per_day` (5 per PR), `tries_per_head` (2), `max_usd_per_session` (2), and `usage_reserve` (40):
   Glidepath never spends the last 40% of your 5-hour and weekly Claude windows. Deferred work waits for
   `quiet_hours` ("22:00-07:00,sat,sun").
