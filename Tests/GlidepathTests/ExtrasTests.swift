@@ -303,6 +303,15 @@ final class ExtrasTests: XCTestCase {
                                          detail: "Waiting 26 h on gadi")])
     }
 
+    func testNoPingRowForADraftOrAHandsOffPR() {
+        var draft = OpenPR(n: 9, title: "t")
+        draft.isDraft = true
+        XCTAssertTrue(Approach.needs("o/r", draft, state: nil, nudges: [(login: "gadi", hours: 26)]).isEmpty)
+        var off = TendPR(slug: "o/r", n: 9)
+        off.off = true
+        XCTAssertTrue(Approach.needs("o/r", OpenPR(n: 9, title: "t"), state: off, nudges: [(login: "gadi", hours: 26)]).isEmpty)
+    }
+
     // MARK: Autopilot
 
     func testNudgeActsOnlyUnderAutopilot() {

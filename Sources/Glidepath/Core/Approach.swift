@@ -329,7 +329,8 @@ enum Approach {
             let detail = "Your call · \(call.author): \"\(call.quote)\"" + (call.draft != nil ? " · draft reply ready" : "")
             items.append(item(call.id, "call", detail))
         }
-        for nudge in nudges {
+        // A ping is offered only where tending may act on the PR: not switched off, not hands-off, not a draft.
+        for nudge in nudges where tendable(pr, state) && !pr.isDraft {
             items.append(item("wait-\(nudge.login)", "blocked", "Waiting \(nudge.hours) h on \(nudge.login)"))
         }
         if landable {

@@ -110,6 +110,8 @@ struct TendPR: Codable, Equatable {
     var pinged: [String: Date] = [:]
     /// Linear issue ids a comment was posted to for this PR.
     var linearPosted: [String] = []
+    /// When a Linear comment that failed may be tried again. Optional so older files decode.
+    var linearRetry: Date?
 
     init(slug: String, n: Int) {
         self.slug = slug
@@ -143,12 +145,13 @@ struct TendPR: Codable, Equatable {
         changes = try c.decodeIfPresent([String].self, forKey: .changes) ?? []
         pinged = try c.decodeIfPresent([String: Date].self, forKey: .pinged) ?? [:]
         linearPosted = try c.decodeIfPresent([String].self, forKey: .linearPosted) ?? []
+        linearRetry = try c.decodeIfPresent(Date.self, forKey: .linearRetry)
     }
 
     private enum CodingKeys: String, CodingKey {
         case slug, n, fingerprint, roundsToday, roundsDate, triesByHead, rerunsByHead, held, stuck, off
         case pendingRan, pendingRanHead, lastRound, answered, resolvedByUs, calls, rereq, handled, seeded
-        case selfReview, selfReviewRetry, wasDraft, changes, pinged, linearPosted
+        case selfReview, selfReviewRetry, wasDraft, changes, pinged, linearPosted, linearRetry
     }
 
     /// Marks the PR's reviews and plain comments so far as answered, the first time a check sees the PR. Threads are not
@@ -160,9 +163,12 @@ struct TendPR: Codable, Equatable {
         seeded = true
     }
 
-    /// The round's state merged with the state on disk, which the user or `act` may have changed while the round ran.
-    /// A call the user removed during the round stays removed. Answered ids and resolved threads union, `handled` keeps
-    /// the disk's value for each key, `off` comes from disk, and a held fix comes from disk unless the round set one.
+    /// The state merged with the state on disk, which the user, `act` or a ping may have changed while the state was held.
+    /// A call the user removed during the round stays removed. Answered ids, resolved threads and Linear posts union,
+    /// `handled` keeps the disk's value for each key, pings keep the newest day per login, `off` comes from disk, and a
+    /// held fix comes from disk unless the round set one. The change lines keep the disk's list only when it is longer:
+    /// the list is capped, so a round that adds to a full list leaves both at the cap, and this copy's must win.
+    /// A self-review, its retry and the Linear retry come from disk when this copy has none.
     func merged(disk d: TendPR, startCalls: Set<String>) -> TendPR {
         var out = self
         let removed = startCalls.subtracting(d.calls.map(\.id))
@@ -171,6 +177,12 @@ struct TendPR: Codable, Equatable {
         out.answered += d.answered.filter { !answered.contains($0) }
         out.resolvedByUs += d.resolvedByUs.filter { !resolvedByUs.contains($0) }
         out.handled.merge(d.handled) { _, disk in disk }
+        out.pinged.merge(d.pinged) { mine, disk in max(mine, disk) }
+        if changes.count < d.changes.count { out.changes = d.changes }
+        out.linearPosted += d.linearPosted.filter { !linearPosted.contains($0) }
+        if out.selfReview == nil { out.selfReview = d.selfReview }
+        if out.selfReviewRetry == nil { out.selfReviewRetry = d.selfReviewRetry }
+        if out.linearRetry == nil { out.linearRetry = d.linearRetry }
         out.off = d.off
         if out.held == nil { out.held = d.held }
         return out
