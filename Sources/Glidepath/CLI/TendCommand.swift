@@ -343,9 +343,17 @@ final class Tender {
                 if Autopilot.actor(.nudge, autopilot: config.tend.autopilot, push: config.tend.push) == .act {
                     autoPing(repo, pr, &s, waits: waits, now: now)
                 }
-                linearStep(repo, pr, &s, waits: waits, now: now)
+                let linearActive = linearStep(repo, pr, &s, waits: waits, now: now)
+                if s != before {
+                    // Merged with the disk under the PR's lock, as a round's end is, so a ping or an `act` made during the
+                    // check is kept. The Linear reasons no longer active are dropped after the merge, or the disk copy brings them back.
+                    try? withPRLock(repo.slug, pr.n) {
+                        s = s.merged(disk: store.load(repo.slug, pr.n) ?? s, startCalls: Set(before.calls.map(\.id)))
+                        s.linearPosted = s.linearPosted.filter { linearActive.contains($0) }
+                        try store.save(s)
+                    }
+                }
                 states[key] = s
-                if s != before { try? store.save(s) }
             }
         }
         // Landing runs after the rounds, so a PR that had one this check waits for the next.
@@ -1522,14 +1530,20 @@ final class Tender {
     /// Autopilot's ping: each reviewer the PR waits on gets one, under the same once-a-day rule as `tend ping`.
     private func autoPing(_ repo: RepoConfig, _ pr: OpenPR, _ s: inout TendPR, waits: [(login: String, hours: Int)], now: Date) {
         guard Approach.tendable(pr, s), !pr.isDraft else { return }
-        for wait in waits where Tender.canPing(s, login: wait.login, now: now) {
+        for wait in waits {
             do {
-                try postPing(repo.slug, pr.n, login: wait.login)
+                // Read again under the PR's lock: a `tend ping` may have pinged this reviewer since the check read the state.
+                let pinged = try withPRLock(repo.slug, pr.n) { () throws -> Bool in
+                    guard Tender.canPing(store.load(repo.slug, pr.n) ?? s, login: wait.login, now: now) else { return false }
+                    try postPing(repo.slug, pr.n, login: wait.login)
+                    s.pinged[wait.login] = now
+                    return true
+                }
+                guard pinged else { continue }
             } catch {
                 print("\(repo.slug) #\(pr.n): \(error)")
                 continue
             }
-            s.pinged[wait.login] = now
             tower(repo.slug, pr.n, "pinged \(wait.login)", amber: false, now: now)
         }
     }
@@ -1562,15 +1576,19 @@ final class Tender {
     /// The Linear key, read once per check and only when a comment needs one.
     private lazy var linearKey: String? = LinearKey.read()
 
-    /// When the PR has a Linear issue id and a key is set: each new stuck reason and each new wait is posted to the issue
-    /// once, under its reason key. An issue Linear does not know is passed over quietly. A failure gets one amber tower
-    /// line, and that reason is not tried again: tend never gets stuck over Linear.
-    private func linearStep(_ repo: RepoConfig, _ pr: OpenPR, _ s: inout TendPR, waits: [(login: String, hours: Int)], now: Date) {
-        guard let issue = Linear.issueId(title: pr.title, branch: pr.branch) else { return }
-        let fresh = Tender.linearReasons(stuck: s.stuck, waits: waits).filter { reason in
-            !s.linearPosted.contains(reason) && !s.linearPosted.contains("failed:" + reason)
-        }
-        guard !fresh.isEmpty, let key = linearKey else { return }
+    /// When the PR is tendable and not a draft, has a Linear issue id and a key is set: each new stuck reason and each new
+    /// wait is posted to the issue once, under its reason key. An issue Linear does not know is passed over quietly. A
+    /// failure gets one amber tower line, and the posts wait an hour (`linearRetry`): tend never gets stuck over Linear.
+    /// Returns the reasons that hold now. The caller keeps only those in `linearPosted` once the state is merged, so a
+    /// PR stuck again for the same reason posts again.
+    private func linearStep(_ repo: RepoConfig, _ pr: OpenPR, _ s: inout TendPR, waits: [(login: String, hours: Int)],
+                            now: Date) -> [String] {
+        let active = Approach.tendable(pr, s) && !pr.isDraft ? Tender.linearReasons(stuck: s.stuck, waits: waits) : []
+        s.linearPosted = s.linearPosted.filter { active.contains($0) }
+        guard !active.isEmpty, (s.linearRetry ?? .distantPast) <= now,
+              let issue = Linear.issueId(title: pr.title, branch: pr.branch) else { return active }
+        let fresh = active.filter { !s.linearPosted.contains($0) }
+        guard !fresh.isEmpty, let key = linearKey else { return active }
         var texts: [String: String] = [:]
         if let stuck = s.stuck { texts["stuck:" + stuck] = stuck }
         for wait in waits { texts["wait:" + wait.login] = "waiting \(wait.hours) h on \(wait.login)" }
@@ -1581,10 +1599,11 @@ final class Tender {
                 s.linearPosted.append(reason)
             case .failed(let why):
                 tower(repo.slug, pr.n, "Linear comment on \(issue) not posted · \(why)", amber: true, now: now)
-                for rest in fresh where !s.linearPosted.contains(rest) { s.linearPosted.append("failed:" + rest) }
-                return
+                s.linearRetry = now.addingTimeInterval(3600)
+                return active
             }
         }
+        return active
     }
 
     /// Looks up the issue and comments on it. The key goes only into a 0600 header file, which is deleted after the calls.

@@ -546,6 +546,33 @@ final class TendCoreTests: XCTestCase {
         XCTAssertEqual(out.held, disk.held)
     }
 
+    func testMergeKeepsPingsChangesReviewsAndLinearPosts() {
+        var round = TendPR(slug: "acme/api", n: 7)
+        round.pinged = ["gadi": at(26, 9)]
+        round.changes = ["abc1234 fix"]
+        round.linearPosted = ["wait:gadi"]
+        var disk = TendPR(slug: "acme/api", n: 7)
+        disk.pinged = ["gadi": at(25, 9), "ines": at(26, 8)]
+        disk.changes = ["abc1234 fix", "def5678 more"]
+        disk.linearPosted = ["stuck:CI"]
+        disk.selfReview = SelfReview(head: "h", at: at(26, 8), verdict: "clean", findings: [], done: true)
+        disk.selfReviewRetry = at(26, 10)
+        let out = round.merged(disk: disk, startCalls: [])
+        XCTAssertEqual(out.pinged, ["gadi": at(26, 9), "ines": at(26, 8)])
+        XCTAssertEqual(out.changes, ["abc1234 fix", "def5678 more"])
+        XCTAssertEqual(out.linearPosted, ["wait:gadi", "stuck:CI"])
+        XCTAssertEqual(out.selfReview, disk.selfReview)
+        XCTAssertEqual(out.selfReviewRetry, at(26, 10))
+    }
+
+    func testMergeKeepsANewChangeWhenTheListIsFull() {
+        var round = TendPR(slug: "acme/api", n: 7)
+        round.changes = Describe.adding("c11", to: (1...10).map { "c\($0)" })
+        var disk = TendPR(slug: "acme/api", n: 7)
+        disk.changes = (1...10).map { "c\($0)" }
+        XCTAssertEqual(round.merged(disk: disk, startCalls: []).changes.last, "c11")
+    }
+
     func testLockPathNamesThePR() {
         let store = TendStore(paths: Paths(home: "/fake/home", env: [:]))
         XCTAssertTrue(store.lockPath("acme/api", 7).hasSuffix("/tend/acme-api-7.lock"))
