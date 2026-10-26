@@ -1,4 +1,4 @@
 /// The app's version. make-app.sh writes it into Info.plist; `--version` and the menus read it.
 enum Version {
-    static let current = "1.9.0"
+    static let current = "1.10.0"
 }
