@@ -83,6 +83,14 @@ struct RunDigest: Equatable {
         }
     }
 
+    /// The tend actions that are not rounds: a self-review, the lesson tidy, a landing and a broken main. A round is the rest.
+    static let nonRoundTendActions: Set<String> = ["self-review", "consolidated", "landed", "broke"]
+
+    /// Whether a tend run used one of its PR's rounds for the day, which is what "Rounds today" counts.
+    static func isRound(_ run: RunState) -> Bool {
+        run.kind == "tend" && !nonRoundTendActions.contains(run.tendAction ?? "")
+    }
+
     /// "Sweep" for a sweep, "<login>'s PRs" for an author, "owner/name #n" for one PR, "<k> PRs" for several.
     static func title(for run: RunState) -> String {
         if run.kind == "self-review" {

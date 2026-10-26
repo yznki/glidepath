@@ -1666,9 +1666,9 @@ final class Tender {
 
     // MARK: Lesson consolidation
 
-    /// Once a week, in quiet hours: each tended repo with at least four lessons of its own has them merged by a small
-    /// model. Stale lessons (older than 60 days) are dropped first. Pushback lessons keep their own heading and are not
-    /// merged. A bad answer keeps the old list. Each repo's tokens are recorded as a tend run.
+    /// Once a week, in quiet hours: each tended repo with at least four mergeable lessons has them merged by a small
+    /// model. What the user taught or edited, and pushback lessons, are never merged. A bad answer keeps the old list.
+    /// Each repo's tokens are recorded as a tend run.
     private func consolidateLessons(now: Date) {
         guard Tender.lessonsDue(last: store.loadLessonsRun()?.lastRun, now: now) else { return }
         switch UsageGuard.decide(.deferred, UsageState.load(paths), reserve: config.tend.usageReserve,
@@ -1680,21 +1680,20 @@ final class Tender {
             return
         }
         for repo in config.repos.filter(\.tend) {
-            let book = Playbook.load(repo.slug, paths: paths).dropStale(now: now, days: 60)
-            let own = book.lessons.filter { $0.source != "pushback" }
-            guard own.count >= 4 else { continue }
-            let lines = own.map(\.text)
+            let inputs = Lessons.mergeInputs(Playbook.load(repo.slug, paths: paths), now: now)
+            guard inputs.count >= 4 else { continue }
+            let lines = inputs.map(\.text)
             try? FileManager.default.createDirectory(atPath: store.dir, withIntermediateDirectories: true)
             let r = Shell.run("claude", Self.lessonArguments(prompt: Lessons.consolidatePrompt(lines), config: config),
                               cwd: store.dir, env: claudeEnv(), timeout: 300)
             Runner.recordUsage(stream: r.stdout, paths: paths)
             let tokens = Transcript.tokens(lines: r.stdout.split(separator: "\n").map(String.init))
-            if let merged = UsageGuard.resultText(stream: r.stdout).flatMap({ Lessons.parseList($0, max: lines.count) }) {
-                var next = book
-                next.lessons = book.lessons.filter { $0.source == "pushback" }
-                    + merged.map { Playbook.Lesson(text: $0, source: "consolidated", date: now) }
+            // Read again after the model answered: a lesson taught or learned meanwhile must not be lost.
+            let book = Playbook.load(repo.slug, paths: paths)
+            if let next = Lessons.consolidate(book: book, inputs: inputs, output: UsageGuard.resultText(stream: r.stdout) ?? "",
+                                              now: now) {
                 try? next.cap().save(repo.slug, paths: paths)
-                print("\(repo.slug): \(own.count) lessons merged into \(merged.count)")
+                print("\(repo.slug): \(lines.count) lessons merged")
             }
             var run = RunState.new(id: Runner.makeID(now), now: now, kind: "tend", target: "repo:\(repo.slug)")
             run.tokens = tokens

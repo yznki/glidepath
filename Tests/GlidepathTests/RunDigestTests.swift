@@ -30,6 +30,22 @@ final class RunDigestTests: XCTestCase {
         XCTAssertEqual(RunDigest.title(for: tidy), "Lessons tidied for lumen/api")
     }
 
+    func testOnlyTendRoundsCountAsRounds() {
+        func tend(_ action: String?) -> RunState {
+            var r = RunState.new(id: "r", now: t0, kind: "tend", target: "pr:lumen/api#7")
+            r.tendAction = action
+            return r
+        }
+        XCTAssertTrue(RunDigest.isRound(tend("fixed")))
+        XCTAssertTrue(RunDigest.isRound(tend("answered")))
+        XCTAssertTrue(RunDigest.isRound(tend("merged")))
+        XCTAssertFalse(RunDigest.isRound(tend("self-review")))
+        XCTAssertFalse(RunDigest.isRound(tend("landed")))
+        XCTAssertFalse(RunDigest.isRound(tend("broke")))
+        XCTAssertFalse(RunDigest.isRound(tend("consolidated")))
+        XCTAssertFalse(RunDigest.isRound(run(kind: "review", target: "prs:lumen/api#7", repos: [])))
+    }
+
     func testTitleForEachTargetForm() {
         XCTAssertEqual(RunDigest.title(for: run(kind: nil, target: nil, repos: [])), "Sweep")
         XCTAssertEqual(RunDigest.title(for: run(kind: "review", target: nil, repos: [])), "Review")

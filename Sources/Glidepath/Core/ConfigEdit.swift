@@ -230,6 +230,13 @@ enum ConfigEditor {
         return out
     }
 
+    /// The "Self-review my PRs" switch: `self_review` in the tend block. Turning tending on sets it, so this turns it off.
+    static func setTendSelfReview(_ config: Config, _ on: Bool) -> Config {
+        var out = config
+        out.tend.selfReview = on
+        return out
+    }
+
     static func setTendPush(_ config: Config, _ push: TendPush) -> Config {
         var out = config
         out.tend.push = push
