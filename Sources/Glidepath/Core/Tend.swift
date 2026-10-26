@@ -100,6 +100,8 @@ struct TendPR: Codable, Equatable {
     var seeded = false
     /// The last self-review of this PR's head.
     var selfReview: SelfReview?
+    /// When a self-review that did not run may be tried again. Optional so older files decode.
+    var selfReviewRetry: Date?
     /// Whether the PR was a draft at the last check.
     var wasDraft = false
     /// Lines for the PR description's "Changes since review" block.
@@ -136,6 +138,7 @@ struct TendPR: Codable, Equatable {
         handled = try c.decodeIfPresent([String: String].self, forKey: .handled) ?? [:]
         seeded = try c.decodeIfPresent(Bool.self, forKey: .seeded) ?? false
         selfReview = try c.decodeIfPresent(SelfReview.self, forKey: .selfReview)
+        selfReviewRetry = try c.decodeIfPresent(Date.self, forKey: .selfReviewRetry)
         wasDraft = try c.decodeIfPresent(Bool.self, forKey: .wasDraft) ?? false
         changes = try c.decodeIfPresent([String].self, forKey: .changes) ?? []
         pinged = try c.decodeIfPresent([String: Date].self, forKey: .pinged) ?? [:]
@@ -145,7 +148,7 @@ struct TendPR: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case slug, n, fingerprint, roundsToday, roundsDate, triesByHead, rerunsByHead, held, stuck, off
         case pendingRan, pendingRanHead, lastRound, answered, resolvedByUs, calls, rereq, handled, seeded
-        case selfReview, wasDraft, changes, pinged, linearPosted
+        case selfReview, selfReviewRetry, wasDraft, changes, pinged, linearPosted
     }
 
     /// Marks the PR's reviews and plain comments so far as answered, the first time a check sees the PR. Threads are not

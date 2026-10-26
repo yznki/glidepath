@@ -36,6 +36,18 @@ final class ExtrasCLITests: XCTestCase {
         XCTAssertTrue(TendDecision.pendingAsks(pr, state: withReview, me: "me").isEmpty)
     }
 
+    func testChangesWithNoInlineCommentIsOneAskWithoutAPlace() {
+        let pr = OpenPR(n: 5, title: "t", head: "abcdef1234")
+        var state = TendPR(slug: "o/r", n: 5)
+        state.selfReview = SelfReview(head: "abcdef1234", at: at(26, 9), verdict: "changes",
+                                      findings: [DraftComment(path: "", line: 0, side: nil, body: "add tests")], done: false)
+        let asks = TendDecision.pendingAsks(pr, state: state, me: "me")
+        XCTAssertEqual(asks.map(\.kind), ["self"])
+        XCTAssertEqual(asks.first?.body, "add tests")
+        XCTAssertNil(asks.first?.path)
+        XCTAssertNil(asks.first?.line)
+    }
+
     func testFailedSelfReviewLine() {
         let failed = SelfReview(head: "h", at: at(26, 9), verdict: "failed", findings: [], done: true)
         XCTAssertEqual(Approach.selfReviewLine(failed), "Self-review: did not run")

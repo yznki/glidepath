@@ -356,7 +356,9 @@ final class Store: ObservableObject {
             scheduleDryRunCheck()
         } else if let id = pendingDryRunID {
             pendingDryRunID = nil
-            if let ended = try? RunStore(paths: paths).load(id), ended.finished != nil, config?.notify ?? true {
+            // A tend self-review is a dry run too, but it is the tend's own work and says nothing to the user.
+            if let ended = try? RunStore(paths: paths).load(id), ended.finished != nil, ended.kind != "self-review",
+               config?.notify ?? true {
                 Notifier.post(Presentation.dryRunNotice(ended), runID: ended.id, sound: config?.notifySound ?? .glass,
                               respectFocus: config?.respectFocus ?? true)
             }

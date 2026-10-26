@@ -283,12 +283,13 @@ enum ReviewCommand {
     static let usage = "usage: glidepath review owner/name N [N...] | PR-URL [PR-URL...] | --author login [--repo owner/name]  [--dry-run] [--again]"
 
     /// The parsed arguments, or nil when they are not one of the three forms.
-    static func parse(_ args: [String]) -> (target: ReviewTarget, repo: String?, dryRun: Bool, again: Bool)? {
+    static func parse(_ args: [String]) -> (target: ReviewTarget, repo: String?, dryRun: Bool, again: Bool, selfReview: Bool)? {
         var positional: [String] = []
         var author: String?
         var repo: String?
         var dryRun = false
         var again = false
+        var selfReview = false
         var i = 0
         while i < args.count {
             let token = args[i]
@@ -302,18 +303,25 @@ enum ReviewCommand {
                 dryRun = true
             case "--again":
                 again = true
+            case "--self":
+                selfReview = true
             default:
                 if token.hasPrefix("--") { return nil }
                 positional.append(token)
             }
         }
+        // Hidden flag: the tend's own review of its PR. It posts nothing, so it is a dry run that reviews again.
+        if selfReview {
+            dryRun = true
+            again = true
+        }
         guard let login = author else {
             guard repo == nil, let refs = ReviewTarget.parsePRs(positional) else { return nil }
-            return (.prs(refs), nil, dryRun, again)
+            return (.prs(refs), nil, dryRun, again, selfReview)
         }
         guard positional.isEmpty, (try? ConfigEditor.validateLogin(login)) != nil else { return nil }
         if let repo, !RepoConfig.isValidSlug(repo) { return nil }
-        return (.author(login), repo, dryRun, again)
+        return (.author(login), repo, dryRun, again, selfReview)
     }
 
     static func main(_ args: [String]) -> Int32 {
@@ -382,6 +390,7 @@ enum ReviewCommand {
         let runner = Runner(paths: paths, config: config, dryRun: parsed.dryRun || config.dryRun)
         runner.target = target
         runner.again = parsed.again
+        runner.selfReview = parsed.selfReview
         return withExtendedLifetime(lock) { runner.execute(repos: repos) }
     }
 }
@@ -441,6 +450,9 @@ final class Runner {
     var target: ReviewTarget?
     /// Set by `glidepath review --again`: an already reviewed head is reviewed again. Ignored for a sweep.
     var again = false
+    /// Set by the hidden `glidepath review --self`, which tend runs on its own PR. The run is kind "self-review", and the
+    /// session gets tend's per-session budget.
+    var selfReview = false
     /// Set when an author review skipped one of the user's own PRs, so the summary can say how to include them.
     private var ownPRSkipped = false
     /// A scheduled sweep (launchd's `run --scheduled`). Only these stop at the monthly token budget.
@@ -483,7 +495,8 @@ final class Runner {
         let now = Date()
         id = Runner.makeID(now)
         do {
-            var fresh = RunState.new(id: id, now: now, kind: target == nil ? nil : "review", target: target?.runTarget)
+            let kind = selfReview ? "self-review" : (target == nil ? nil : "review")
+            var fresh = RunState.new(id: id, now: now, kind: kind, target: target?.runTarget)
             if target != nil, !dryRun, let previous = try? store.loadCurrent() {
                 fresh.carryRows(from: previous)
             }
@@ -698,7 +711,8 @@ final class Runner {
             prompt: prompt, systemPrompt: skill, sessionId: session, scratch: scratch, mcpConfig: mcpPath,
             agents: Claude.agentsJSON(gitnexus: gitnexus),
             settings: Claude.hookSettingsJSON(binary: InitCommand.binaryPath()),
-            allowlist: allowlist, model: config.model.rawValue)
+            allowlist: allowlist, model: config.model.rawValue,
+            maxBudgetUSD: selfReview ? config.tend.maxUsdPerSession : nil)
         var childEnv = Claude.childEnvironment(parent: env, binding: binding.environment)
         childEnv["PATH"] = Claude.pathPrepending(InitCommand.runningBinaryDirectory(), to: childEnv["PATH"])
         childEnv["GLIDEPATH_STATE_DIR"] = paths.stateDir
