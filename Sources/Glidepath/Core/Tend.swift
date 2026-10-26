@@ -245,6 +245,18 @@ struct TendStore {
         try? FileManager.default.removeItem(atPath: file(slug, n))
     }
 
+    /// A PR's split plan, in `tend/split/`. Kept out of `all()`, which reads only the files directly in `dir`.
+    func splitPath(_ slug: String, _ n: Int) -> String { dir + "/split/" + stem(slug, n) + ".json" }
+
+    func loadSplit(_ slug: String, _ n: Int) -> SplitPlan? {
+        guard let data = FileManager.default.contents(atPath: splitPath(slug, n)) else { return nil }
+        return try? RunStore.decoder().decode(SplitPlan.self, from: data)
+    }
+
+    func saveSplit(_ plan: SplitPlan) throws {
+        try write(RunStore.encoder().encode(plan), to: splitPath(plan.slug, plan.n))
+    }
+
     /// Every readable PR state file.
     func all() -> [TendPR] {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []

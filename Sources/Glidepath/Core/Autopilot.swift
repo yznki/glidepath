@@ -25,6 +25,8 @@ enum TendAction: Equatable {
     case revert
     /// A reviewer who has waited past `nudge_hours`: a polite ping.
     case nudge
+    /// Building the stack from a proposed split plan.
+    case split
 }
 
 enum Autopilot {
@@ -48,6 +50,7 @@ enum Autopilot {
             return (autopilot || merge == .auto) ? .act : .you
         case .conflict, .revert: return autopilot ? .council : .you
         case .nudge: return autopilot ? .act : .you
+        case .split: return autopilot ? .council : .you
         }
     }
 }
