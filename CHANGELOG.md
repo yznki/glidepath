@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.0
+
+- Self-review: when one of your PRs is opened or marked ready, Glidepath reviews it first with the usual review pipeline and posts nothing. Verified findings are fixed in the next round. Switch it in Settings → Tending.
+- PR description upkeep: after each push Glidepath keeps a "Changes since review" list (and a test plan) between `<!-- glidepath -->` markers in the PR body. Nothing outside the markers is touched.
+- Nudges: a PR waiting more than `nudge_hours` (24 weekday hours) on a reviewer shows as blocked, with a Ping button that posts one polite comment (at most once per reviewer per day; automatic with autopilot).
+- Linear: add your Linear key in Settings → Tending (stored in the Keychain) and Glidepath comments on the PR's issue when the PR gets stuck or waits too long.
+- Morning briefing at `briefing_time` (08:00): what landed, what is blocked, and what Glidepath did.
+- Settings → Playbook: see verified commands, edit or delete lessons, teach new ones. Lessons are tidied weekly.
+- Review runs now count tokens correctly when the clone path goes through a symlink such as /tmp.
+
 ## 1.8.0
 
 - Landing: with `merge = "ask"` (what Settings writes when you turn tending on) a PR that is approved, green, clean and has no open threads shows "Ready to land" with Hold to land. `merge = "auto"` or autopilot lands it on the next check. The merge method is set per repo with `merge_method`.
