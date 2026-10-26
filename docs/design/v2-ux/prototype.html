@@ -1,0 +1,1217 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Glidepath 2.0 prototype</title>
+<style>
+/* Glidepath 2.0. Same material as 1.3 (black glass, silver light, one amber signal); new structure from docs/design/v2-ux/spec.md. */
+:root{
+  --void:#030304; --mat:rgba(11,11,14,.84); --edge:rgba(255,255,255,.07); --fg:#ececef; --mute:rgba(236,236,242,.46);
+  --tint:rgba(20,20,25,.66); --hi:rgba(255,255,255,.15); --row:rgba(255,255,255,.045); --quiet:#060608;
+  --amber:#d29b45; --blur:40px;
+  --tracer:conic-gradient(from var(--a),transparent 0 62%,rgba(255,255,255,.95) 94%,transparent);
+  --sys:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r1:10px; --r2:18px;
+  color-scheme:dark;
+}
+@property --a{syntax:'<angle>';inherits:false;initial-value:0deg}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--void);color:var(--fg);font:400 13px/1.4 var(--sys);-webkit-font-smoothing:antialiased;letter-spacing:-.005em;overflow:hidden}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* The four text sizes */
+.t22{font-size:22px;font-weight:600;line-height:1.2;letter-spacing:-.02em}
+.t15{font-size:15px;font-weight:600;line-height:1.35;letter-spacing:-.01em}
+.t11{font-size:11px;font-weight:500;line-height:1.35}
+.mute{color:var(--mute)}
+.amb{color:var(--amber)}
+.mono{font-family:var(--mono)}
+
+/* Glass, lifted from 1.3 */
+.material{background:var(--mat);backdrop-filter:blur(var(--blur)) saturate(1.9);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.9);
+  box-shadow:inset 0 1px 0 var(--hi),inset 0 0 0 1px var(--edge),0 40px 90px -30px rgba(0,0,0,.65),0 8px 24px -8px rgba(0,0,0,.35)}
+
+/* Desktop */
+.desk{position:fixed;inset:0 0 56px 0;overflow:hidden;
+  background:radial-gradient(30% 70% at 28% -10%,rgba(255,255,255,.075),transparent 70%),radial-gradient(25% 60% at 78% -10%,rgba(255,255,255,.05),transparent 70%),linear-gradient(180deg,#0a0a0d,var(--void) 60%)}
+.bar{position:relative;z-index:60;height:28px;display:flex;align-items:center;gap:18px;padding:0 14px;font-weight:600;background:var(--mat);backdrop-filter:blur(30px) saturate(1.8);-webkit-backdrop-filter:blur(30px) saturate(1.8)}
+.bar .grow{flex:1}
+.bar time{color:var(--mute);font-variant-numeric:tabular-nums;font-weight:500}
+.mb{position:relative;height:22px;min-width:30px;padding:0 6px;border:0;border-radius:6px;background:none;display:flex;align-items:center;gap:4px}
+.mb:hover,.mb.on{background:var(--row)}
+.mb .gl{position:relative;width:17px;height:17px;display:grid;place-items:center}
+.mb svg{width:17px;height:17px;display:block}
+.mb .n{font-weight:600;color:var(--amber);font-variant-numeric:tabular-nums}
+.mb.problem .gl svg.g,.mb.paused .gl svg.g{opacity:.45}
+.mb .gl i{position:absolute;inset:0}
+.mb.problem .gl i::before{content:"";position:absolute;left:50%;top:-1px;bottom:-1px;width:1.8px;background:var(--fg);rotate:45deg;border-radius:1px;box-shadow:0 0 0 1.5px var(--mat)}
+.mb.paused .gl i::before,.mb.paused .gl i::after{content:"";position:absolute;top:3px;bottom:3px;width:3px;border-radius:1px;background:var(--fg);box-shadow:0 0 0 1.5px var(--mat)}
+.mb.paused .gl i::before{left:4px}.mb.paused .gl i::after{right:4px}
+.mb.working .gl::after{content:"";position:absolute;inset:-3px;border-radius:50%;padding:1.2px;background:var(--tracer);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:rot 2.4s linear infinite}
+@keyframes rot{to{--a:360deg}}
+
+/* Buttons */
+.btn{height:28px;padding:0 12px;border:0;border-radius:var(--r1);background:var(--tint);box-shadow:inset 0 1px 0 var(--hi),inset 0 0 0 1px var(--edge);font-weight:500;white-space:nowrap}
+.btn:hover{background:rgba(40,40,48,.7)}
+.btn:active{scale:.97}
+.link{border:0;background:none;padding:0;color:var(--mute);font-weight:500}
+.link:hover{color:var(--fg);text-decoration:underline}
+.more{width:28px;height:28px;border:0;border-radius:var(--r1);background:none;color:var(--mute);font-weight:700;letter-spacing:1px}
+.more:hover{background:var(--row);color:var(--fg)}
+/* The one hold component: outward actions only */
+.hold{position:relative;height:28px;padding:0 12px 0 9px;border:0;border-radius:var(--r1);background:var(--fg);color:#08080a;font-weight:600;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;touch-action:none;user-select:none;-webkit-user-select:none}
+.hold .ring{width:14px;height:14px;rotate:-90deg}
+.hold .ring circle{fill:none;stroke-width:2}
+.hold .ring .rt{stroke:rgba(0,0,0,.18)}
+.hold .ring .rf{stroke:#08080a;stroke-dasharray:37.7;stroke-dashoffset:calc(37.7px * (1 - var(--p,0)));stroke-linecap:round}
+.hold::after{content:attr(data-hint);position:absolute;top:100%;left:50%;translate:-50% 5px;font-size:11px;font-weight:500;color:var(--fg);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .2s}
+.hold.hinted::after{opacity:1}
+.hold.shake{animation:shake .34s}
+@keyframes shake{20%,60%{translate:-3px 0}40%,80%{translate:3px 0}}
+.hold.done{background:rgba(236,236,239,.5)}
+
+/* Switch and segmented control (silver tint, no system blue/green) */
+.sw{width:36px;height:22px;flex:none;border:0;border-radius:11px;background:rgba(255,255,255,.12);position:relative;transition:background .25s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#f4f4f6;box-shadow:0 2px 5px rgba(0,0,0,.35);transition:translate .3s cubic-bezier(.3,1.4,.4,1)}
+.sw[aria-checked="true"]{background:rgba(236,236,239,.78)}
+.sw[aria-checked="true"]::after{background:#0b0b0e;translate:14px 0}
+.seg{display:inline-flex;padding:2px;border-radius:var(--r1);background:var(--row);box-shadow:inset 0 0 0 1px var(--edge)}
+.seg button{border:0;background:none;color:var(--mute);font-weight:500;padding:4px 11px;border-radius:8px;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--tint);color:var(--fg);box-shadow:0 1px 4px rgba(0,0,0,.25),inset 0 1px 0 var(--hi)}
+input[type=range]{-webkit-appearance:none;appearance:none;width:170px;height:4px;border-radius:2px;background:linear-gradient(90deg,var(--fg) var(--f,50%),rgba(255,255,255,.12) var(--f,50%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#f4f4f6;box-shadow:0 2px 8px rgba(0,0,0,.6)}
+.field{height:28px;border:0;border-radius:var(--r1);background:var(--row);box-shadow:inset 0 0 0 1px var(--edge);padding:0 10px}
+.field:focus{outline:none;box-shadow:inset 0 0 0 1.5px var(--mute)}
+
+/* Avatar, from 1.3 */
+.av{width:28px;height:28px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:500;letter-spacing:.04em;box-shadow:inset 0 1px 0 rgba(255,255,255,.2),inset 0 0 0 1px rgba(255,255,255,.06),0 2px 8px rgba(0,0,0,.6)}
+
+/* Rows: one height, separated by space, no boxes */
+.row{height:52px;display:flex;align-items:center;gap:12px;padding:0 10px;border-radius:var(--r1);cursor:default}
+.row.click{cursor:pointer}
+.row.click:hover,.row.sel{background:var(--row)}
+.row.sel{box-shadow:inset 0 0 0 1px var(--edge)}
+.row+.row{margin-top:2px}
+.rt{flex:1;min-width:0}
+.rt>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.r1{font-weight:600}
+.r2{color:var(--mute);margin-top:1px}
+.ra{display:flex;align-items:center;gap:6px;flex:none}
+.lbl{font-size:11px;font-weight:500;color:var(--mute);margin:22px 10px 6px}
+.lbl:first-child{margin-top:4px}
+.shim{background:linear-gradient(90deg,var(--mute) 30%,var(--fg) 50%,var(--mute) 70%);background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shim 1.6s linear infinite}
+@keyframes shim{from{background-position:100% 0}to{background-position:-100% 0}}
+
+/* Progress strip: CI · Comments · Approval · Merge */
+.strip{display:flex;align-items:center}
+.strip .sd{position:relative;display:grid;place-items:center}
+.strip .sd i{width:8px;height:8px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--mute)}
+.strip .sd.done i{background:var(--fg);box-shadow:none}
+.strip .sd.needs i{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.strip .sd.run i{box-shadow:inset 0 0 0 1.5px var(--fg);animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:inset 0 0 0 1.5px var(--fg),0 0 0 4px rgba(255,255,255,.08)}}
+.strip .sd b{position:absolute;top:13px;font-size:11px;font-weight:500;color:var(--mute);white-space:nowrap;opacity:0;transition:opacity .15s}
+.strip .sd:hover b{opacity:1}
+.strip .ln{width:14px;height:1.5px;background:rgba(255,255,255,.1);margin:0 3px}
+.strip .ln.done{background:var(--fg)}
+.strip.big .sd i{width:12px;height:12px}
+.strip.big .sd b{opacity:1;top:20px}
+.strip.big .sd.needs b{color:var(--amber)}
+.strip.big .sd.done b,.strip.big .sd.run b{color:var(--fg)}
+.strip.big .ln{width:96px;margin:0 6px}
+
+/* Popover */
+.pop{position:absolute;top:34px;z-index:55;width:360px;max-height:520px;border-radius:var(--r2);display:flex;flex-direction:column;overflow:hidden;transform-origin:85% 0;transition:opacity .2s,scale .3s cubic-bezier(.3,1.2,.4,1),filter .3s}
+.pop:not(.on){opacity:0;scale:.94;filter:blur(8px);pointer-events:none}
+.pst{display:flex;align-items:center;gap:12px;padding:16px 16px 14px}
+.pst .t15{flex:1}
+.plist{padding:0 6px;overflow:auto}
+.plist .row{height:52px}
+.pmore{padding:4px 16px 2px}
+.psince{padding:12px 16px 4px}
+.psince .t11{color:var(--mute);margin-bottom:2px}
+.pfoot{display:flex;align-items:center;gap:6px;padding:8px 10px 8px 16px;margin-top:10px;box-shadow:inset 0 1px 0 var(--edge)}
+.pfoot .mode{flex:1}
+.icobtn{width:28px;height:28px;border:0;border-radius:var(--r1);background:none;color:var(--mute);display:grid;place-items:center}
+.icobtn:hover{background:var(--row);color:var(--fg)}
+.icobtn svg{width:16px;height:16px}
+
+/* Menu, native style */
+.menu{position:fixed;z-index:90;min-width:220px;padding:5px;border-radius:var(--r1);font-weight:400}
+.menu .mi{position:relative;height:24px;padding:0 10px;border-radius:5px;display:flex;align-items:center;gap:16px;cursor:default;white-space:nowrap}
+.menu .mi:hover{background:rgba(255,255,255,.14)}
+.menu .mi span:first-child{flex:1}
+.menu .mi .k{color:var(--mute)}
+.menu .sep{height:1px;margin:5px 8px;background:var(--edge)}
+.menu .sub{display:none;position:absolute;top:-5px;left:100%;min-width:250px;padding:5px;border-radius:var(--r1)}
+.menu .mi:hover>.sub{display:block}
+.menu.left .sub{left:auto;right:100%}
+
+/* Main window */
+.win{position:absolute;left:28px;top:48px;width:min(940px,calc(100vw - 56px));height:min(720px,calc(100vh - 56px - 72px));z-index:20;border-radius:var(--r2);display:flex;overflow:hidden;background:var(--quiet);
+  box-shadow:inset 0 0 0 1px var(--edge),0 40px 90px -30px rgba(0,0,0,.8),0 8px 24px -8px rgba(0,0,0,.4)}
+.side{width:196px;flex:none;padding:14px 10px;display:flex;flex-direction:column;gap:2px;border-radius:0;box-shadow:inset -1px 0 0 var(--edge)}
+.lights{display:flex;gap:8px;padding:2px 6px 22px}
+.lights i{width:12px;height:12px;border-radius:50%;background:#ff5f57;cursor:pointer}
+.lights i:nth-child(2){background:#febc2e}.lights i:nth-child(3){background:#28c840}
+.nav{height:32px;display:flex;align-items:center;gap:10px;padding:0 10px;border:0;border-radius:8px;background:none;font-weight:500;text-align:left}
+.nav svg{width:16px;height:16px;opacity:.75}
+.nav span{flex:1}
+.nav[aria-current="true"]{background:var(--row)}
+.nav .badge{color:var(--amber);font-weight:600;font-variant-numeric:tabular-nums}
+.main{position:relative;flex:1;min-width:0;display:flex;flex-direction:column}
+.page{flex:1;overflow:auto;padding:0 18px 28px}
+.hdr{position:sticky;top:0;z-index:2;display:flex;align-items:flex-end;gap:16px;padding:22px 10px 14px;background:linear-gradient(var(--quiet) 80%,transparent)}
+.hdr>div{flex:1;min-width:0}
+.hdr .t15{margin-top:4px}
+.empty{padding:90px 10px;text-align:center}
+.empty .t11{margin-top:6px}
+.tip{margin-top:26px;display:flex;flex-direction:column;gap:6px;align-items:center}
+.tabs{padding:2px 10px 6px}
+.chips{display:flex;gap:6px;padding:2px 10px 6px}
+.chip{height:26px;padding:0 11px;border:0;border-radius:13px;background:var(--row);color:var(--mute);font-weight:500}
+.chip[aria-pressed="true"]{background:var(--tint);color:var(--fg);box-shadow:inset 0 1px 0 var(--hi),inset 0 0 0 1px var(--edge)}
+.ev .tm{width:64px;flex:none;color:var(--mute);font-size:11px;font-weight:500;font-variant-numeric:tabular-nums}
+.ev .rt>div{white-space:normal}
+.ev a,.ev .pr{color:var(--fg);font-weight:600;cursor:pointer}
+.ev a:hover,.ev .pr:hover{text-decoration:underline}
+.ev .dotk{width:6px;height:6px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1.5px var(--mute)}
+.ev.problem .dotk{background:var(--fg);box-shadow:none}
+.toggle{border:0;background:none;padding:0;display:flex;align-items:center;gap:6px;color:var(--mute);font-weight:500}
+.toggle:hover{color:var(--fg)}
+.toggle svg{width:10px;height:10px;transition:rotate .2s}
+.toggle[aria-expanded="true"] svg{rotate:90deg}
+.rep .sws{display:flex;gap:22px}
+.rep .sws label{display:flex;align-items:center;gap:8px;color:var(--mute);font-size:11px;font-weight:500}
+
+/* Slide-in page (PR / repo): glass sheet over the list */
+.sheet{position:absolute;inset:0;z-index:5;overflow:auto;background:rgba(8,8,11,.86);backdrop-filter:blur(30px) saturate(1.6);-webkit-backdrop-filter:blur(30px) saturate(1.6);box-shadow:inset 1px 0 0 var(--edge),-30px 0 60px -20px rgba(0,0,0,.8);
+  translate:102% 0;transition:translate .42s cubic-bezier(.3,1.05,.4,1)}
+.sheet.on{translate:0 0}
+.sh{max-width:700px;padding:16px 28px 40px}
+.back{border:0;background:none;padding:4px 0;color:var(--mute);font-weight:500;display:flex;align-items:center;gap:4px}
+.back:hover{color:var(--fg)}
+.shead{display:flex;gap:16px;align-items:flex-start;margin-top:14px}
+.shead>div:first-child{flex:1;min-width:0}
+.shead .t11{margin-top:4px}
+.shead .t15{margin-top:12px}
+.sec{margin-top:30px}
+.sec>.t11{color:var(--mute);margin-bottom:8px}
+.ghrev{padding:2px 0 2px 16px;box-shadow:inset 2px 0 0 rgba(255,255,255,.14)}
+.ghrev p{margin:0 0 8px}
+.ghrev [contenteditable]{outline:none;border-radius:6px;padding:4px 6px;margin:-4px -6px;box-shadow:inset 0 0 0 1px var(--mute)}
+.verdict{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:8px}
+.fd{display:flex;gap:12px;padding:8px 0}
+.fd .sev{width:76px;flex:none;display:flex;align-items:center;gap:7px;font-size:11px;font-weight:500;padding-top:1px}
+.sdot{width:7px;height:7px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1.5px var(--fg)}
+.sdot.fill{background:var(--fg);box-shadow:none}
+.sdot.small{width:5px;height:5px;box-shadow:inset 0 0 0 1px var(--mute)}
+.fd .t11{margin-top:2px}
+.chk{padding:3px 0}
+.log{margin-top:10px;font:11px/1.8 var(--mono);color:var(--mute)}
+.log span{color:var(--fg)}
+.tl{display:flex;gap:12px;padding:7px 0}
+.tl .tm{width:64px;flex:none;font-size:11px;color:var(--mute);padding-top:1px}
+.diff{font:11px/1.7 var(--mono);padding:2px 0 2px 16px;box-shadow:inset 2px 0 0 rgba(255,255,255,.14);white-space:pre;overflow:auto}
+.sfoot{display:flex;align-items:center;gap:12px;margin-top:34px;padding-top:16px;box-shadow:inset 0 1px 0 var(--edge)}
+.sfoot span{flex:1}
+.srow{min-height:52px;display:flex;align-items:center;gap:16px;padding:6px 0}
+.srow>div:first-child{flex:1;min-width:0}
+.srow .t11{color:var(--mute);margin-top:1px}
+.tags{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tag{height:24px;padding:0 4px 0 9px;border-radius:12px;background:var(--row);box-shadow:inset 0 0 0 1px var(--edge);font:11px var(--mono);display:flex;align-items:center;gap:2px}
+.tag button{width:18px;height:18px;border:0;border-radius:50%;background:none;color:var(--mute);font-size:11px}
+.tag button:hover{color:var(--fg);background:var(--row)}
+
+/* Onboarding sheet */
+.dim{position:absolute;inset:0;z-index:8;background:rgba(0,0,0,.45);display:flex;justify-content:center;align-items:flex-start;opacity:0;pointer-events:none;transition:opacity .25s}
+.dim.on{opacity:1;pointer-events:auto}
+.onb{width:480px;margin-top:40px;border-radius:var(--r2);padding:26px 28px 22px;translate:0 -12px;transition:translate .35s cubic-bezier(.3,1.2,.4,1)}
+.dim.on .onb{translate:0 0}
+.steps{display:flex;gap:6px;margin-bottom:18px}
+.steps i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.16)}
+.steps i.on{background:var(--fg)}
+.onb .t15{margin-top:8px;font-weight:400;color:var(--mute)}
+.onb .list{margin:18px -10px 6px}
+.onb .acts{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}
+.ok{width:16px;height:16px;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--fg);color:#08080a;font-size:11px;font-weight:700}
+.ok.no{background:none;box-shadow:inset 0 0 0 1.5px var(--fg);color:var(--fg)}
+.ok.wait{background:none;box-shadow:inset 0 0 0 1.5px var(--mute);animation:pulse 1.2s infinite}
+.cb{width:16px;height:16px;border-radius:4px;flex:none;box-shadow:inset 0 0 0 1.5px var(--mute);display:grid;place-items:center;font-size:11px;font-weight:700}
+.cb.on{background:var(--fg);color:#08080a;box-shadow:none}
+.keys .sh{max-width:440px}
+.kr{display:flex;height:36px;align-items:center}
+.kr span:first-child{flex:1}
+.kc{min-width:28px;height:22px;padding:0 7px;border-radius:6px;display:inline-grid;place-items:center;background:var(--row);box-shadow:inset 0 0 0 1px var(--edge),0 1px 0 rgba(0,0,0,.6);font-weight:500;margin-left:4px}
+
+/* Settings window */
+.setwin{position:absolute;left:min(380px,calc(100vw - 680px));top:96px;width:640px;height:min(600px,calc(100vh - 56px - 110px));z-index:30;border-radius:var(--r2);display:flex;flex-direction:column;overflow:hidden;background:var(--quiet);
+  box-shadow:inset 0 0 0 1px var(--edge),0 50px 100px -30px rgba(0,0,0,.9),0 8px 24px -8px rgba(0,0,0,.5)}
+.stool{flex:none;padding:12px 14px 8px;border-radius:0;cursor:default}
+.stool .top{display:flex;align-items:center}
+.stool .top .lights{padding:0 6px;width:80px}
+.stool .top .t11{flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--fg);margin-right:80px}
+.ptabs{display:flex;justify-content:center;gap:4px;margin-top:8px}
+.ptab{width:84px;height:48px;border:0;border-radius:8px;background:none;color:var(--mute);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:500}
+.ptab svg{width:18px;height:18px}
+.ptab[aria-pressed="true"]{background:var(--row);color:var(--fg)}
+.sbody{flex:1;overflow:auto;padding:10px 28px 30px}
+.sbody .srow{padding:6px 0}
+.sent{padding:16px 0 6px}
+.sched{display:flex;gap:24px;align-items:center;margin-top:10px}
+#dial{width:220px;height:220px;flex:none;touch-action:none;user-select:none;overflow:visible}
+.d-ring{fill:none;stroke:rgba(255,255,255,.06);stroke-width:18}
+.d-hit{fill:none;stroke:transparent;stroke-width:30;cursor:copy}
+.d-quiet{fill:none;stroke:rgba(255,255,255,.1);stroke-width:4;stroke-linecap:round}
+.d-tick{stroke:var(--mute);stroke-width:1;opacity:.5}.d-tick.maj{opacity:1}
+.d-lbl{fill:var(--mute);font-size:11px;font-weight:500;text-anchor:middle}
+.d-now{stroke:var(--fg);stroke-width:1.5;opacity:.6}
+.d-dot{fill:var(--fg);stroke:var(--quiet);stroke-width:3;cursor:grab}
+.d-dot:hover{r:9}
+.d-big{fill:var(--fg);font-size:22px;font-weight:600;text-anchor:middle}
+.d-unit{fill:var(--mute);font-size:11px;font-weight:500;text-anchor:middle}
+.times{display:flex;flex-wrap:wrap;gap:6px;align-content:flex-start}
+.tchip{height:28px;display:flex;align-items:center;border-radius:14px;background:var(--row);box-shadow:inset 0 0 0 1px var(--edge);padding:0 2px 0 4px}
+.tchip input{border:0;background:none;height:26px;font-variant-numeric:tabular-nums;width:92px}
+.tchip input::-webkit-calendar-picker-indicator{display:none}
+.tchip input:focus{outline:none}
+.tchip button{width:22px;height:22px;border:0;border-radius:50%;background:none;color:var(--mute);font-size:11px}
+.tchip button:hover{color:var(--fg);background:var(--row)}
+.days{display:flex;gap:5px}
+.day{width:30px;height:30px;border:0;border-radius:50%;background:var(--row);box-shadow:inset 0 0 0 1px var(--edge);color:var(--mute);font-weight:500}
+.day[aria-pressed="true"]{background:var(--fg);color:#08080a;box-shadow:none}
+.usage{width:200px;height:6px;border-radius:3px;background:rgba(255,255,255,.08);position:relative;overflow:hidden}
+.usage i{position:absolute;left:0;top:0;bottom:0;background:var(--fg);border-radius:3px}
+.usage b{position:absolute;top:0;bottom:0;right:0;background:repeating-linear-gradient(135deg,rgba(255,255,255,.18) 0 2px,transparent 2px 5px)}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}
+.mode-opt{position:relative;height:72px;border:0;border-radius:var(--r1);background:var(--row);box-shadow:inset 0 0 0 1px var(--edge);text-align:left;padding:0 16px;display:flex;flex-direction:column;justify-content:center;gap:2px;color:var(--mute)}
+.mode-opt b{font-size:13px;color:var(--fg)}
+.mode-opt[aria-pressed="true"]{background:var(--tint);box-shadow:inset 0 0 0 1.5px var(--fg),inset 0 1px 0 var(--hi)}
+.mode-opt .hold{position:absolute;right:12px;top:50%;translate:0 -50%}
+.conseq{margin:12px 2px 4px;color:var(--mute)}
+.conseq b{color:var(--fg);font-weight:600}
+.swatches{display:flex;gap:8px}
+.swatch{width:22px;height:22px;border:0;border-radius:50%;background:var(--c);box-shadow:0 0 0 2px var(--quiet)}
+.swatch[aria-pressed="true"]{box-shadow:0 0 0 2px var(--quiet),0 0 0 3.5px var(--fg)}
+
+/* Toast with Undo */
+.toast{position:fixed;left:50%;bottom:76px;z-index:95;translate:-50% 14px;opacity:0;display:flex;align-items:center;gap:14px;padding:9px 10px 9px 16px;border-radius:12px;background:rgba(240,240,244,.96);color:#0a0a0c;font-weight:500;pointer-events:none;transition:opacity .25s,translate .4s cubic-bezier(.3,1.3,.4,1)}
+.toast.on{opacity:1;translate:-50% 0;pointer-events:auto}
+.toast button{border:0;background:rgba(0,0,0,.08);color:#0a0a0c;border-radius:8px;height:24px;padding:0 10px;font-weight:600}
+.toast button:not([data-a]){display:none}
+
+/* Prototype controls: clearly not the product */
+.proto{position:fixed;left:0;right:0;bottom:0;height:56px;display:flex;align-items:center;justify-content:center;gap:10px;background:#d9d9de;color:#111;font:12px/1 var(--mono);z-index:100}
+.proto b{letter-spacing:.12em;margin-right:6px}
+.proto button{height:30px;padding:0 12px;border:1px dashed #555;border-radius:4px;background:#f2f2f4;color:#111;font:12px var(--mono)}
+.proto button[aria-pressed="true"]{background:#111;color:#f2f2f4;border-style:solid}
+.proto span{color:#555;margin-left:10px}
+
+html.calm *,html.calm *::before,html.calm *::after{animation:none!important;transition-duration:0s!important}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}}
+@media (prefers-reduced-transparency:reduce){.material,.sheet{background:#0b0b0e;backdrop-filter:none}}
+</style>
+
+<div class="desk" id="desk">
+  <div class="bar">
+    <span>Glidepath</span><span class="grow"></span>
+    <button class="mb" id="mb" aria-label="Glidepath" aria-haspopup="true"></button>
+    <time id="clock"></time>
+  </div>
+  <section class="pop material" id="pop" aria-label="Glidepath"></section>
+  <section class="win" id="win" aria-label="Glidepath window">
+    <nav class="side material" id="side"></nav>
+    <div class="main">
+      <div class="page" id="page"></div>
+      <div class="sheet" id="sheet"></div>
+      <div class="sheet keys" id="keys"></div>
+      <div class="dim" id="dim"><div class="onb material" id="onb" role="dialog" aria-label="Set up Glidepath"></div></div>
+    </div>
+  </section>
+  <section class="setwin" id="setwin" aria-label="Settings" hidden>
+    <header class="stool material" data-drag="setwin" id="stool"></header>
+    <div class="sbody" id="sbody"></div>
+  </section>
+</div>
+<div class="menu material" id="menu" hidden></div>
+<div class="toast" id="toast" role="status"><span></span><button>Undo</button></div>
+<div class="proto" id="proto"></div>
+
+<script>
+'use strict';
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const clamp = (v,a=0,b=1) => Math.max(a, Math.min(b, v));
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* Time: the prototype lives at Monday 26 Oct 2026, 2:14 PM */
+const NOW = new Date(2026, 9, 26, 14, 14);
+const pad = n => String(n).padStart(2, '0');
+const fmtM = m => { m = ((m % 1440) + 1440) % 1440; const h = Math.floor(m/60); return `${(h % 12) || 12}:${pad(m % 60)} ${h < 12 ? 'AM' : 'PM'}`; };
+const fmtD = d => fmtM(d.getHours()*60 + d.getMinutes());
+const sod = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+const when = d => { const dd = Math.round((sod(d) - sod(NOW)) / 864e5); return fmtD(d) + (dd === 0 ? '' : dd === 1 ? ' tomorrow' : ' on ' + d.toLocaleDateString('en', {weekday:'long', day:'numeric', month:'short'})); };
+const hhmm = m => `${pad(Math.floor(m/60) % 24)}:${pad(m % 60)}`;
+
+/* Icons */
+const GLYPH = `<svg class="g" viewBox="0 0 24 24" fill="currentColor"><path d="M2.5 11.2 21 3.6c.5-.2 1 .3.8.8l-7.6 18.5c-.2.5-.9.5-1.1 0l-2.6-6.6c-.1-.3-.3-.5-.6-.6L3.3 13c-.6-.2-.6-1-.1-1.2z"/></svg>`;
+const DOT = `<svg class="g" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>`;
+const I = {
+  inbox:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 3h6l1-3h5"/></svg>',
+  prs:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v7M18 15.5V9a3 3 0 0 0-3-3h-4"/></svg>',
+  act:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>',
+  repos:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>',
+  win:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M9 5v14"/></svg>',
+  chev:'<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 1.5 6.5 5 3 8.5"/></svg>',
+  back:'<svg viewBox="0 0 10 10" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6.5 1.5 3 5l3.5 3.5"/></svg>',
+  gen:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>',
+  sch:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  beh:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>',
+  adv:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 10 3 2-3 2M12 15h5"/></svg>',
+};
+const hash = s => [...s].reduce((h,c) => (h*31 + c.charCodeAt(0)) >>> 0, 7);
+const avBg = l => { const h = hash(l); return `linear-gradient(150deg,hsl(240 4% ${26 + h % 18}%),hsl(240 6% ${7 + h % 6}%))`; };
+const ini = l => l.split(/[-_]/).map(w => w[0]).join('').slice(0,2).toUpperCase();
+const av = l => `<span class="av" style="background:${avBg(l)}" aria-hidden="true">${ini(l)}</span>`;
+const NAME = {gadi:'Gadi', omar:'Omar'};
+
+/* Vocabulary for what a PR needs */
+const NEED = {post:'Review ready to post', push:'Fix ready to push', reply:'Reply ready', merge:'Ready to merge', revert:'Revert ready'};
+const BTN  = {post:'Post review', push:'Push fix', reply:'Send reply', merge:'Merge', revert:'Open revert PR'};
+const HINT = {post:'Hold to post', push:'Hold to push', reply:'Hold to send', merge:'Hold to merge', revert:'Hold to open', auto:'Hold to turn on'};
+const STEPS = [['ci','CI'],['comments','Comments'],['approval','Approval'],['merge','Merge']];
+
+/* ---------- Data: realistic, from the 1.5 and 1.10 audits ---------- */
+const FIX_DIFF = `export_spec.rb
+- expect(row.issued_on).to eq("2026-10-26")
++ travel_to Time.zone.parse("2026-10-26 09:00 UTC") do
++   expect(row.issued_on).to eq("2026-10-26")
++ end`;
+const BASE = {
+  prs: [
+    {id:'web-1276', repo:'lumen/web', n:1276, title:'Selection race in the upload picker', author:'eleyy', state:'ready', since:1, at:'1:05 PM',
+      verdict:'Changes requested', short:'race still open; no error state', lines:214, files:6,
+      body:['Two things before this merges.','A second pick is accepted while the first upload is still resolving, so two files can claim one slot. Guarding <code>onPick</code> with the pending flag closes it.','When the upload fails the spinner keeps running. An error state with Try again would match the rest of the picker.'],
+      findings:[['Must fix','A second pick is accepted while the first upload is still resolving, so two files can claim one slot.','src/upload/Picker.tsx:88'],
+                ['Should fix','A failed upload leaves the spinner running; there is no error state.','src/upload/Picker.tsx:131'],
+                ['Nit','<code>pending</code> shadows the outer variable of the same name.','src/upload/usePick.ts:24']],
+      checked:['Read 6 files, 214 lines changed','Ran the picker tests: 41 passed','Asked a second opinion on the race: it agreed'],
+      log:[['1:02 PM','Fetched the diff: 6 files, 214 lines'],['1:02 PM','Read the review rules in .glidepath/review.md'],['1:03 PM','Found 4 possible issues'],['1:04 PM','Checked each against the code: kept 3, dropped 1 (already handled in usePick.ts)'],['1:04 PM','Asked a second opinion on the race: agreed'],['1:05 PM','Wrote the review: changes requested']]},
+    {id:'web-1277', repo:'lumen/web', n:1277, title:'Fan-out publish for shared ids', author:'eleyy', state:'posted', at:'1:04 PM', verdict:'Changes requested', short:'drops a second owner of the same id', lines:162, files:4,
+      body:['The fan-out keys on the id alone, so a second owner of the same id is dropped. Keying on (owner, id) fixes it.'],
+      findings:[['Must fix','A second owner of the same id is dropped from the fan-out.','src/publish/fanout.ts:57']], checked:['Read 4 files, 162 lines changed','Ran the publish tests: 18 passed']},
+    {id:'web-1274', repo:'lumen/web', n:1274, title:'Read-only endpoints for the asset list', author:'eleyy', state:'posted', at:'1:05 PM', verdict:'Approved', short:'a few edge cases worth tightening', lines:388, files:9,
+      body:['Looks good. Two edge cases worth a test: an empty folder and a folder you lost access to.'],
+      findings:[['Nit','No test for a folder you lost access to.','src/assets/list.test.ts']], checked:['Read 9 files, 388 lines changed','Ran the asset tests: 63 passed']},
+    {id:'web-1275', repo:'lumen/web', n:1275, title:'Cross-discipline row adoption', author:'eleyy', state:'posted', at:'1:06 PM', verdict:'Changes requested', short:'legacy lock mismatch', lines:241, files:5,
+      body:['The adopted rows keep the legacy lock, so an edit in either discipline can overwrite the other.'],
+      findings:[['Must fix','Adopted rows keep the legacy lock id.','src/rows/adopt.ts:112']], checked:['Read 5 files, 241 lines changed']},
+    {id:'api-1288', repo:'lumen/api', n:1288, title:'Cache org permissions per request in the audit log', author:'omar-h', state:'posted', at:'1:03 PM', verdict:'Approved', short:'cache is per request, so nothing goes stale', lines:96, files:3,
+      body:['Clean. The cache lives for one request, so permissions cannot go stale.'], findings:[], checked:['Read 3 files, 96 lines changed','Ran the audit log specs: 27 passed']},
+    {id:'sager-412', repo:'SagerDrone/Sager', n:412, title:'Battery telemetry ingest over MQTT', author:'nour-a', state:'skipped', lines:2840, files:31, skip:'2,840 lines changed, over your 1,200 line limit.', short:'2,840 lines, over the 1,200 line limit'},
+    {id:'sager-415', repo:'SagerDrone/Sager', n:415, title:'Bump eslint to v10', author:'dependabot', bot:true, state:'skipped', lines:40, files:2, skip:'Bot PR. Bot PRs are not reviewed.', short:'bot PR'},
+    {id:'api-1292', repo:'lumen/api', n:1292, title:'Rate limits per org', author:'lina-m', draftPR:true, state:'skipped', lines:310, files:7, skip:'Draft PR. Draft PRs are not reviewed.', short:'draft PR'},
+    {id:'web-1279', repo:'lumen/web', n:1279, title:'Thumbnail cache eviction on low memory', author:'mina-k', state:'unchecked', lines:132, files:3,
+      result:{verdict:'Changes requested', short:'evicts the visible thumbnails first', body:['Eviction walks the cache oldest-first, which drops the thumbnails on screen before the ones scrolled away. Evicting by last-seen fixes it.'],
+      findings:[['Must fix','Visible thumbnails are evicted before off-screen ones.','src/thumbs/cache.ts:40'],['Nit','The 0.8 threshold could be a named constant.','src/thumbs/cache.ts:12']], checked:['Read 3 files, 132 lines changed','Ran the cache tests: 12 passed']}},
+    {id:'web-1280', repo:'lumen/web', n:1280, title:'Drag to reorder the upload queue', author:'eleyy', state:'unchecked', lines:178, files:4,
+      result:{verdict:'Approved', short:'clean; keyboard reorder works too', body:['Clean, and keyboard reorder works too. Nice touch on the drop indicator.'], findings:[], checked:['Read 4 files, 178 lines changed','Ran the queue tests: 22 passed']}},
+    {id:'sager-418', repo:'SagerDrone/Sager', n:418, title:'Snap waypoints to the grid in the mission planner', author:'rami-s', state:'unchecked', lines:264, files:6,
+      result:{verdict:'Approved', short:'snapping respects the map projection', body:['Snapping happens in map units, so it holds up near the poles. Tests cover both.'], findings:[['Nit','<code>snapStep</code> could default from the zoom level.','planner/snap.ts:19']], checked:['Read 6 files, 264 lines changed','Ran the planner tests: 54 passed']}},
+
+    {id:'api-1253', repo:'lumen/api', n:1253, title:'Export certifications as CSV', author:'yazan', mine:true, need:'push', since:2, group:'on-it', lookAfter:true,
+      steps:{ci:'needs', comments:'done', approval:'todo', merge:'todo'}, short:'a date test assumed UTC; fixed', reason:'A date test failed on CI because it assumed UTC. Glidepath fixed it and the tests pass.',
+      timeline:[['1:09 PM','Wrote a fix (a3f9c1) and ran the tests: 212 passed'],['1:02 PM','CI failed: export_spec expects UTC dates'],['12:15 PM','Replied to Omar and resolved the thread']]},
+    {id:'api-1301', repo:'lumen/api', n:1301, title:'Notification schema: migration and backfill', author:'yazan', mine:true, need:'merge', since:3, group:'ready', lookAfter:true,
+      steps:{ci:'done', comments:'done', approval:'done', merge:'needs'}, short:'approved by Gadi, 4 checks passed', reason:'Approved by Gadi. All 4 checks passed and the branch is up to date.',
+      timeline:[['1:12 PM','Brought the branch up to date with main'],['11:40 AM','Gadi approved'],['10:05 AM','Answered Gadi on the backfill batch size']]},
+    {id:'web-1250', repo:'lumen/web', n:1250, title:'Keyboard focus in the upload picker', author:'yazan', mine:true, group:'waiting', lookAfter:true, task:'reply',
+      steps:{ci:'done', comments:'todo', approval:'todo', merge:'todo'}, short:"waiting for Gadi's approval since yesterday", reason:"Waiting for Gadi's approval since yesterday.",
+      reply:'Good catch. The trap releases on Escape; I added a test for it in 4e1d2b.', ask:'Gadi asked whether the focus trap releases on Escape.',
+      timeline:[['2:01 PM','Gadi asked whether the focus trap releases on Escape'],['Yesterday','Asked Gadi for a review']]},
+    {id:'sager-409', repo:'SagerDrone/Sager', n:409, title:'Undo in the geofence editor', author:'yazan', mine:true, group:'on-it', lookAfter:true,
+      steps:{ci:'run', comments:'done', approval:'done', merge:'todo'}, short:'fixing CI: an e2e test times out', reason:'Glidepath is fixing CI: an e2e test times out on the slow runner.',
+      timeline:[['2:08 PM','Reproduced the e2e timeout locally'],['1:40 PM','CI failed: geofence.e2e timed out'],['11:20 AM','Rami approved']]},
+    {id:'api-1246', repo:'lumen/api', n:1246, title:'Retry webhook delivery with backoff', author:'yazan', mine:true, group:'merged', lookAfter:true, mergedAt:'today at 12:40 PM',
+      steps:{ci:'done', comments:'done', approval:'done', merge:'done'}, short:'merged today at 12:40 PM', reason:'Merged today at 12:40 PM.', timeline:[['12:40 PM','Merged'],['12:31 PM','Brought the branch up to date with main']]},
+    {id:'api-1240', repo:'lumen/api', n:1240, title:'Audit log for certification changes', author:'yazan', mine:true, group:'merged', lookAfter:true, mergedAt:'yesterday at 4:40 PM',
+      steps:{ci:'done', comments:'done', approval:'done', merge:'done'}, short:'merged yesterday', reason:'Merged yesterday at 4:40 PM.', timeline:[['Yesterday','Merged']]},
+  ],
+  activity: [
+    {day:0, at:786, kind:'review', text:'Posted a review on {pr}: changes requested.', pr:'web-1275'},
+    {day:0, at:785, kind:'review', text:'Posted a review on {pr}: approved.', pr:'web-1274'},
+    {day:0, at:784, kind:'review', text:'Posted a review on {pr}: changes requested.', pr:'web-1277'},
+    {day:0, at:783, kind:'review', text:'Posted a review on {pr}: approved.', pr:'api-1288'},
+    {day:0, at:781, kind:'skip', text:'Skipped {pr}: 2,840 lines changed, over the 1,200 line limit.', pr:'sager-412'},
+    {day:0, at:781, kind:'skip', text:'Skipped {pr}: bot PR.', pr:'sager-415'},
+    {day:0, at:781, kind:'skip', text:'Skipped {pr}: draft PR.', pr:'api-1292'},
+    {day:0, at:780, kind:'check', text:'Checked 3 repos: 9 PRs, 1 review ready to post, 3 skipped.'},
+    {day:0, at:760, kind:'mine', text:'Merged {pr}.', pr:'api-1246'},
+    {day:0, at:751, kind:'learn', text:'Learned a rule for lumen/api: migrations need a down step.'},
+    {day:0, at:735, kind:'mine', text:'Replied to Omar on {pr} and resolved the thread.', pr:'api-1253'},
+    {day:0, at:560, kind:'problem', text:"Couldn't check SagerDrone/Sager at 9:00 AM: GitHub rate limit. Tried again at 9:20 AM and it worked.", btn:['Show log','log']},
+    {day:0, at:480, kind:'summary', text:'Overnight: 3 new team PRs, nothing needed you.'},
+    {day:-1, at:1022, kind:'check', text:'Checked 3 repos: 4 reviews posted.'},
+    {day:-1, at:1000, kind:'mine', text:'Merged {pr}.', pr:'api-1240'},
+    {day:-1, at:790, kind:'review', text:'Posted a review on SagerDrone/Sager #407 Offline map tiles: approved.'},
+  ],
+  repos: [
+    {name:'lumen/web', review:true, mine:true, last:'Checked 1:00 PM · 4 reviewed', who:'everyone', people:[], rules:'.glidepath/review.md', rmode:'extend',
+      learned:[['Command','pnpm test --filter web'],['Rule','Upload code must handle a failed upload with an error state']], flags:['src/upload/**']},
+    {name:'lumen/api', review:true, mine:true, last:'Checked 1:00 PM · 1 reviewed, 1 skipped', who:'collab', people:[], rules:'.glidepath/review.md', rmode:'extend',
+      learned:[['Rule','Migrations need a down step'],['Command','bin/rails test test/exports']], flags:['db/migrations/**','.github/workflows/**']},
+    {name:'SagerDrone/Sager', review:true, mine:true, last:'Checked 1:00 PM · 2 skipped', who:'these', people:['rami-s','nour-a'], rules:'', rmode:'extend',
+      learned:[['Command','npm run test:e2e -- --project=chromium']], flags:['firmware/**']},
+  ],
+};
+
+/* ---------- One state object ---------- */
+let S, timer = null, undoSlot = null, toastT = null;
+const DEFAULT_SET = {mode:'ask', post:'review', strict:'balanced', limit:1200, notify:'needs', login:true, menubar:true, glass:40, icon:'glider', signal:'#d29b45',
+  model:'sonnet', sched:{preset:'workday', times:[540,780,1020], days:[1,1,1,1,1,0,0]}, quiet:{from:1140, to:480, weekend:true}, reserve:20, usage:38, appearance:false};
+
+function scenario(sc){
+  clearInterval(timer); timer = null;
+  S = {sc, ...structuredClone(BASE), ...structuredClone(DEFAULT_SET),
+    seq:10, clock:854, page:'inbox', tab:'team', filter:'all', pr:null, repo:null, edit:null, log:false, doneOpen:false,
+    pop:false, set:null, front:'main', win:true, onb:null, check:null, paused:null, problem:false, since:'', tip:false, keys:false, sel:null,
+    tools:null, onbPick:{'lumen/web':1,'lumen/api':1,'SagerDrone/Sager':1,'yznki/glidepath':0}, onbReview:true, onbMine:false, draft:{}};
+  if (sc === 'needs') S.since = 'Posted 4 reviews, merged #1246';
+  if (['good','checking','problem','paused'].includes(sc)) {
+    [['web-1276','post',788],['api-1253','push',790],['api-1301','merge',792]].forEach(([id,k,at]) => act(pr(id), k, {quiet:true, at}));
+    S.since = 'Posted 5 reviews, pushed a fix to #1253, merged #1301';
+  }
+  if (sc === 'checking') startCheck();
+  if (sc === 'problem') { S.problem = true; log('problem', "Can't reach GitHub: sign-in expired. New checks wait until you sign in again.", null, ['Fix','fix'], 842); }
+  if (sc === 'paused') { const t = new Date(NOW); t.setDate(t.getDate()+1); t.setHours(9,0,0,0); S.paused = {until:t}; }
+  if (sc === 'first') {
+    S.activity = []; S.since = '';
+    for (const p of S.prs) {
+      if (!p.mine && p.state !== 'unchecked') { p.result = {verdict:p.verdict, short:p.short, body:p.body, findings:p.findings, checked:p.checked}; p.state = 'unchecked'; delete p.at; }
+      if (p.mine) { p.lookAfter = false; }
+    }
+    S.prs.forEach(p => { if (p.mine) { p.need = null; p.task = null; } });
+    S.onb = 1; S.tools = [{name:'Claude Code', ok:true},{name:'Git', ok:true},{name:'GitHub CLI', ok:false, why:'Installed, but not signed in to GitHub.'}];
+  }
+  render();
+}
+
+const pr = id => S.prs.find(p => p.id === id);
+const repoOn = name => S.repos.some(r => r.name === name);
+const prs = () => S.prs.filter(p => repoOn(p.repo));
+const needOf = p => p.mine ? p.need : (p.state === 'ready' ? 'post' : null);
+/* The Needs you list. Computed here and nowhere else; render() calls it once and hands the result to every surface. */
+const needsYou = () => prs().filter(needOf).sort((a,b) => a.since - b.since);
+
+function nextCheck(){
+  const ts = [...S.sched.times].sort((a,b) => a-b), from = S.paused ? S.paused.until : NOW;
+  for (let d = 0; d < 8; d++) {
+    const day = sod(NOW); day.setDate(day.getDate()+d);
+    if (!S.sched.days[(day.getDay()+6) % 7]) continue;
+    for (const t of ts) { const c = new Date(day.getTime() + t*60000); if (c >= from && c > NOW) return c; }
+  }
+  return null;
+}
+function status(N, where){
+  const n = N.length, needs = n === 1 ? '1 thing needs you.' : `${n} things need you.`;
+  if (S.problem) return {k:'problem', text:"Can't reach GitHub: sign-in expired.", btn:['Fix','fix']};
+  if (S.check) { const r = S.check.repos[S.check.i], c = r.items.length; return {k:'working', text:`Checking ${c} PR${c > 1 ? 's' : ''} in ${r.repo}…${n ? ' ' + needs : ''}`, btn:['Stop','stop']}; }
+  if (S.paused) return {k:'paused', text:`Paused until ${when(S.paused.until)}.`, btn:['Resume','resume']};
+  if (n) return {k:'needs', text:needs, btn: where === 'pop' ? ['Open','open-inbox'] : ['Check now','check']};
+  const nx = nextCheck(), tail = nx ? `Next check at ${when(nx)}.` : 'No checks scheduled.';
+  return {k:'quiet', text: (where === 'inbox' ? 'Nothing needs you. ' : 'All good. ') + tail, btn:['Check now','check']};
+}
+function prSentence(p){
+  if (S.check && checking(p.id)) return `Checking now: ${stageOf(p.id)}.`;
+  if (!p.mine) return {ready:`Review ready to post. ${p.verdict}: ${p.short}.`, posted:`Review posted at ${p.at}: ${(p.verdict||'').toLowerCase()}.`,
+    skipped:`Skipped: ${p.skip}`, unchecked:`Not checked yet. ${nextCheck() ? 'Next check at ' + when(nextCheck()) + '.' : ''}`}[p.state];
+  if (!p.lookAfter) return 'Glidepath is not looking after this PR.';
+  return p.need ? `${NEED[p.need]}. ${p.need === 'reply' ? p.ask : p.reason}` : p.reason;
+}
+
+/* ---------- Actions on PRs ---------- */
+function log(kind, text, id, btn, at){ const e = {day:0, at: at ?? S.clock++, kind, text, pr:id, btn}; S.activity.unshift(e); return e; }
+function act(p, k, o = {}){
+  const at = o.at ?? S.clock++;
+  const t = fmtM(at), link = '{pr}';
+  if (k === 'post') { p.state = 'posted'; p.at = t; log('review', `Posted a review on ${link}: ${p.verdict.toLowerCase()}.`, p.id, null, at); }
+  if (k === 'push') { p.need = null; p.group = 'on-it'; p.steps.ci = 'run'; p.reason = 'Pushed the fix. Waiting for CI to finish.'; p.short = 'fix pushed, CI running';
+    p.timeline.unshift([t, 'Pushed the fix (a3f9c1). CI is running']); log('mine', `Pushed a fix to ${link}.`, p.id, null, at); }
+  if (k === 'merge') { p.need = null; p.group = 'merged'; p.steps.merge = 'done'; p.mergedAt = `today at ${t}`; p.reason = `Merged today at ${t}.`; p.short = `merged today at ${t}`;
+    p.timeline.unshift([t, 'Merged']); log('mine', `Merged ${link}.`, p.id, null, at); }
+  if (k === 'reply') { p.need = null; p.steps.comments = 'done'; p.reason = "Waiting for Gadi's approval since yesterday."; p.short = "replied to Gadi; waiting for approval";
+    p.timeline.unshift([t, 'Replied to Gadi and resolved the thread']); log('mine', `Replied to Gadi on ${link} and resolved the thread.`, p.id, null, at); }
+  if (!o.quiet) toast({post:'Review posted.', push:'Fix pushed.', merge:'Merged.', reply:'Reply sent.'}[k]);
+}
+function discard(p){
+  const before = structuredClone(p), idx = S.prs.indexOf(p);
+  if (p.mine) { p.reason = `You discarded the ${p.need === 'push' ? 'fix' : 'reply'}. Glidepath will try again next check.`; p.short = 'you discarded it'; p.need = null; }
+  else { p.state = 'skipped'; p.skip = 'You discarded the review.'; p.short = 'you discarded the review'; }
+  const e = log(p.mine ? 'mine' : 'skip', `Discarded the ${p.mine ? 'work' : 'review'} on {pr}.`, p.id);
+  undoable(`Discarded ${p.repo} #${p.n}.`, () => { S.prs[idx] = before; S.activity = S.activity.filter(x => x !== e); });
+}
+function undoable(msg, fn){ undoSlot = fn; toast(msg, true); render(); }
+function undo(){ if (!undoSlot) return; const f = undoSlot; undoSlot = null; f(); toast('Undone.'); render(); }
+function toast(msg, withUndo){
+  const t = $('#toast'); t.querySelector('span').textContent = msg;
+  const b = t.querySelector('button'); if (withUndo) b.dataset.a = 'undo'; else delete b.dataset.a;
+  t.classList.add('on'); clearTimeout(toastT);
+  toastT = setTimeout(() => { t.classList.remove('on'); if (withUndo) undoSlot = null; }, withUndo ? 8000 : 2400);
+}
+
+/* ---------- A check: real enough. Stages per PR, repo by repo. ---------- */
+const TEAM_STAGES = ['Reading the diff','Checking findings','Writing the review'];
+const MINE_STAGES = {reply:['Reading the comment','Writing a reply']};
+const stagesFor = p => p.mine ? MINE_STAGES[p.task] : TEAM_STAGES;
+function checking(id){ return S.check && S.check.repos[S.check.i]?.items.some(x => x.id === id && x.stage < x.n); }
+function stageOf(id){ const it = S.check.repos[S.check.i].items.find(x => x.id === id); return it.stages[it.stage]; }
+function startCheck(){
+  if (S.check) return;
+  if (S.problem) { toast("Can't check: GitHub sign-in expired."); return; }
+  const repos = S.repos.map(r => ({repo:r.name, items: S.prs.filter(p => p.repo === r.name && (
+    (!p.mine && r.review && p.state === 'unchecked') || (p.mine && r.mine && p.lookAfter && p.task))).map(p => ({id:p.id, stage:0, stages:stagesFor(p), n:stagesFor(p).length}))})).filter(r => r.items.length);
+  if (!repos.length) { log('check', `Checked ${S.repos.length} repos. Nothing new.`); S.repos.forEach(r => r.last = `Checked ${fmtM(S.clock)} · nothing new`); toast('Checked. Nothing new.'); render(); return; }
+  S.check = {repos, i:0, done:0, ready:0, skipped:0};
+  timer = setInterval(tick, 1100);
+  render();
+}
+function tick(){
+  const c = S.check, r = c.repos[c.i];
+  let busy = false;
+  for (const it of r.items) { const n = it.n; if (it.stage < n) { it.stage++; busy = busy || it.stage < n; if (it.stage === n) finish(pr(it.id)); } }
+  if (!busy) { const rp = S.repos.find(x => x.name === r.repo); if (rp) rp.last = `Checked ${fmtM(S.clock)} · ${r.items.length} PR${r.items.length > 1 ? 's' : ''}`; c.i++; }
+  if (c.i >= c.repos.length) {
+    clearInterval(timer); timer = null;
+    log('check', `Checked ${c.repos.length} repo${c.repos.length > 1 ? 's' : ''}: ${c.done} PRs, ${c.ready} ready for you${c.skipped ? `, ${c.skipped} skipped` : ''}.`);
+    S.check = null;
+  }
+  render();
+}
+function finish(p){
+  const c = S.check; c.done++;
+  if (p.mine) {
+    p.task = null;
+    if (S.mode === 'auto') { p.need = 'reply'; act(p, 'reply', {quiet:true}); }
+    else { p.need = 'reply'; p.since = S.seq++; p.short = 'Gadi asked about Escape'; c.ready++; }
+    return;
+  }
+  const skip = p.draftPR && !p.force ? 'Draft PR. Draft PRs are not reviewed.' : p.bot && !p.force ? 'Bot PR. Bot PRs are not reviewed.'
+    : p.lines > S.limit && !p.force ? `${p.lines.toLocaleString()} lines changed, over your ${S.limit.toLocaleString()} line limit.` : null;
+  if (skip) { p.state = 'skipped'; p.skip = skip; p.short = skip.replace(/\.$/,'').toLowerCase(); c.skipped++; log('skip', `Skipped {pr}: ${skip.charAt(0).toLowerCase() + skip.slice(1)}`, p.id); return; }
+  Object.assign(p, p.result || {verdict:'Approved', short:'looks good', body:['Looks good.'], findings:[], checked:[]});
+  p.files ??= 3;
+  p.log = [[fmtM(S.clock), `Fetched the diff: ${p.files} files, ${p.lines} lines`],[fmtM(S.clock), `Found ${p.findings.length + 1} possible issues, kept ${p.findings.length}`],[fmtM(S.clock), `Wrote the review: ${p.verdict.toLowerCase()}`]];
+  if (S.mode === 'auto') { p.state = 'ready'; act(p, 'post', {quiet:true}); }
+  else { p.state = 'ready'; p.since = S.seq++; p.at = fmtM(S.clock); c.ready++; }
+}
+function stopCheck(){
+  if (!S.check) return;
+  clearInterval(timer); timer = null;
+  const left = S.check.repos.slice(S.check.i).flatMap(r => r.items).filter(it => it.stage < it.n);
+  S.check = null;
+  log('check', `Stopped the check. ${left.length} PR${left.length === 1 ? ' was' : 's were'} not checked.`);
+  toast('Stopped.'); render();
+}
+
+/* ---------- Pause ---------- */
+function pauseOpts(){
+  const h = new Date(NOW.getTime() + 3600e3), tm = sod(NOW); tm.setDate(tm.getDate()+1); tm.setHours(9,0,0,0);
+  const mon = sod(NOW); mon.setDate(mon.getDate() + ((8 - mon.getDay()) % 7 || 7)); mon.setHours(9,0,0,0);
+  return [['For 1 hour', h, fmtD(h)], ['Until tomorrow morning', tm, 'Tue ' + fmtD(tm)], ['Until next Monday', mon, 'Mon 2 Nov ' + fmtD(mon)]];
+}
+function pause(i){ const o = pauseOpts()[i]; stopCheckSilently(); S.paused = {until:o[1]}; toast(`Paused until ${when(o[1])}.`); render(); }
+function stopCheckSilently(){ if (S.check) { clearInterval(timer); timer = null; S.check = null; } }
+
+/* ---------- Rendering ---------- */
+let pending = false;
+function render(){
+  if (H) { pending = true; return; }
+  const a = document.activeElement, id = a && a.id, s0 = a && a.selectionStart, s1 = a && a.selectionEnd;
+  const N = needsYou();
+  renderIcon(N); renderPop(N); renderSide(N); renderPage(N); renderSheet(N); renderOnb(); renderSettings(); renderProto();
+  document.documentElement.style.setProperty('--blur', S.glass + 'px');
+  document.documentElement.style.setProperty('--amber', S.signal);
+  $('#win').hidden = !S.win;
+  $('#win').style.zIndex = S.front === 'main' ? 31 : 20;
+  $('#setwin').style.zIndex = S.front === 'settings' ? 31 : 20;
+  if (id) { const b = document.getElementById(id); if (b && b !== a) { b.focus(); try { b.setSelectionRange(s0, s1); } catch {} } }
+}
+function renderIcon(N){
+  const st = status(N), mb = $('#mb');
+  mb.hidden = !S.menubar;
+  mb.className = 'mb ' + st.k + (S.pop ? ' on' : '');
+  mb.innerHTML = `<span class="gl">${S.icon === 'dot' ? DOT : GLYPH}<i></i></span>${N.length ? `<span class="n">${N.length}</span>` : ''}`;
+  mb.setAttribute('aria-label', `Glidepath: ${st.text}`);
+  $('#clock').textContent = 'Mon 26 Oct  ' + fmtD(NOW);
+}
+function holdBtn(k, id, label){
+  return `<button class="hold" data-hold="${k}" data-id="${id}" data-hint="${HINT[k]}"><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" class="rt"/><circle cx="8" cy="8" r="6" class="rf"/></svg>${label}</button>`;
+}
+function renderPop(N){
+  const pop = $('#pop'); pop.classList.toggle('on', S.pop);
+  if (!S.pop) return;
+  const r = $('#mb').getBoundingClientRect(); pop.style.left = clamp(r.right - 340, 8, innerWidth - 368) + 'px';
+  const st = status(N, 'pop'), shown = N.slice(0, 4);
+  pop.innerHTML = `
+    <div class="pst"><div class="t15">${st.text}</div><button class="btn" data-a="${st.btn[1]}">${st.btn[0]}</button></div>
+    ${shown.length ? `<div class="plist">${shown.map(p => `
+      <div class="row click" data-a="open-pr" data-id="${p.id}">${av(p.author)}
+        <div class="rt"><div class="r1">${p.title}</div><div class="r2 t11"><span class="amb">${NEED[needOf(p)]}</span> · ${p.repo} #${p.n}</div></div></div>`).join('')}</div>` : ''}
+    ${N.length > 4 ? `<div class="pmore t11 mute">and ${N.length - 4} more</div>` : ''}
+    ${S.since ? `<div class="psince"><div class="t11">Since you last looked</div><div>${S.since}</div></div>` : ''}
+    <div class="pfoot"><span class="mode t11 mute">${S.mode === 'auto' ? 'Autopilot on' : 'Ask first'}</span>
+      <button class="btn" data-a="pause-menu">${S.paused ? 'Paused' : 'Pause'} ▸</button>
+      <button class="icobtn" data-a="open-win" aria-label="Open Glidepath" title="Open Glidepath">${I.win}</button></div>`;
+}
+function renderSide(N){
+  $('#side').innerHTML = `<div class="lights" data-drag="win"><i data-a="close-win" title="Close"></i><i></i><i></i></div>` +
+    [['inbox','Inbox',I.inbox,N.length],['prs','PRs',I.prs],['activity','Activity',I.act],['repos','Repos',I.repos]].map(([k,l,ic,b]) =>
+      `<button class="nav" data-a="page" data-id="${k}" aria-current="${S.page === k}">${ic}<span>${l}</span>${b ? `<span class="badge" aria-label="${b} need you">${b}</span>` : ''}</button>`).join('');
+}
+function header(title, N, where){
+  const st = status(N, where);
+  return `<div class="hdr" data-drag="win"><div><div class="t22">${title}</div><div class="t15">${st.text}</div></div><button class="btn" data-a="${st.btn[1]}">${st.btn[0]}</button></div>`;
+}
+const strip = (p, big) => `<div class="strip${big ? ' big' : ''}" aria-label="${STEPS.map(([k,l]) => `${l} ${p.steps[k]}`).join(', ')}">${STEPS.map(([k,l],i) =>
+  `${i ? `<i class="ln${p.steps[STEPS[i-1][0]] === 'done' ? ' done' : ''}"></i>` : ''}<span class="sd ${p.steps[k]}"><i></i><b>${l}</b></span>`).join('')}</div>`;
+const sel = id => S.sel === id ? ' sel' : '';
+
+function needRow(p){
+  const k = needOf(p);
+  return `<div class="row click${sel(p.id)}" data-row="${p.id}" data-a="open-pr" data-id="${p.id}">${av(p.author)}
+    <div class="rt"><div class="r1">${p.title}</div><div class="r2 t11"><span class="amb">${NEED[k]}</span> · ${p.short} · ${p.repo} #${p.n}</div></div>
+    <div class="ra">${holdBtn(k, p.id, BTN[k])}<button class="more" data-a="more" data-id="${p.id}" aria-label="More">···</button></div></div>`;
+}
+function prRow(p){
+  const k = needOf(p), chk = S.check && checking(p.id);
+  const r2 = chk ? `<span class="shim">${stageOf(p.id)}</span> · ${p.repo} #${p.n}`
+    : k ? `<span class="amb">${NEED[k]}</span> · ${p.short} · ${p.repo} #${p.n}`
+    : p.mine ? `${p.short} · ${p.repo} #${p.n}`
+    : p.state === 'posted' ? `${p.verdict} · ${p.short} · ${p.repo} #${p.n}`
+    : p.state === 'skipped' ? `Skipped: ${p.short} · ${p.repo} #${p.n}` : `${p.repo} #${p.n}`;
+  return `<div class="row click${sel(p.id)}" data-row="${p.id}" data-a="open-pr" data-id="${p.id}">${av(p.author)}
+    <div class="rt"><div class="r1">${p.title}</div><div class="r2 t11">${r2}</div></div>
+    <div class="ra">${p.mine ? strip(p) : ''}</div></div>`;
+}
+function evText(e){
+  const p = e.pr && pr(e.pr);
+  return e.text.replace('{pr}', p ? `<span class="pr" data-a="open-pr" data-id="${p.id}">${p.repo} #${p.n}</span> ${p.title}` : '');
+}
+function evRow(e, i){
+  return `<div class="row ev ${e.kind}${sel('ev' + i)}" data-row="ev${i}" ${e.pr ? `data-a="open-pr" data-id="${e.pr}"` : ''}><span class="tm">${fmtM(e.at)}</span>
+    <div class="rt"><div>${evText(e)}</div></div>${e.btn ? `<div class="ra"><button class="btn" data-a="${e.btn[1]}">${e.btn[0]}</button></div>` : ''}</div>`;
+}
+
+function renderPage(N){
+  const pg = $('#page');
+  if (S.page === 'inbox') {
+    const W = S.check ? S.check.repos[S.check.i].items.filter(it => it.stage < it.n).map(it => pr(it.id)) : [];
+    const done = S.activity.filter(e => e.day === 0 && ['review','mine','skip'].includes(e.kind));
+    pg.innerHTML = header('Inbox', N, 'inbox') + (
+      N.length ? `<div class="lbl">Needs you</div>${N.map(needRow).join('')}` : !W.length ? `<div class="empty"><div class="t15">Nothing needs you.</div>
+        <div class="t11 mute">${nextCheck() ? 'Next check at ' + when(nextCheck()) + '.' : 'No checks scheduled.'}</div>
+        ${S.tip ? `<div class="tip t11 mute"><span>Tip: Glidepath checks at the times in <button class="link" data-a="settings" data-id="schedule">Schedule</button>.</span>
+          <span>Tip: let Glidepath post and merge on its own with <button class="link" data-a="settings" data-id="behaviour">Autopilot</button>.</span></div>` : ''}</div>` : '') +
+      (W.length ? `<div class="lbl">Working now</div>${W.map(p => `<div class="row">${av(p.author)}<div class="rt"><div class="r1">${p.title}</div>
+        <div class="r2 t11"><span class="shim">${stageOf(p.id)}</span> · ${p.repo} #${p.n}</div></div></div>`).join('')}` : '') +
+      (done.length ? `<div class="lbl"><button class="toggle" data-a="done-toggle" aria-expanded="${S.doneOpen}">${I.chev}Done today · ${done.length}</button></div>
+        ${S.doneOpen ? done.map((e) => evRow(e, S.activity.indexOf(e))).join('') : ''}` : '');
+  }
+  if (S.page === 'prs') {
+    const L = prs(), team = L.filter(p => !p.mine), mine = L.filter(p => p.mine);
+    const groups = S.tab === 'team'
+      ? [['Ready to post', team.filter(p => p.state === 'ready')], ['Reviewed', team.filter(p => p.state === 'posted')], ['Skipped', team.filter(p => p.state === 'skipped')], ['Not checked yet', team.filter(p => p.state === 'unchecked')]]
+      : [['Needs you', mine.filter(p => p.need)], ['Glidepath is on it', mine.filter(p => !p.need && p.group === 'on-it')], ['Waiting on reviewers', mine.filter(p => !p.need && p.group === 'waiting')],
+         ['Ready to merge', mine.filter(p => !p.need && p.group === 'ready')], ['Merged this week', mine.filter(p => p.group === 'merged')]];
+    pg.innerHTML = header('PRs', N) + `<div class="tabs"><div class="seg"><button data-a="tab" data-id="team" aria-pressed="${S.tab === 'team'}">Team PRs</button><button data-a="tab" data-id="mine" aria-pressed="${S.tab === 'mine'}">Your PRs</button></div></div>` +
+      groups.filter(g => g[1].length).map(([t, ps]) => `<div class="lbl">${t}</div>${ps.map(prRow).join('')}`).join('');
+  }
+  if (S.page === 'activity') {
+    const F = {all:() => true, reviews:e => ['review','skip'].includes(e.kind), mine:e => e.kind === 'mine', problems:e => e.kind === 'problem'}[S.filter];
+    const L = S.activity.map((e,i) => [e,i]).filter(([e]) => F(e)).sort((a,b) => b[0].day - a[0].day || b[0].at - a[0].at);
+    const days = [[0,'Today'],[-1,'Yesterday']];
+    pg.innerHTML = header('Activity', N) + `<div class="chips">${[['all','All'],['reviews','Reviews'],['mine','Your PRs'],['problems','Problems']].map(([k,l]) =>
+      `<button class="chip" data-a="filter" data-id="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join('')}</div>` +
+      (days.map(([d,l]) => { const r = L.filter(([e]) => e.day === d); return r.length ? `<div class="lbl">${l}</div>${r.map(([e,i]) => evRow(e,i)).join('')}` : ''; }).join('')
+        || `<div class="empty"><div class="t15">Nothing here yet.</div></div>`);
+  }
+  if (S.page === 'repos') {
+    pg.innerHTML = header('Repos', N) + `<div class="lbl">Watching ${S.repos.length} repo${S.repos.length === 1 ? '' : 's'}</div>` + S.repos.map(r => `
+      <div class="row click rep${sel(r.name)}" data-row="${r.name}" data-a="open-repo" data-id="${r.name}" data-ctx="repo">
+        <div class="rt"><div class="r1">${r.name}</div><div class="r2 t11">${r.last}</div></div>
+        <div class="ra sws"><label>Review team PRs <button class="sw" role="switch" aria-checked="${r.review}" data-a="repo-sw" data-id="${r.name}" data-k="review" aria-label="Review team PRs in ${r.name}"></button></label>
+        <label>Look after my PRs <button class="sw" role="switch" aria-checked="${r.mine}" data-a="repo-sw" data-id="${r.name}" data-k="mine" aria-label="Look after my PRs in ${r.name}"></button></label></div></div>`).join('') +
+      `<div style="padding:14px 10px"><button class="link" data-a="add-repo">Add a repo…</button></div>`;
+  }
+}
+
+function renderSheet(N){
+  const sh = $('#sheet'), on = !!(S.pr || S.repo);
+  sh.classList.toggle('on', on);
+  if (!on) return;
+  if (S.repo) return repoSheet(sh);
+  const p = pr(S.pr); if (!p) { S.pr = null; return; }
+  const k = needOf(p);
+  let body = '';
+  if (!p.mine && ['ready','posted'].includes(p.state)) {
+    const vdot = p.verdict === 'Approved' ? 'sdot' : 'sdot fill';
+    body += `<div class="sec"><div class="t11">${p.state === 'ready' ? 'Review, as it will appear on GitHub' : 'Review, as posted on GitHub'}</div>
+      <div class="ghrev"><div class="verdict"><span class="${vdot}"></span>${p.verdict}</div>
+      ${S.edit === p.id ? `<div contenteditable="true" id="editbody" data-in="body" data-id="${p.id}">${p.body.map(x => `<p>${x}</p>`).join('')}</div>` : p.body.map(x => `<p>${x}</p>`).join('')}</div></div>`;
+    if (p.findings.length) body += `<div class="sec"><div class="t11">Findings</div>${p.findings.map(([s,t,f]) => `<div class="fd"><span class="sev"><span class="sdot${s === 'Must fix' ? ' fill' : s === 'Nit' ? ' small' : ''}"></span>${s}</span>
+      <div><div>${t}</div><div class="t11 mute mono">${f}</div></div></div>`).join('')}</div>`;
+    body += `<div class="sec"><div class="t11">What Glidepath checked</div>${p.checked.map(c => `<div class="chk">${c}</div>`).join('')}
+      ${p.log ? `<div style="margin-top:10px"><button class="toggle" data-a="log-toggle" aria-expanded="${S.log}">${I.chev}Show how it got there</button>
+      ${S.log ? `<div class="log">${p.log.map(([t,x]) => `${t}  <span>${x}</span>`).join('<br>')}</div>` : ''}</div>` : ''}</div>`;
+  }
+  if (p.mine) {
+    body += `<div class="sec" style="padding-bottom:16px">${strip(p, true)}</div>`;
+    if (k === 'push') body += `<div class="sec"><div class="t11">The fix, as it will be pushed</div><div class="diff">${esc(FIX_DIFF)}</div></div>`;
+    if (k === 'reply') body += `<div class="sec"><div class="t11">Reply to Gadi, as it will appear on GitHub</div><div class="ghrev"><p>${p.reply}</p></div></div>`;
+    body += `<div class="sec"><div class="t11">What Glidepath did</div>${p.timeline.map(([t,x]) => `<div class="tl"><span class="tm">${t}</span><span>${x}</span></div>`).join('')}</div>
+      <div class="sfoot"><span>Look after this PR<div class="t11 mute">Glidepath fixes CI, answers comments and merges when it's ready.</div></span>
+      <button class="sw" role="switch" aria-checked="${p.lookAfter}" data-a="look-after" data-id="${p.id}" aria-label="Look after this PR"></button></div>`;
+  }
+  sh.innerHTML = `<div class="sh"><button class="back" data-a="back">${I.back} Back</button>
+    <div class="shead"><div><div class="t22">${p.title}</div><div class="t11 mute">${p.repo} #${p.n} · ${p.mine ? 'your PR' : p.author}</div>
+      <div class="t15">${prSentence(p)}</div></div>
+      <div class="ra" style="padding-top:4px">${k ? holdBtn(k, p.id, BTN[k]) : ''}<button class="more" data-a="more" data-id="${p.id}" aria-label="More">···</button></div></div>${body}</div>`;
+}
+function repoSheet(sh){
+  const r = S.repos.find(x => x.name === S.repo); if (!r) { S.repo = null; sh.classList.remove('on'); return; }
+  const seg = (a, opts, v) => `<div class="seg">${opts.map(([k,l]) => `<button data-a="${a}" data-id="${k}" aria-pressed="${v === k}">${l}</button>`).join('')}</div>`;
+  sh.innerHTML = `<div class="sh"><button class="back" data-a="back">${I.back} Back</button>
+    <div class="shead"><div><div class="t22">${r.name}</div><div class="t15">${r.last}.</div></div></div>
+    <div class="sec"><div class="t11">Who to review</div>
+      <div class="srow"><div>Whose PRs get a review</div>${seg('who', [['everyone','Everyone'],['collab','Collaborators'],['these','These people']], r.who)}</div>
+      ${r.who === 'these' ? `<div class="srow"><div class="tags">${r.people.map((x,i) => `<span class="tag">${x}<button data-a="rm-person" data-id="${i}" aria-label="Remove ${x}">✕</button></span>`).join('')}
+        <input class="field" id="person-in" data-in="person" placeholder="Add a GitHub login" value="${esc(S.draft.person || '')}"></div></div>` : ''}</div>
+    <div class="sec"><div class="t11">Review rules</div>
+      <div class="srow"><div>Rules file<div class="t11 mono">${r.rules || 'None. Glidepath uses its own rules.'}</div></div><button class="btn" data-a="toast" data-id="Choose a rules file in the repo.">Choose…</button></div>
+      <div class="srow"><div>Use them to<div class="t11">${r.rmode === 'extend' ? 'Your rules are added to Glidepath’s own.' : 'Only your rules are used.'}</div></div>${seg('rmode', [['extend','Extend'],['replace','Replace']], r.rmode)}</div></div>
+    <div class="sec"><div class="t11">Learned</div>
+      ${r.learned.map(([k,t],i) => `<div class="srow"><div>${k === 'Command' ? `<span class="mono">${esc(t)}</span>` : esc(t)}<div class="t11">${k}</div></div><button class="btn" data-a="rm-learned" data-id="${i}">Remove</button></div>`).join('')}
+      <div class="srow"><input class="field" style="flex:1" id="teach-in" data-in="teach" placeholder="Teach Glidepath a rule, then press Return" value="${esc(S.draft.teach || '')}"></div></div>
+    <div class="sec"><div class="t11">Look closer at</div><div class="tags">${r.flags.map((x,i) => `<span class="tag">${x}<button data-a="rm-flag" data-id="${i}" aria-label="Remove ${x}">✕</button></span>`).join('')}
+      <input class="field mono" style="font-size:11px" id="flag-in" data-in="flag" placeholder="Add a path, then Return" value="${esc(S.draft.flag || '')}"></div></div>
+    <div class="sfoot"><span class="t11 mute">Glidepath stops watching this repo. Its rules and Learned stay in the repo.</span><button class="btn" data-a="rm-repo" data-id="${r.name}">Remove repo</button></div></div>`;
+}
+
+function renderOnb(){
+  const d = $('#dim'); d.classList.toggle('on', !!S.onb);
+  if (!S.onb) return;
+  const dots = `<div class="steps">${[1,2,3].map(i => `<i class="${i <= S.onb ? 'on' : ''}"></i>`).join('')}</div>`;
+  let h = '';
+  if (S.onb === 1) {
+    h = `<div class="t22">One thing is missing</div><div class="t15">Glidepath needs Claude Code, Git and the GitHub CLI.</div>
+      <div class="list">${S.tools.map(t => `<div class="row"><span class="ok${t.ok ? '' : t.busy ? ' wait' : ' no'}">${t.ok ? '✓' : t.busy ? '' : '!'}</span>
+        <div class="rt"><div class="r1">${t.name}</div><div class="r2 t11">${t.ok ? 'Ready' : t.busy ? 'Signing in…' : t.why}</div></div>
+        ${t.ok || t.busy ? '' : `<button class="btn" data-a="tool-fix">Sign in to GitHub</button>`}</div>`).join('')}</div>`;
+  }
+  if (S.onb === 2) {
+    h = `<div class="t22">Pick your repos</div><div class="t15">Glidepath only looks at the repos you pick.</div>
+      <div class="list">${Object.entries(S.onbPick).map(([r,v]) => `<div class="row click" data-a="onb-pick" data-id="${r}"><span class="cb${v ? ' on' : ''}">${v ? '✓' : ''}</span><div class="rt"><div class="r1">${r}</div></div></div>`).join('')}</div>
+      <div class="srow"><div>Review my team's PRs<div class="t11">Glidepath writes a review for you to post.</div></div><button class="sw" role="switch" aria-checked="${S.onbReview}" data-a="onb-sw" data-id="onbReview" aria-label="Review my team's PRs"></button></div>
+      <div class="srow"><div>Look after my own PRs<div class="t11">Fixes CI, answers comments, merges when ready. Asks first.</div></div><button class="sw" role="switch" aria-checked="${S.onbMine}" data-a="onb-sw" data-id="onbMine" aria-label="Look after my own PRs"></button></div>
+      <div class="acts"><button class="btn" data-a="onb-next">Continue</button></div>`;
+  }
+  if (S.onb === 3) {
+    h = `<div class="t22">You're set</div><div class="t15" style="color:var(--fg)">Glidepath will check ${schedPhrase().replace(/^Weekdays/, 'on weekdays')} and ask before posting anything.</div>
+      <div class="t11 mute" style="margin-top:10px">The first results land in your Inbox. Nothing goes to GitHub without you.</div>
+      <div class="acts"><button class="btn" data-a="onb-later">Later</button><button class="btn" data-a="onb-check" style="background:var(--fg);color:#08080a">Check now</button></div>`;
+  }
+  $('#onb').innerHTML = dots + h;
+}
+
+/* Schedule sentence, shared by Settings and onboarding */
+function schedPhrase(){
+  const d = S.sched.days, ts = [...S.sched.times].sort((a,b) => a-b);
+  if (!ts.length || !d.some(Boolean)) return 'never. Add a time and a day';
+  const names = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], join = a => a.length > 1 ? a.slice(0,-1).join(', ') + ' and ' + a.at(-1) : a[0];
+  const days = d.every(Boolean) ? 'Every day' : d.join() === '1,1,1,1,1,0,0' ? 'Weekdays' : d.join() === '0,0,0,0,0,1,1' ? 'Weekends' : join(names.filter((_,i) => d[i]));
+  return `${days} at ${join(ts.map(fmtM))}`;
+}
+const PRESETS = {workday:[540,780,1020], every2:[480,600,720,840,960,1080], daily:[540]};
+
+let dragging = false;
+function renderSettings(force){
+  const w = $('#setwin'); w.hidden = !S.set;
+  if (!S.set || (dragging && !force)) return;
+  const tabs = [['general','General',I.gen],['schedule','Schedule',I.sch],['behaviour','Behaviour',I.beh],['advanced','Advanced',I.adv]];
+  $('#stool').innerHTML = `<div class="top" data-drag="setwin"><div class="lights"><i data-a="close-set" title="Close"></i><i></i><i></i></div><div class="t11">${tabs.find(t => t[0] === S.set)[1]}</div></div>
+    <div class="ptabs">${tabs.map(([k,l,ic]) => `<button class="ptab" data-a="settings" data-id="${k}" aria-pressed="${S.set === k}">${ic}${l}</button>`).join('')}</div>`;
+  const sw = (k, label) => `<button class="sw" role="switch" aria-checked="${!!S[k]}" data-a="set-sw" data-id="${k}" aria-label="${label}"></button>`;
+  const seg = (k, opts) => `<div class="seg">${opts.map(([v,l]) => `<button data-a="set-seg" data-id="${k}" data-v="${v}" aria-pressed="${S[k] === v}">${l}</button>`).join('')}</div>`;
+  const row = (l, sub, c) => `<div class="srow"><div>${l}${sub ? `<div class="t11">${sub}</div>` : ''}</div>${c}</div>`;
+  let h = '';
+  if (S.set === 'general') {
+    h = row('Open at login', '', sw('login','Open at login')) + row('Show in menu bar', '', sw('menubar','Show in menu bar')) +
+      row('Notifications', S.notify === 'needs' ? 'Only when something needs you.' : S.notify === 'all' ? 'Every review, fix and merge.' : 'No notifications.', seg('notify', [['needs','Needs you only'],['all','Everything'],['off','Off']])) +
+      row('Claude account', 'Signed in · Sager Team', `<button class="btn" data-a="toast" data-id="Opens Claude sign-in.">Change…</button>`) +
+      `<div class="sec" style="margin-top:18px"><button class="toggle" data-a="set-sw" data-id="appearance" aria-expanded="${S.appearance}">${I.chev}Appearance</button></div>` +
+      (S.appearance ? row('Glass', 'How much the glass blurs what is behind it.', `<input type="range" min="0" max="60" value="${S.glass}" data-in="glass" style="--f:${S.glass/60*100}%" aria-label="Glass">`) +
+        row('Icon', '', seg('icon', [['glider','Glider'],['dot','Dot']])) +
+        row('Signal colour', 'The one colour Glidepath uses: something needs you.', `<div class="swatches">${['#d29b45','#d0473a','#8cc4f2','#9a9ba3'].map(c => `<button class="swatch" style="--c:${c}" data-a="signal" data-id="${c}" aria-pressed="${S.signal === c}" aria-label="Signal colour ${c}"></button>`).join('')}</div>`) : '');
+  }
+  if (S.set === 'schedule') {
+    const q = S.quiet;
+    h = `<div class="sent t15">${schedPhrase()}.</div>` +
+      row('Presets', '', `<div class="seg">${[['workday','Workday'],['every2','Every 2 hours'],['daily','Once a day'],['custom','Custom']].map(([k,l]) => `<button data-a="preset" data-id="${k}" aria-pressed="${S.sched.preset === k}">${l}</button>`).join('')}</div>`) +
+      `<div class="sched"><svg id="dial" viewBox="0 0 240 240" role="group" aria-label="Check times on a 24 hour dial">${dialSVG()}</svg>
+        <div><div class="t11 mute" style="margin-bottom:8px">Check times. Drag a dot on the dial, or click the ring to add one.</div>
+        <div class="times">${[...S.sched.times].sort((a,b) => a-b).map(t => `<span class="tchip"><input type="time" step="900" value="${hhmm(t)}" data-in="time" data-id="${t}" id="time-${t}" aria-label="Check at ${fmtM(t)}"><button data-a="rm-time" data-id="${t}" aria-label="Remove ${fmtM(t)}">✕</button></span>`).join('')}
+        <button class="btn" data-a="add-time">Add time</button></div></div></div>` +
+      row('Days', '', `<div class="days">${'MTWTFSS'.split('').map((d,i) => `<button class="day" data-a="day" data-id="${i}" aria-pressed="${!!S.sched.days[i]}" aria-label="${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][i]}">${d}</button>`).join('')}</div>`) +
+      row('Quiet hours', 'Heavy work, like fixing CI, waits until these end.', `<div style="display:flex;gap:6px;align-items:center"><input class="field" type="time" value="${hhmm(q.from)}" data-in="qfrom" id="qfrom" aria-label="Quiet from"> to <input class="field" type="time" value="${hhmm(q.to)}" data-in="qto" id="qto" aria-label="Quiet until"></div>`) +
+      row('Quiet all weekend', '', `<button class="sw" role="switch" aria-checked="${q.weekend}" data-a="qweekend" aria-label="Quiet all weekend"></button>`) +
+      row('Keep for myself', `<span id="usage-txt">${usageText()}</span>`, `<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end"><div class="usage" id="usage-bar">${usageBar()}</div>
+        <input type="range" min="0" max="50" step="5" value="${S.reserve}" data-in="reserve" style="--f:${S.reserve*2}%" aria-label="Usage to keep for myself"></div>`);
+  }
+  if (S.set === 'behaviour') {
+    const ask = S.mode === 'ask';
+    h = `<div class="modes">
+        <button class="mode-opt" data-a="mode-ask" aria-pressed="${ask}"><b>Ask first</b><span class="t11">Nothing goes to GitHub until you hold the button.</span></button>
+        <div class="mode-opt" aria-pressed="${!ask}" role="group" aria-label="Autopilot"><b>Autopilot</b><span class="t11">${ask ? 'Glidepath acts on its own.' : 'On. Glidepath acts on its own.'}</span>${ask ? holdBtn('auto', 'auto', 'Turn on') : ''}</div></div>
+      <div class="conseq">${ask ? 'With Autopilot on, Glidepath will <b>post reviews as you, push CI fixes, send replies and merge your approved PRs</b> without asking. It still stops when it is unsure, and those land in Needs you.'
+        : 'Glidepath <b>posts reviews as you, pushes CI fixes, sends replies and merges your approved PRs</b> without asking. Anything it is unsure about lands in Needs you.'}</div>` +
+      (ask ? row('What to post', S.post === 'comment' ? 'A plain comment, never approve or request changes.' : 'A full review: approve or request changes.', seg('post', [['comment','Comment'],['review','Full review']])) : '') +
+      row('Review strictness', {relaxed:'Only what could break.', balanced:'Bugs, risk and clear design problems.', strict:'Also naming, tests and edge cases.'}[S.strict], seg('strict', [['relaxed','Relaxed'],['balanced','Balanced'],['strict','Strict']])) +
+      row('Size limit', `<span id="limit-txt">${limitText()}</span>`, `<div style="display:flex;gap:10px;align-items:center"><input type="range" min="200" max="3000" step="100" value="${S.limit}" data-in="limit" style="--f:${(S.limit-200)/28}%" aria-label="Size limit"><span id="limit-val" style="width:84px;text-align:right">${S.limit.toLocaleString()} lines</span></div>`);
+  }
+  if (S.set === 'advanced') {
+    h = row('Config file', '<span class="mono">~/.config/glidepath/config.toml</span>', `<button class="btn" data-a="toast" data-id="Shows config.toml in Finder.">Show in Finder</button>`) +
+      row('Logs', 'One file per check, kept for 14 days.', `<button class="btn" data-a="toast" data-id="Opens the logs folder.">Open logs</button>`) +
+      row('Model and budget', '5M tokens a month · 2.1M used', seg('model', [['sonnet','Sonnet'],['opus','Opus']])) +
+      row('Linear key', 'Links PRs to their Linear issues.', `<input class="field" type="password" id="linear-in" placeholder="lin_api_…" aria-label="Linear key">`) +
+      row('Reset settings', 'Repos, Learned and Activity stay.', `<button class="btn" data-a="reset">Reset</button>`) +
+      row('Uninstall', 'Quits Glidepath and removes the app and its settings.', `<button class="btn" data-a="uninstall">Uninstall…</button>`);
+  }
+  $('#sbody').innerHTML = h;
+}
+const usageText = () => `${S.usage}% of this week's Claude usage is used. Glidepath stops at ${100 - S.reserve}%, so you keep ${S.reserve}%.`;
+const usageBar = () => `<i style="width:${S.usage}%"></i><b style="width:${S.reserve}%"></b>`;
+const limitText = () => { const n = S.prs.filter(p => !p.mine && p.lines > S.limit && !['posted'].includes(p.state)).length; return `Bigger PRs are skipped and say why. ${n} open PR${n === 1 ? ' is' : 's are'} over.`; };
+
+/* 24 hour dial: dots are check times, the thin arc is quiet hours */
+const ang = m => m / 1440 * 2 * Math.PI - Math.PI / 2;
+const pt = (m, r) => [120 + r * Math.cos(ang(m)), 120 + r * Math.sin(ang(m))];
+function arcPath(a, b, r){ let span = (b - a + 1440) % 1440 || 1440; const [x1,y1] = pt(a,r), [x2,y2] = pt(a + span, r); return `M${x1} ${y1} A${r} ${r} 0 ${span > 720 ? 1 : 0} 1 ${x2} ${y2}`; }
+function dialSVG(){
+  let s = `<circle cx="120" cy="120" r="88" class="d-ring"/><circle cx="120" cy="120" r="88" class="d-hit" data-dial="ring"/><path d="${arcPath(S.quiet.from, S.quiet.to, 70)}" class="d-quiet"/>`;
+  for (let h = 0; h < 24; h++) { const [a,b] = pt(h*60, 100), [c,d] = pt(h*60, h % 6 ? 103 : 106); s += `<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" class="d-tick${h % 6 ? '' : ' maj'}"/>`; }
+  s += [0,6,12,18].map(h => { const [x,y] = pt(h*60, 116); return `<text x="${x}" y="${y + 4}" class="d-lbl">${pad(h)}</text>`; }).join('');
+  const nm = NOW.getHours()*60 + NOW.getMinutes(), [n1,n2] = pt(nm, 76), [n3,n4] = pt(nm, 99);
+  s += `<line x1="${n1}" y1="${n2}" x2="${n3}" y2="${n4}" class="d-now"/>`;
+  s += S.sched.times.map(t => { const [x,y] = pt(t, 88); return `<circle cx="${x}" cy="${y}" r="8" class="d-dot" data-dial="dot" data-id="${t}"><title>${fmtM(t)}</title></circle>`; }).join('');
+  const n = S.sched.times.length;
+  return s + `<text x="120" y="124" class="d-big">${n}</text><text x="120" y="142" class="d-unit">check${n === 1 ? '' : 's'} a day</text>`;
+}
+function setTimes(ts, keepPreset){ S.sched.times = [...new Set(ts.map(t => ((Math.round(t/15)*15) % 1440 + 1440) % 1440))]; if (!keepPreset) S.sched.preset = 'custom'; }
+
+function renderProto(){
+  const L = [['good','All good'],['checking','Checking'],['needs','Needs you (3)'],['problem','Problem'],['paused','Paused'],['first','First launch']];
+  $('#proto').innerHTML = `<b>PROTOTYPE</b>${L.map(([k,l]) => `<button data-a="scenario" data-id="${k}" aria-pressed="${S.sc === k}">${l}</button>`).join('')}<span>? for shortcuts · right-click the menu bar icon</span>`;
+}
+
+/* ---------- Menus ---------- */
+function openMenu(items, x, y, up){
+  const m = $('#menu');
+  const html = items => items.map(it => it.sep ? '<div class="sep"></div>'
+    : `<div class="mi" ${it.a ? `data-a="${it.a}"` : ''} ${it.id != null ? `data-id="${it.id}"` : ''}><span>${it.label}</span>${it.k ? `<span class="k">${it.k}</span>` : ''}${it.sub ? `<span class="k">▸</span><div class="sub material">${html(it.sub)}</div>` : ''}</div>`).join('');
+  m.innerHTML = html(items); m.hidden = false;
+  const r = m.getBoundingClientRect();
+  m.style.left = clamp(x, 6, innerWidth - r.width - 6) + 'px';
+  m.style.top = (up ? y - r.height : y) + 'px';
+  m.classList.toggle('left', x + r.width + 250 > innerWidth);
+}
+const closeMenu = () => { $('#menu').hidden = true; };
+const pauseItems = () => pauseOpts().map((o,i) => ({label:o[0], k:o[2], a:'pause', id:i})).concat(S.paused ? [{sep:1},{label:'Resume now', a:'resume'}] : []);
+function prMenu(p){
+  const k = needOf(p), it = [{label:'Open on GitHub', a:'toast', id:`Opens github.com/${p.repo}/pull/${p.n}`}];
+  if (k === 'post' || k === 'reply') it.push({label:'Edit', a:'edit', id:p.id});
+  if (k) it.push({label:'Discard', a:'discard', id:p.id}, {label:'Try again', a:'try', id:p.id});
+  if (!p.mine && p.state === 'skipped') it.push({label:'Review anyway', a:'review-anyway', id:p.id});
+  return it;
+}
+
+/* ---------- The hold: 0.6 s, ring fills, a tap explains ---------- */
+let H = null;
+function startHold(el){
+  if (H && H.el === el && H.down) return;
+  const p0 = H && H.el === el ? H.p : 0;
+  if (H) cancelAnimationFrame(H.raf);
+  H = {el, p:p0, down:true, last:performance.now()};
+  el.classList.remove('hinted');
+  H.raf = requestAnimationFrame(holdTick);
+}
+function holdTick(now){
+  const dt = now - H.last; H.last = now;
+  H.p = clamp(H.p + (H.down ? dt/600 : -dt/180));
+  H.el.style.setProperty('--p', H.p);
+  if (H.p >= 1) { const el = H.el; H = null; el.classList.add('done'); fire(el); return; }
+  if (H.down || H.p > 0) H.raf = requestAnimationFrame(holdTick);
+  else { H = null; if (pending) { pending = false; render(); } }
+}
+function endHold(){
+  if (!H || !H.down) return;
+  H.down = false;
+  if (H.p < 1) { const el = H.el; el.classList.add('hinted'); if (!reduced) { el.classList.remove('shake'); void el.offsetWidth; el.classList.add('shake'); }
+    clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('hinted'), 1800); }
+}
+function fire(el){
+  pending = false;
+  const k = el.dataset.hold, id = el.dataset.id;
+  if (k === 'auto') { S.mode = 'auto'; log('check', 'Turned on Autopilot.'); toast('Autopilot on.'); }
+  else { const p = pr(id); if (p && needOf(p) === k) act(p, k); if (S.sel === id) S.sel = null; }
+  render();
+}
+document.addEventListener('pointerdown', e => {
+  const h = e.target.closest('.hold'); if (h && e.button === 0) { e.preventDefault(); h.focus({preventScroll:true}); startHold(h); }
+});
+addEventListener('pointerup', endHold); addEventListener('pointercancel', endHold);
+addEventListener('blur', endHold);
+
+/* ---------- Clicks: one delegated handler ---------- */
+const A = {
+  scenario: id => { closeMenu(); scenario(id); },
+  check: () => { closeMenu(); startCheck(); },
+  stop: () => { closeMenu(); stopCheck(); },
+  resume: () => { closeMenu(); S.paused = null; toast('Resumed.'); render(); },
+  fix: () => { S.problem = false; S.activity.forEach(e => { if (e.btn && e.btn[1] === 'fix') { e.btn = null; e.text = "Can't reach GitHub: sign-in expired. Fixed: signed in again."; } }); log('check', 'Signed in to GitHub again.'); toast('Signed in to GitHub.'); render(); },
+  'open-inbox': () => { S.pop = false; S.win = true; S.front = 'main'; S.page = 'inbox'; S.pr = S.repo = null; render(); },
+  'open-win': () => { closeMenu(); S.pop = false; S.win = true; S.front = 'main'; render(); },
+  'close-win': () => { S.win = false; render(); },
+  'pause-menu': (id, el) => { const r = el.getBoundingClientRect(); openMenu(pauseItems(), r.left, r.top - 4, true); },
+  pause: id => { closeMenu(); pause(+id); },
+  settings: id => { closeMenu(); S.pop = false; S.set = id || S.set || 'general'; S.front = 'settings'; render(); },
+  'close-set': () => { S.set = null; S.front = 'main'; render(); },
+  quit: () => { closeMenu(); toast('Glidepath would quit here.'); },
+  page: id => { S.page = id; S.pr = S.repo = null; S.sel = null; render(); },
+  tab: id => { S.tab = id; S.sel = null; render(); },
+  filter: id => { S.filter = id; render(); },
+  'done-toggle': () => { S.doneOpen = !S.doneOpen; render(); },
+  'log-toggle': () => { S.log = !S.log; render(); },
+  log: () => toast('Opens the log for that check.'),
+  'open-pr': id => { closeMenu(); const p = pr(id); if (!p) return; S.pop = false; S.win = true; S.front = 'main'; S.pr = id; S.repo = null; S.log = false; S.edit = null;
+    if (!['inbox','prs'].includes(S.page)) { S.page = 'prs'; } if (S.page === 'prs') S.tab = p.mine ? 'mine' : 'team'; S.sel = id; render(); },
+  'open-repo': id => { S.repo = id; S.pr = null; render(); },
+  back: () => { S.pr = S.repo = null; S.edit = null; render(); },
+  more: (id, el) => { const r = el.getBoundingClientRect(); openMenu(prMenu(pr(id)), r.right - 200, r.bottom + 4); },
+  edit: id => { closeMenu(); A['open-pr'](id); S.edit = id; render(); setTimeout(() => $('#editbody')?.focus(), 450); },
+  discard: id => { closeMenu(); discard(pr(id)); },
+  try: id => { closeMenu(); toast('Glidepath will write it again in the next check.'); },
+  'review-anyway': id => { closeMenu(); const p = pr(id); p.state = 'unchecked'; p.force = true; p.result ??= {verdict:'Approved', short:'looks good', body:['Looks good overall.'], findings:[], checked:[`Read ${p.files} files, ${p.lines.toLocaleString()} lines changed`]}; startCheck(); },
+  toast: id => { closeMenu(); toast(id); },
+  undo: () => undo(),
+  'look-after': id => { const p = pr(id); p.lookAfter = !p.lookAfter; render(); },
+  'repo-sw': (id, el) => { const r = S.repos.find(x => x.name === id); r[el.dataset.k] = !r[el.dataset.k]; render(); },
+  'add-repo': () => toast('Pick a repo from GitHub.'),
+  'rm-repo': id => { closeMenu(); const i = S.repos.findIndex(r => r.name === id), r = S.repos[i]; S.repos.splice(i, 1); S.repo = null;
+    undoable(`Removed ${id}.`, () => S.repos.splice(i, 0, r)); },
+  'rm-learned': i => { const r = S.repos.find(x => x.name === S.repo), it = r.learned[i]; r.learned.splice(i, 1); undoable('Removed from Learned.', () => r.learned.splice(i, 0, it)); },
+  'rm-flag': i => { const r = S.repos.find(x => x.name === S.repo); r.flags.splice(i, 1); render(); },
+  'rm-person': i => { const r = S.repos.find(x => x.name === S.repo); r.people.splice(i, 1); render(); },
+  who: id => { S.repos.find(x => x.name === S.repo).who = id; render(); },
+  rmode: id => { S.repos.find(x => x.name === S.repo).rmode = id; render(); },
+  'set-sw': id => { S[id] = !S[id]; render(); },
+  'set-seg': (id, el) => { S[id] = el.dataset.v; render(); },
+  signal: id => { S.signal = id; render(); },
+  preset: id => { S.sched.preset = id; if (PRESETS[id]) setTimes(PRESETS[id], true); render(); },
+  day: i => { S.sched.days[i] = S.sched.days[i] ? 0 : 1; render(); },
+  'rm-time': t => { setTimes(S.sched.times.filter(x => x !== +t)); render(); },
+  'add-time': () => { const ts = S.sched.times, last = ts.length ? Math.max(...ts) : 480; let t = (last + 120) % 1440; while (ts.includes(t)) t = (t + 60) % 1440; setTimes([...ts, t]); render(); },
+  qweekend: () => { S.quiet.weekend = !S.quiet.weekend; render(); },
+  'mode-ask': () => { if (S.mode === 'auto') { S.mode = 'ask'; log('check', 'Switched to Ask first.'); toast('Ask first.'); } render(); },
+  reset: () => { const keep = {}; for (const k in DEFAULT_SET) keep[k] = structuredClone(S[k]); Object.assign(S, structuredClone(DEFAULT_SET), {appearance:S.appearance}); undoable('Settings reset.', () => Object.assign(S, keep)); },
+  uninstall: () => toast('Would quit Glidepath and move it to the Bin.'),
+  'tool-fix': () => { const t = S.tools.find(x => !x.ok); t.busy = true; render(); setTimeout(() => { t.ok = true; t.busy = false; render(); setTimeout(() => { if (S.onb === 1) { S.onb = 2; render(); } }, 700); }, 900); },
+  'onb-pick': id => { S.onbPick[id] = !S.onbPick[id]; render(); },
+  'onb-sw': id => { S[id] = !S[id]; render(); },
+  'onb-next': () => { S.repos = S.repos.filter(r => S.onbPick[r.name]); S.repos.forEach(r => { r.review = S.onbReview; r.mine = S.onbMine; r.last = 'Not checked yet'; }); S.onb = 3; render(); },
+  'onb-check': () => { S.onb = null; S.sc = 'firstdone'; render(); startCheck(); },
+  'onb-later': () => { S.onb = null; S.tip = true; S.sc = 'firstdone'; render(); },
+};
+document.addEventListener('click', e => {
+  if (e.target.closest('.hold')) return;
+  const t = e.target.closest('[data-a]');
+  if (!t) return;
+  if (t.closest('.sw') && !t.classList.contains('sw')) return;
+  e.stopPropagation();
+  A[t.dataset.a]?.(t.dataset.id, t, e);
+});
+document.addEventListener('pointerdown', e => {
+  if (!e.target.closest('#menu') && !e.target.closest('[data-a="more"],[data-a="pause-menu"]')) closeMenu();
+  if (S.pop && !e.target.closest('#pop,#mb,#menu')) { S.pop = false; S.since = ''; render(); }
+  if (e.target.closest('#setwin')) { if (S.front !== 'settings') { S.front = 'settings'; render(); } }
+  else if (e.target.closest('#win') && S.front !== 'main') { S.front = 'main'; render(); }
+  if (e.target.closest('#sbody input[type=range]')) dragging = true;
+}, true);
+addEventListener('pointerup', () => { if (dragging) { dragging = false; render(); } });
+
+$('#mb').addEventListener('click', e => { e.stopPropagation(); closeMenu(); S.pop = !S.pop; if (!S.pop) S.since = ''; render(); });
+$('#mb').addEventListener('contextmenu', e => { e.preventDefault(); S.pop = false; render(); const r = $('#mb').getBoundingClientRect();
+  openMenu([{label:'Check now', a:'check', k:'⌘R'}, ...(S.check ? [{label:'Stop', a:'stop', k:'⌘.'}] : []), {label:'Pause', sub:pauseItems()}, {sep:1},
+    {label:'Open Glidepath', a:'open-win'}, {label:'Settings…', a:'settings', k:'⌘,'}, {sep:1}, {label:'Quit Glidepath', a:'quit', k:'⌘Q'}], r.left, r.bottom + 4); });
+document.addEventListener('contextmenu', e => {
+  const r = e.target.closest('[data-ctx="repo"]'); if (!r) return;
+  e.preventDefault(); openMenu([{label:'Open', a:'open-repo', id:r.dataset.id}, {sep:1}, {label:'Remove repo', a:'rm-repo', id:r.dataset.id}], e.clientX, e.clientY);
+});
+
+/* Inputs */
+document.addEventListener('input', e => {
+  const t = e.target, k = t.dataset.in; if (!k) return;
+  if (['teach','flag','person'].includes(k)) S.draft[k] = t.value;
+  if (k === 'body') { pr(t.dataset.id).body = [...t.querySelectorAll('p')].map(p => p.innerHTML); }
+  if (k === 'glass') { S.glass = +t.value; t.style.setProperty('--f', S.glass/60*100 + '%'); document.documentElement.style.setProperty('--blur', S.glass + 'px'); }
+  if (k === 'reserve') { S.reserve = +t.value; t.style.setProperty('--f', S.reserve*2 + '%'); $('#usage-txt').textContent = usageText(); $('#usage-bar').innerHTML = usageBar(); }
+  if (k === 'limit') { S.limit = +t.value; t.style.setProperty('--f', (S.limit-200)/28 + '%'); $('#limit-val').textContent = S.limit.toLocaleString() + ' lines'; $('#limit-txt').textContent = limitText(); }
+});
+document.addEventListener('change', e => {
+  const t = e.target, k = t.dataset.in; if (!k || !t.value) return;
+  const m = (([h, mm]) => h*60 + mm)(t.value.split(':').map(Number));
+  if (k === 'time') { setTimes(S.sched.times.map(x => x === +t.dataset.id ? m : x)); render(); }
+  if (k === 'qfrom') { S.quiet.from = m; render(); }
+  if (k === 'qto') { S.quiet.to = m; render(); }
+});
+document.addEventListener('keydown', e => {
+  const t = e.target, k = t.dataset && t.dataset.in;
+  if (e.key !== 'Enter' || !['teach','flag','person'].includes(k) || !t.value.trim()) return;
+  const r = S.repos.find(x => x.name === S.repo), v = t.value.trim();
+  if (k === 'teach') { r.learned.push(['Rule', v]); log('learn', `Learned a rule for ${r.name}: ${v.charAt(0).toLowerCase() + v.slice(1)}.`); }
+  if (k === 'flag') r.flags.push(v);
+  if (k === 'person') r.people.push(v);
+  S.draft[k] = ''; render();
+});
+
+/* Dial drag: dots move, the ring adds */
+let dialDrag = null;
+document.addEventListener('pointerdown', e => {
+  const d = e.target.closest('[data-dial]'); if (!d) return;
+  const svg = $('#dial'), at = () => { const r = $('#dial').getBoundingClientRect(), x = (e.clientX - r.left)/r.width*240 - 120, y = (e.clientY - r.top)/r.height*240 - 120;
+    return ((Math.atan2(y, x) + Math.PI/2) / (2*Math.PI) * 1440 + 1440) % 1440; };
+  e.preventDefault();
+  if (d.dataset.dial === 'ring') { const m = Math.round(at()/15)*15 % 1440; if (!S.sched.times.includes(m)) { setTimes([...S.sched.times, m]); render(); } return; }
+  dialDrag = {t:+d.dataset.id}; dragging = true;
+  svg.setPointerCapture?.(e.pointerId);
+});
+addEventListener('pointermove', e => {
+  if (!dialDrag) return;
+  const r = $('#dial').getBoundingClientRect(), x = (e.clientX - r.left)/r.width*240 - 120, y = (e.clientY - r.top)/r.height*240 - 120;
+  const m = Math.round(((Math.atan2(y, x) + Math.PI/2) / (2*Math.PI) * 1440 + 1440) % 1440 / 15) * 15 % 1440;
+  if (m === dialDrag.t || S.sched.times.includes(m)) return;
+  setTimes(S.sched.times.map(t => t === dialDrag.t ? m : t)); dialDrag.t = m;
+  renderSettings(true); render();
+});
+addEventListener('pointerup', () => { if (dialDrag) { dialDrag = null; dragging = false; render(); } });
+
+/* Window drag by title areas */
+let wdrag = null;
+document.addEventListener('pointerdown', e => {
+  const h = e.target.closest('[data-drag]'); if (!h || e.target.closest('button,input,[data-a]')) return;
+  const w = h.dataset.drag === 'setwin' ? $('#setwin') : $('#win'), r = w.getBoundingClientRect(), d = $('#desk').getBoundingClientRect();
+  wdrag = {w, dx:e.clientX - r.left, dy:e.clientY - r.top, d};
+});
+addEventListener('pointermove', e => { if (!wdrag) return; wdrag.w.style.left = (e.clientX - wdrag.dx) + 'px'; wdrag.w.style.top = clamp(e.clientY - wdrag.dy - wdrag.d.top, 28, 2000) + 'px'; });
+addEventListener('pointerup', () => { wdrag = null; });
+
+/* ---------- Keyboard: J/K, Return, hold Space, ⌘Z, ⌘., ⌘R, ⌘,, ⌘1–4 ---------- */
+function rowsHere(){ return S.pr || S.repo ? [] : $$('#page [data-row]').map(r => r.dataset.row); }
+let spaceHold = null;
+document.addEventListener('keydown', e => {
+  const typing = !!e.target.closest?.('input,textarea,[contenteditable]');
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key === 'z' && !typing) { e.preventDefault(); undo(); return; }
+  if (mod && e.key === '.') { e.preventDefault(); stopCheck(); return; }
+  if (mod && e.key === 'r') { e.preventDefault(); startCheck(); return; }
+  if (mod && e.key === ',') { e.preventDefault(); A.settings(); return; }
+  if (mod && /^[1-4]$/.test(e.key)) { e.preventDefault(); S.win = true; S.front = 'main'; A.page(['inbox','prs','activity','repos'][e.key - 1]); return; }
+  if (typing || mod) return;
+  if (e.key === 'Escape') { if (!$('#menu').hidden) closeMenu(); else if (S.keys) { S.keys = false; $('#keys').classList.remove('on'); } else if (S.pop) { S.pop = false; render(); } else if (S.pr || S.repo) A.back(); return; }
+  if (e.key === '?') { S.keys = !S.keys; showKeys(); return; }
+  if (S.front !== 'main' || S.onb) return;
+  if (e.key === 'j' || e.key === 'k') {
+    const L = rowsHere(); if (!L.length) return;
+    const i = L.indexOf(S.sel); S.sel = L[clamp(i < 0 ? 0 : i + (e.key === 'j' ? 1 : -1), 0, L.length - 1)];
+    render(); $(`#page [data-row="${CSS.escape(S.sel)}"]`)?.scrollIntoView({block:'nearest'}); return;
+  }
+  if (e.key === 'Enter' && S.sel && !e.target.closest('button')) { $(`#page [data-row="${CSS.escape(S.sel)}"]`)?.click(); return; }
+  if (e.key === ' ' && !e.repeat) {
+    const scope = S.pr ? $('#sheet') : S.sel ? $(`#page [data-row="${CSS.escape(S.sel)}"]`) : null;
+    const h = scope?.querySelector('.hold') || (e.target.classList?.contains('hold') ? e.target : null);
+    if (h) { e.preventDefault(); spaceHold = h; startHold(h); }
+  }
+  if (e.key === 'Enter' && e.target.classList?.contains('hold') && !e.repeat) { e.preventDefault(); spaceHold = e.target; startHold(e.target); }
+});
+document.addEventListener('keyup', e => { if ((e.key === ' ' || e.key === 'Enter') && spaceHold) { spaceHold = null; endHold(); } });
+function showKeys(){
+  const k = $('#keys');
+  k.innerHTML = `<div class="sh"><button class="back" data-a="keys-close">${I.back} Back</button><div class="shead"><div><div class="t22">Keyboard</div></div></div><div class="sec">${[
+    ['Move down and up','<span class="kc">J</span><span class="kc">K</span>'],['Open the selected PR','<span class="kc">Return</span>'],['Post, push, send or merge','hold <span class="kc">Space</span>'],
+    ['Undo','<span class="kc">⌘Z</span>'],['Stop','<span class="kc">⌘.</span>'],['Check now','<span class="kc">⌘R</span>'],['Settings','<span class="kc">⌘,</span>'],['Inbox, PRs, Activity, Repos','<span class="kc">⌘1</span>–<span class="kc">⌘4</span>']
+  ].map(([a,b]) => `<div class="kr"><span>${a}</span><span>${b}</span></div>`).join('')}</div></div>`;
+  k.classList.toggle('on', S.keys);
+}
+A['keys-close'] = () => { S.keys = false; $('#keys').classList.remove('on'); };
+
+/* ---------- Boot. #s=needs&pop=1&page=prs&pr=web-1276&set=behaviour lets a screenshot land on any state. ---------- */
+function boot(){
+  const q = new URLSearchParams(location.hash.slice(1));
+  scenario(q.get('s') || 'needs');
+  if (q.get('page')) S.page = q.get('page');
+  if (q.get('tab')) S.tab = q.get('tab');
+  if (q.get('pr')) { S.pr = q.get('pr'); if (S.page === 'prs') S.tab = pr(S.pr).mine ? 'mine' : 'team'; }
+  if (q.get('log')) S.log = true;
+  if (q.get('set')) { S.set = q.get('set'); S.front = 'settings'; }
+  if (q.get('repo')) S.repo = q.get('repo');
+  if (q.get('pop')) S.pop = true;
+  if (q.get('done')) S.doneOpen = true;
+  if (q.get('sheet') === 'off') $('#sheet').style.transition = 'none';
+  render();
+  if (q.has('test')) selfTest();
+}
+addEventListener('hashchange', boot);
+addEventListener('resize', () => render());
+boot();
+
+/* ---------- Self-test: ?#test runs it; results land in <pre id="testout"> and the title ---------- */
+function selfTest(){
+  const out = [], ok = (c, m) => out.push((c ? 'PASS ' : 'FAIL ') + m);
+  const CUT = /\b(approach|planes?|towers?|runways?|gates?|markers?|sweep(s|ing)?|rounds?|flight recorder|briefing|playbooks?|tend(s|ing|ed)?|landed|lanes?|in the air|council|hands-off|try \d)\b|\bdraft\b(?! PRs?\b)/i;
+  const scan = where => { const txt = document.body.innerText + ' ' + $('#pop').innerText + ' ' + $('#menu').innerText; const m = txt.match(CUT); ok(!m, `no cut words: ${where}${m ? ' -> "' + m[0] + '"' : ''}`); };
+  const counts = () => { const n = needsYou().length, ic = +($('#mb .n')?.textContent || 0), badge = +($('#side .badge')?.textContent || 0); return [n, ic, badge]; };
+  for (const sc of ['good','needs','problem','paused','first','checking']) {
+    scenario(sc);
+    for (const page of ['inbox','prs','activity','repos']) for (const tab of ['team','mine']) { S.page = page; S.tab = tab; S.pop = true; S.doneOpen = true; render(); scan(`${sc}/${page}/${tab}`); }
+    for (const p of S.prs) { S.pr = p.id; S.log = true; render(); scan(`${sc}/pr ${p.id}`); } S.pr = null;
+    for (const r of S.repos) { S.repo = r.name; render(); scan(`${sc}/repo ${r.name}`); } S.repo = null;
+    for (const set of ['general','schedule','behaviour','advanced']) { S.set = set; S.appearance = true; render(); scan(`${sc}/settings ${set}`); } S.set = null;
+    if (sc === 'first') for (const st of [1,2,3]) { S.onb = st; render(); scan(`first/onboarding ${st}`); }
+    openMenu(prMenu(pr('sager-412')), 10, 10); scan(`${sc}/menu`); closeMenu();
+    S.pop = false; render();
+    const [n, ic, badge] = counts(); ok(n === ic && n === badge, `${sc}: one count everywhere (${n}/${ic}/${badge})`);
+  }
+  scenario('needs'); ok(needsYou().length === 3, 'needs scenario has 3');
+  ok(/3 things need you/.test($('#page').innerText), 'inbox header says 3 things need you');
+  const a0 = S.activity.length; act(pr('web-1276'), 'post'); render();
+  ok(needsYou().length === 2 && S.activity.length === a0 + 1 && +$('#mb .n').textContent === 2, 'posting removes it and adds Activity');
+  discard(pr('api-1253')); ok(needsYou().length === 1, 'discard removes it'); undo(); ok(needsYou().length === 2, 'undo restores it');
+  scenario('needs'); startCheck(); ok(!!S.check && $('#mb').classList.contains('working'), 'check shows working icon'); stopCheck(); ok(!S.check, 'stop is a click');
+  scenario('good'); startCheck(); tick(); tick(); stopCheck(); ok(!S.check && /not checked/.test(S.activity[0].text), 'stop mid-check');
+  scenario('good'); startCheck(); for (let i = 0; i < 20 && S.check; i++) tick(); ok(!S.check && needsYou().length === 4 && /^Checked/.test(S.activity[0].text), 'a check runs to the end: ' + needsYou().length);
+  scenario('good'); S.mode = 'auto'; startCheck(); for (let i = 0; i < 20 && S.check; i++) tick(); ok(needsYou().length === 0, 'autopilot posts on its own');
+  scenario('needs'); pause(1); ok(/Paused until 9:00 AM tomorrow/.test(status(needsYou()).text) && $('#mb').classList.contains('paused'), 'pause shows its end time');
+  scenario('problem'); ok($('#mb').classList.contains('problem') && /sign-in expired/.test($('#page').innerText), 'problem shows the fix');
+  ok($$('.hold').every(h => ['post','push','reply','merge','revert','auto'].includes(h.dataset.hold)), 'holds only on outward actions');
+  const fails = out.filter(l => l.startsWith('FAIL'));
+  const pre = document.createElement('pre'); pre.id = 'testout'; pre.textContent = (fails.length ? fails : ['ALL PASS']).concat(`${out.length} checks`).join('\n'); document.body.append(pre);
+  document.title = fails.length ? `FAIL ${fails.length}` : 'PASS';
+  scenario('needs');
+}
+</script>
+</html>
