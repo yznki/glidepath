@@ -395,7 +395,7 @@ final class Store: ObservableObject {
         s.briefing = BriefingFile.load(paths)
         for plane in s.approach?.planes ?? [] {
             if let state = tend.load(plane.slug, plane.n) { s.prStates[plane.id] = state }
-            if let plan = tend.loadSplit(plane.slug, plane.n) { s.splits[plane.id] = plan }
+            if let plan = tend.loadSplit(plane.slug, plane.n) { s.splits[plane.id] = Split.effective(plan, now: Date()) }
         }
         // A landed PR that broke main needs a revert. Tend writes that need too; the id keeps one copy of each.
         if var approach = s.approach {
@@ -784,7 +784,8 @@ final class Store: ObservableObject {
     /// shows its last output line; either way the state is read again after.
     /// Runs `glidepath tend <args>`. `item` is the Needs row it came from, whose failure count and error it updates.
     /// `onDone` gets whether the command succeeded, once the state is read again. A sheet uses it to stay open on failure.
-    func tendCommand(_ args: [String], item: String? = nil, onDone: ((Bool) -> Void)? = nil) {
+    /// `timeout` is how long the command may run; a split plan or build runs for hours.
+    func tendCommand(_ args: [String], item: String? = nil, timeout: TimeInterval = 600, onDone: ((Bool) -> Void)? = nil) {
         guard let binary = Bundle.main.executablePath else {
             actionError = "cannot find the glidepath binary"
             onDone?(false)
@@ -800,7 +801,7 @@ final class Store: ObservableObject {
         }
         let env = Runner.environment(paths)
         Task {
-            let result = await Task.detached { Shell.run(binary, ["tend"] + args, env: env) }.value
+            let result = await Task.detached { Shell.run(binary, ["tend"] + args, env: env, timeout: timeout) }.value
             if let item { tendBusy.remove(item) }
             if result.ok {
                 actionError = nil

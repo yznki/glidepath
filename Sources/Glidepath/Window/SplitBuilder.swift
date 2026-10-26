@@ -2,8 +2,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The Split builder's state: the PR being split (the builder is shown only while `shown`), its parts as the user edits
-/// them, and the files the PR changes. Moves keep the file set, so `changed` stays the plan's union. Build saves the
-/// edited parts to the plan file, then runs `tend split build`.
+/// them, and the files the PR changes. Moves keep the file set, so `changed` stays the plan's union. Build writes the
+/// edited parts to a temporary file and runs `tend split build --parts`, which checks and saves them under the PR's lock.
 @MainActor
 final class SplitBuilderModel: ObservableObject {
     @Published var shown = false
@@ -14,11 +14,11 @@ final class SplitBuilderModel: ObservableObject {
     @Published var parts: [SplitPart] = []
     /// The part a dragged file is over, by index.
     @Published var target: Int?
-    /// Why the plan could not be saved for Build. Nil when it could, or when Build has not run.
+    /// Why the edits could not be written for Build. Nil when they could, or when Build has not run.
     @Published private(set) var saveError: String?
-    /// Failed saves so far: the Build button takes a new identity on each, so its hold starts again.
+    /// Failed writes so far: the Build button takes a new identity on each, so its hold starts again.
     @Published private(set) var saveFailures = 0
-    /// The plan the builder opened on. Build writes its other fields (branch, base, status) back unchanged.
+    /// The plan the builder opened on. Build runs against it.
     private var plan: SplitPlan?
     /// Every changed file, in the order the plan lists them.
     private(set) var changed: [String] = []
@@ -64,21 +64,21 @@ final class SplitBuilderModel: ObservableObject {
         parts[k].files.append(file)
     }
 
-    /// Saves the edited parts to the plan file, then runs `tend split build`. The builder closes when the build works.
-    /// A save that fails keeps the builder open with the reason.
+    /// Writes the edited parts to a temporary file, then runs `tend split build --parts` on it. The builder closes when the
+    /// build works. A write that fails keeps the builder open with the reason. The CLI rejects edits that do not check.
     func build(store: Store) {
-        guard problem == nil, let plan, !store.tendBusy.contains(id) else { return }
-        var edited = plan
-        edited.parts = parts
+        guard problem == nil, plan != nil, !store.tendBusy.contains(id) else { return }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("glidepath-split-\(UUID().uuidString).json")
         do {
-            try TendStore(paths: store.paths).saveSplit(edited)
+            try JSONEncoder().encode(parts).write(to: file, options: .atomic)
         } catch {
-            saveError = "Could not save the split: \(error.localizedDescription)"
+            saveError = "Could not write the split: \(error.localizedDescription)"
             saveFailures += 1
             return
         }
         saveError = nil
-        store.tendCommand(["split", "build", slug, String(n)], item: id) { [weak self] ok in
+        store.tendCommand(["split", "build", slug, String(n), "--parts", file.path], item: id, timeout: 7200) { [weak self] ok in
+            try? FileManager.default.removeItem(at: file)
             if ok { self?.close() }
         }
     }
