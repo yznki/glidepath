@@ -33,6 +33,14 @@ final class MenuBarTests: XCTestCase {
     }
 
     @MainActor
+    func testTheClickThatClosesThePopoverDoesNotReopenIt() {
+        let closed = Date(timeIntervalSince1970: 1000)
+        XCTAssertTrue(MenuBar.justClosed(closed, now: closed.addingTimeInterval(0.15)))
+        XCTAssertFalse(MenuBar.justClosed(closed, now: closed.addingTimeInterval(0.5)))
+        XCTAssertFalse(MenuBar.justClosed(.distantPast, now: closed), "a first click opens it")
+    }
+
+    @MainActor
     func testTheIconHidesTheCountWhenPausedOrBroken() {
         XCTAssertTrue(MenuBar.hidesCount(.paused(until: nil)))
         XCTAssertTrue(MenuBar.hidesCount(.problem(reason: .notSetUp, fix: .setUp)))

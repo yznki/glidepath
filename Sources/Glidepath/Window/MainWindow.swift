@@ -1,8 +1,8 @@
 import SwiftUI
 import AppKit
 
-/// The main window: sidebar beside the canvas. Every section is built. The window's AppKit hooks live here; the layout
-/// is in `WindowScreen`, which snapshot rendering draws on its own.
+/// The main window's content: sidebar beside the canvas. `MainWindow` hosts it in an AppKit window; the layout is in
+/// `WindowScreen`, which snapshot rendering draws on its own.
 struct MainWindowView: View {
     @ObservedObject var router: WindowRouter
     @ObservedObject var store: Store
@@ -14,9 +14,7 @@ struct MainWindowView: View {
 
     var body: some View {
         WindowScreen(store: store, router: router)
-            .background(WindowConfigurator.mainWindow)
             .sheet(isPresented: $router.showShortcuts) { ShortcutsSheet() }
-            .onAppear { MainWindowLifecycle.shared.windowAppeared() }
     }
 }
 
@@ -77,38 +75,35 @@ struct WindowScreen: View {
     }
 }
 
-/// Runs `configure` on the hosting window as soon as the view attaches to it. Used to set window chrome.
-struct WindowConfigurator: NSViewRepresentable {
-    let configure: (NSWindow) -> Void
+/// The main window, built by AppKit rather than a SwiftUI scene, so it opens from anywhere (the status item, the Dock,
+/// launch) without SwiftUI's `openWindow`. Opaque, dark, with the title bar hidden over the void background and the
+/// frame autosaved.
+@MainActor
+enum MainWindow {
+    static let title = "Glidepath"
+    static let autosaveName = "GlidepathMain"
 
-    final class Probe: NSView {
-        var configure: ((NSWindow) -> Void)?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            if let window { configure?(window) }
-        }
-    }
-
-    func makeNSView(context: Context) -> Probe {
-        let probe = Probe()
-        probe.configure = configure
-        return probe
-    }
-
-    func updateNSView(_ nsView: Probe, context: Context) {}
-}
-
-/// Opaque main window: void background behind the title bar, dark chrome, and the autosaved frame.
-private extension WindowConfigurator {
-    static var mainWindow: WindowConfigurator {
-        WindowConfigurator { window in
-            window.setFrameAutosaveName("GlidepathMain")
-            window.isOpaque = true
-            window.backgroundColor = NSColor(Gotham.void)
-            window.titlebarAppearsTransparent = true
-            window.appearance = NSAppearance(named: .darkAqua)
-        }
+    static func make(store: Store, router: WindowRouter) -> NSWindow {
+        let host = NSHostingController(rootView: MainWindowView(store: store, router: router))
+        host.sizingOptions = [.minSize]
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: WinMetrics.windowWidth, height: WinMetrics.windowHeight),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                              backing: .buffered, defer: false)
+        window.contentViewController = host
+        // Setting the controller sizes the window to the view; the default size is set after it.
+        window.setContentSize(NSSize(width: WinMetrics.windowWidth, height: WinMetrics.windowHeight))
+        window.contentMinSize = NSSize(width: WinMetrics.minWidth, height: WinMetrics.minHeight)
+        window.title = title
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.isOpaque = true
+        window.backgroundColor = NSColor(Gotham.void)
+        window.appearance = NSAppearance(named: .darkAqua)
+        window.tabbingMode = .disallowed
+        window.isReleasedWhenClosed = false
+        if !window.setFrameUsingName(autosaveName) { window.center() }
+        window.setFrameAutosaveName(autosaveName)
+        return window
     }
 }
 
@@ -118,42 +113,18 @@ final class MainWindowLifecycle {
     static let shared = MainWindowLifecycle()
     private var closeObserver: NSObjectProtocol?
 
-    /// The main window appeared: show in the Dock and bring the app forward. Watches for its close once.
-    func windowAppeared() {
+    /// The main window is about to show: show in the Dock so it can come to front. Watches for its close once.
+    func opening(_ window: NSWindow) {
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
         guard closeObserver == nil else { return }
         closeObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification, object: nil, queue: .main
-        ) { [weak self] note in
-            guard (note.object as? NSWindow)?.title == "Glidepath" else { return }
-            Task { @MainActor [weak self] in
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { _ in
+            Task { @MainActor in
                 ScheduleModel.flushLive(Store.shared)
-                self?.settle()
+                // Back to a menu bar app, unless the window was opened again in the meantime.
+                if !window.isVisible { NSApp.setActivationPolicy(.accessory) }
             }
         }
-    }
-
-    /// Runs after a close. Back to a menu bar app once no main window is still visible.
-    private func settle() {
-        if !NSApp.windows.contains(where: { $0.isVisible && $0.title == "Glidepath" }) {
-            NSApp.setActivationPolicy(.accessory)
-        }
-    }
-}
-
-/// Lives in the menu bar scene, where `openWindow` is available, and hands the router a way to open the window.
-struct OpenWindowBridge: View {
-    /// Only the menu bar label sets this: it is on screen from launch, so it opens the window once when no config exists.
-    var opensWhenUnconfigured = false
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .onAppear {
-                WindowRouter.shared.openAction = { id in openWindow(id: id) }
-                if opensWhenUnconfigured { WindowRouter.shared.openAtLaunchIfUnconfigured() }
-            }
     }
 }

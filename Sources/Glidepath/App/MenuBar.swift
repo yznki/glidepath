@@ -19,6 +19,10 @@ final class MenuBar: NSObject, NSPopoverDelegate {
     private let popover = NSPopover()
     private var sink: AnyCancellable?
     private var ticker: Timer?
+    /// When the popover last closed. A click on the icon closes a transient popover on mouse-down, before the click
+    /// itself arrives on mouse-up; this keeps that click from opening it again.
+    private var closedAt = Date.distantPast
+    static let reopenDelay: TimeInterval = 0.3
 
     static func install() {
         shared = MenuBar(store: .shared)
@@ -30,17 +34,11 @@ final class MenuBar: NSObject, NSPopoverDelegate {
         popover.behavior = .transient
         popover.appearance = NSAppearance(named: .darkAqua)
         popover.delegate = self
-        let host = NSHostingController(rootView: MenuPopover(store: store, close: { MenuBar.shared?.close() })
-            .tint(.graphite))
-        host.sizingOptions = .preferredContentSize
-        popover.contentViewController = host
         if let button = item.button {
             button.target = self
             button.action = #selector(click)
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.imagePosition = .imageLeading
-            // Hands the window router SwiftUI's openWindow, and opens the window at launch when nothing is set up.
-            button.addSubview(NSHostingView(rootView: OpenWindowBridge(opensWhenUnconfigured: true)))
         }
         sink = store.$status.combineLatest(store.$needsYou.map(\.count).removeDuplicates())
             .sink { [weak self] state, count in self?.render(state, count: count) }
@@ -97,14 +95,24 @@ final class MenuBar: NSObject, NSPopoverDelegate {
             item.menu = menu(full: true)
             item.button?.performClick(nil)
             item.menu = nil
-        } else {
+        } else if popover.isShown || !Self.justClosed(closedAt, now: Date()) {
             toggle()
         }
+    }
+
+    /// True for a click that arrives within `reopenDelay` of the popover closing: the click that closed it.
+    static func justClosed(_ closedAt: Date, now: Date) -> Bool {
+        now.timeIntervalSince(closedAt) < reopenDelay
     }
 
     func toggle() {
         if popover.isShown { close(); return }
         guard let button = item.button else { return }
+        // Built for each opening and dropped on close, so the popover's animations cannot tick while it is closed.
+        let host = NSHostingController(rootView: MenuPopover(store: store, close: { MenuBar.shared?.close() })
+            .tint(.graphite))
+        host.sizingOptions = .preferredContentSize
+        popover.contentViewController = host
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
@@ -116,8 +124,14 @@ final class MenuBar: NSObject, NSPopoverDelegate {
 
     func popoverWillShow(_ notification: Notification) { store.popoverOpened() }
 
+    /// Stamped as the close starts (on the mouse-down), before the click's mouse-up can reach `click`.
+    func popoverWillClose(_ notification: Notification) { closedAt = Date() }
+
     /// Closing is a look: the next "Since you last looked" starts here.
-    func popoverDidClose(_ notification: Notification) { store.popoverClosed() }
+    func popoverDidClose(_ notification: Notification) {
+        popover.contentViewController = nil
+        store.popoverClosed()
+    }
 
     // MARK: Menu
 

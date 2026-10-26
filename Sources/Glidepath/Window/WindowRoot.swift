@@ -17,8 +17,7 @@ enum WindowSection: String, CaseIterable {
     }
 }
 
-/// Holds the section the main window shows and opens the window from anywhere. `openAction` is set by a view
-/// inside the menu bar scene, because only a view can reach `openWindow`.
+/// Holds the section the main window shows, and the window itself: built on first open, reused after.
 @MainActor
 final class WindowRouter: ObservableObject {
     static let shared = WindowRouter()
@@ -29,12 +28,11 @@ final class WindowRouter: ObservableObject {
     /// The window shows onboarding instead of the sections. Set while there is no config file, and by the popover's
     /// "Set up Glidepath…". Cleared when onboarding finishes.
     @Published var showOnboarding: Bool
-    var openAction: ((String) -> Void)?
+    private var window: NSWindow?
     /// The ⌘/ sheet.
     @Published var showShortcuts = false
     /// An action a view must carry out (filters, Add Repo, the review actions). The view that owns it takes it.
     @Published var pending: ShortcutAction?
-    private var launchChecked = false
 
     /// Defaults to onboarding while there is no config file.
     init(section: WindowSection = .now, showOnboarding: Bool? = nil) {
@@ -65,9 +63,12 @@ final class WindowRouter: ObservableObject {
     func open(_ section: WindowSection?) {
         if let section { self.section = section }
         if WindowRouter.needsSetup(forSection: section != nil) { showOnboarding = true }
+        let window = self.window ?? MainWindow.make(store: .shared, router: self)
+        self.window = window
         // Regular first, so the window can come to front over other apps while the Dock icon is shown.
-        NSApp.setActivationPolicy(.regular)
-        openAction?("main")
+        MainWindowLifecycle.shared.opening(window)
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -96,11 +97,9 @@ final class WindowRouter: ObservableObject {
         open(nil)
     }
 
-    /// Called once per launch from the menu bar label: opens the window only when there is no config file, so an
-    /// existing setup does not get a window on every launch.
+    /// Called once at launch: opens the window only when there is no config file, so an existing setup does not get a
+    /// window on every launch.
     func openAtLaunchIfUnconfigured() {
-        guard !launchChecked else { return }
-        launchChecked = true
         guard WindowRouter.needsSetup() else { return }
         open(nil)
     }

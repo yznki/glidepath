@@ -19,16 +19,10 @@ struct GlidepathApp: App {
     }
 
     var body: some Scene {
-        // SwiftUI opens the first scene at launch. This one is never inserted, so the app starts with no window; the
-        // status item (MenuBar) opens the main window when it is wanted.
-        MenuBarExtra("Glidepath", isInserted: .constant(false)) { EmptyView() }
-        Window("Glidepath", id: "main") {
-            MainWindowView()
-        }
-        .defaultSize(width: WinMetrics.windowWidth, height: WinMetrics.windowHeight)
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentMinSize)
-        .commands { GlidepathCommands() }
+        // The only scene, there to carry the app menus. SwiftUI never opens a Settings scene at launch, and the menus
+        // replace its Settings item, so it never shows. The main window is AppKit's (MainWindow), opened by the router.
+        Settings { EmptyView() }
+            .commands { GlidepathCommands() }
     }
 }
 

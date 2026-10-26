@@ -16,6 +16,7 @@ final class GlidepathAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         MenuBar.install()
+        WindowRouter.shared.openAtLaunchIfUnconfigured()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -29,11 +30,11 @@ final class GlidepathAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// A Dock click, or a second launch from Finder, Spotlight or Launchpad, opens or fronts the main window.
+    /// A Dock click, or a second launch from Finder, Spotlight or Launchpad, opens or fronts the main window. False,
+    /// so AppKit and SwiftUI do nothing more.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         WindowRouter.shared.open(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        return true
+        return false
     }
 
     /// Check now, Pause and Open, the same items as the menu bar's right-click menu.
