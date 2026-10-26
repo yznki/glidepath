@@ -303,12 +303,14 @@ enum InitCommand {
         let data = try Launchd.data(binary: binary, schedule: config.schedule, days: config.days, path: path,
                                          logFile: paths.logFile)
         try data.write(to: URL(fileURLWithPath: paths.plistFile), options: .atomic)
-        try loadJob(label: Launchd.label, plist: paths.plistFile)
+        try loadJob(label: Launchd.label, plist: paths.plistFile, paths: paths)
     }
 
     /// Boots a job out, then back in from its plist. Error 5 (I/O error) right after a bootout is a race with launchd,
     /// so it gets one retry after a second.
-    static func loadJob(label: String, plist: String) throws {
+    /// Writes nothing to launchd outside the user's real home (`Paths.isUserHome`); the plist file is still written.
+    static func loadJob(label: String, plist: String, paths: Paths) throws {
+        guard paths.isUserHome else { return }
         let uid = getuid()
         _ = Shell.run("launchctl", ["bootout", "gui/\(uid)/\(label)"])
         var boot = Shell.run("launchctl", ["bootstrap", "gui/\(uid)", plist])

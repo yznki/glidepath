@@ -844,6 +844,7 @@ final class Store: ObservableObject {
     }
 
     func setLoginItem(_ on: Bool) {
+        guard paths.isUserHome else { return }
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             actionError = nil
@@ -869,6 +870,7 @@ final class Store: ObservableObject {
     /// Login items are keyed by bundle path. Re-register when the app runs from a new path,
     /// so the item never points at a build folder.
     private func registerLoginItemIfMoved() {
+        guard paths.isUserHome else { return }
         let bundlePath = Bundle.main.bundlePath
         if UserDefaults.standard.string(forKey: "loginItemPath") != bundlePath {
             try? SMAppService.mainApp.unregister()

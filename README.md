@@ -30,7 +30,7 @@ installed, update it to the version your macOS needs and run `sudo xcodebuild -l
 Command Line Tools, run `xcode-select --install`.
 
 <p align="center">
-  <img src="docs/media/hero.gif" alt="The Glidepath popover: a stack of glass cards, one per pull request, each showing the author and the verdict." width="400">
+  <img src="docs/design/v2-ux/phase3-shots/popover-needs-you.png" alt="The Glidepath popover: five things need you, with four rows (a review ready to post, a fix ready to push, a PR ready to merge, a reply ready), and Open, Pause and Ask first." width="360">
 </p>
 
 - **Gist at a glance.** Approved, changes or skipped, and who the PR is from. Click a card for the reason.
@@ -149,7 +149,7 @@ labels (gather, review, check, land) and a runway on the right, where landed PRs
 PR is a dot on the slope at the stage it is in.
 
 <p align="center">
-  <img src="docs/shots/menubar.png" alt="The menu bar glyphs on a light and a dark bar: idle, running with 3, changes waiting with 2, paused, failed." width="560">
+  <img src="docs/design/v2-ux/phase3-shots/menu-bar-glyphs.png" alt="The menu bar glyph on a dark and a light bar: quiet, checking, needs you with 4, problem, paused, holding back." width="666">
 </p>
 
 | Running | Idle, with changes |

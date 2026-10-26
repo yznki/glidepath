@@ -53,6 +53,15 @@ struct Paths {
 
     func runFile(_ id: String) -> String { runsDir + "/\(id).json" }
 
+    /// True when `home` is the user's real home. launchd jobs and login items belong to the user, not to a HOME, so a
+    /// scratch HOME (scripts/try-v2.sh, a test) must never load, boot out or register them: it would replace the
+    /// installed schedule with a job that runs against the real config.
+    var isUserHome: Bool {
+        guard let pw = getpwuid(getuid()) else { return false }
+        let real = URL(fileURLWithPath: String(cString: pw.pointee.pw_dir)).standardizedFileURL.path
+        return URL(fileURLWithPath: home).standardizedFileURL.path == real
+    }
+
     /// The lock every git command that changes one clone or its worktrees takes, so a review and a tend round never
     /// run git in the same clone at once.
     func cloneLock(_ slug: String) -> String {

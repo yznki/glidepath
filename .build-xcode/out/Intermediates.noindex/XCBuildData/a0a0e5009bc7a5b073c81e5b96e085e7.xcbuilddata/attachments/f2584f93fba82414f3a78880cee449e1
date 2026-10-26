@@ -1,0 +1,4 @@
+module Glidepath {
+header "Glidepath-Swift.h"
+export *
+}

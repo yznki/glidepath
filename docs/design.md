@@ -198,7 +198,7 @@ the sheet fits. The labels give the size.
 - A landed PR animates once while the popover is open. A mark that was already there when it opened does not.
 - Reduced motion turns off every slide and pulse. State changes are immediate.
 - Snapshot mode (`glidepath --snapshot <dir>`) renders the states above from fixtures, light and dark, plus the glyph
-  strip. `glidepath --hero-gif <path>` writes the README hero as a looping GIF, with injected time.
+  strip.
 
 ## 11. Dashboard
 

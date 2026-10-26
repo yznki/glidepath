@@ -1,0 +1,579 @@
+{
+  "" : {
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/GlidepathTests-primary.dia",
+    "emit-module-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/GlidepathTests-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/GlidepathTests-primary-emit-module.dia",
+    "pch" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/GlidepathTests-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/GlidepathTests-primary.swiftdeps"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/DerivedSources/test_entry_point.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/test_entry_point.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/test_entry_point.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/test_entry_point.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/test_entry_point.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/test_entry_point.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/test_entry_point.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/test_entry_point.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/test_entry_point~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/AnchorTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/AnchorTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/AnchorTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/AnchorTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/AnchorTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/AnchorTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/AnchorTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/AnchorTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/AnchorTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ApproachGeometryTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ApproachGeometryTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ApproachGeometryTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ApproachGeometryTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ApproachGeometryTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ApproachGeometryTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ApproachGeometryTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ApproachGeometryTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ApproachGeometryTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/BashGuardTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BashGuardTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BashGuardTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BashGuardTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BashGuardTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BashGuardTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BashGuardTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BashGuardTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BashGuardTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/BudgetTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BudgetTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BudgetTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BudgetTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BudgetTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BudgetTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BudgetTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BudgetTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/BudgetTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ChecksFixTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ChecksFixTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ChecksFixTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ChecksFixTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ChecksFixTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ChecksFixTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ChecksFixTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ChecksFixTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ChecksFixTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/CloneGuardTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CloneGuardTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CloneGuardTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CloneGuardTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CloneGuardTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CloneGuardTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CloneGuardTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CloneGuardTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CloneGuardTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ConfigBackupTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigBackupTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigBackupTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigBackupTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigBackupTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigBackupTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigBackupTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigBackupTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigBackupTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ConfigEditTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigEditTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigEditTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigEditTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigEditTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigEditTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigEditTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigEditTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigEditTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ConfigSaveTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigSaveTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigSaveTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigSaveTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigSaveTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigSaveTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigSaveTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigSaveTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigSaveTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ConfigTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ConfigTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/CopyTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CopyTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CopyTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CopyTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CopyTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CopyTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CopyTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CopyTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/CopyTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/DashboardTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DashboardTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DashboardTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DashboardTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DashboardTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DashboardTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DashboardTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DashboardTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DashboardTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/DraftTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DraftTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DraftTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DraftTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DraftTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DraftTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DraftTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DraftTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/DraftTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ExtrasCLITests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasCLITests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasCLITests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasCLITests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasCLITests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasCLITests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasCLITests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasCLITests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasCLITests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ExtrasTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ExtrasTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/FilterTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FilterTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FilterTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FilterTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FilterTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FilterTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FilterTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FilterTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FilterTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/FlightRecorderTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FlightRecorderTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FlightRecorderTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FlightRecorderTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FlightRecorderTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FlightRecorderTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FlightRecorderTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FlightRecorderTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/FlightRecorderTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/HistoryTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HistoryTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HistoryTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HistoryTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HistoryTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HistoryTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HistoryTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HistoryTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HistoryTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/HotkeyTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HotkeyTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HotkeyTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HotkeyTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HotkeyTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HotkeyTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HotkeyTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HotkeyTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/HotkeyTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/InitRepoTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/InitRepoTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/InitRepoTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/InitRepoTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/InitRepoTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/InitRepoTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/InitRepoTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/InitRepoTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/InitRepoTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/KitTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/KitTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/KitTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/KitTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/KitTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/KitTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/KitTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/KitTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/KitTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/LandingCLITests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingCLITests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingCLITests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingCLITests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingCLITests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingCLITests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingCLITests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingCLITests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingCLITests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/LandingTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LandingTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/LaunchdTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LaunchdTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LaunchdTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LaunchdTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LaunchdTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LaunchdTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LaunchdTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LaunchdTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/LaunchdTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ListNavTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ListNavTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ListNavTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ListNavTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ListNavTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ListNavTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ListNavTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ListNavTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ListNavTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/MenuBarTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/MenuBarTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/MenuBarTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/MenuBarTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/MenuBarTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/MenuBarTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/MenuBarTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/MenuBarTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/MenuBarTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/NeedsYouTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/NeedsYouTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/NeedsYouTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/NeedsYouTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/NeedsYouTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/NeedsYouTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/NeedsYouTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/NeedsYouTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/NeedsYouTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/OnboardingTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/OnboardingTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/OnboardingTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/OnboardingTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/OnboardingTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/OnboardingTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/OnboardingTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/OnboardingTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/OnboardingTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/PRDiffTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PRDiffTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PRDiffTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PRDiffTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PRDiffTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PRDiffTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PRDiffTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PRDiffTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PRDiffTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/PinMoveTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinMoveTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinMoveTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinMoveTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinMoveTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinMoveTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinMoveTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinMoveTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinMoveTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/PinNudgeTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinNudgeTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinNudgeTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinNudgeTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinNudgeTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinNudgeTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinNudgeTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinNudgeTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PinNudgeTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/PreparingTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PreparingTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PreparingTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PreparingTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PreparingTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PreparingTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PreparingTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PreparingTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PreparingTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/PresentationTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PresentationTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PresentationTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PresentationTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PresentationTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PresentationTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PresentationTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PresentationTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/PresentationTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ReviewCommandTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewCommandTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewCommandTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewCommandTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewCommandTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewCommandTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewCommandTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewCommandTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewCommandTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ReviewTextTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewTextTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewTextTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewTextTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewTextTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewTextTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewTextTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewTextTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewTextTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ReviewValidatorTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewValidatorTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewValidatorTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewValidatorTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewValidatorTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewValidatorTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewValidatorTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewValidatorTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ReviewValidatorTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/RunArtifactsTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunArtifactsTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunArtifactsTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunArtifactsTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunArtifactsTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunArtifactsTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunArtifactsTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunArtifactsTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunArtifactsTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/RunDigestTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunDigestTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunDigestTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunDigestTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunDigestTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunDigestTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunDigestTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunDigestTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/RunDigestTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ScheduleDialTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleDialTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleDialTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleDialTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleDialTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleDialTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleDialTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleDialTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleDialTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ScheduleTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ScheduleWindowTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleWindowTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleWindowTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleWindowTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleWindowTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleWindowTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleWindowTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleWindowTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ScheduleWindowTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/SecurityTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SecurityTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SecurityTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SecurityTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SecurityTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SecurityTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SecurityTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SecurityTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SecurityTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/ShortcutTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ShortcutTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ShortcutTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ShortcutTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ShortcutTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ShortcutTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ShortcutTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ShortcutTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/ShortcutTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/SplitBuilderTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitBuilderTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitBuilderTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitBuilderTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitBuilderTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitBuilderTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitBuilderTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitBuilderTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitBuilderTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/SplitCLITests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitCLITests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitCLITests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitCLITests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitCLITests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitCLITests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitCLITests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitCLITests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitCLITests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/SplitTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/SplitTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/StateTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StateTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StateTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StateTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StateTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StateTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StateTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StateTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StateTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/StatusTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StatusTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StatusTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StatusTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StatusTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StatusTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StatusTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StatusTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/StatusTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/TOMLTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TOMLTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TOMLTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TOMLTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TOMLTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TOMLTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TOMLTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TOMLTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TOMLTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/TendCLITests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCLITests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCLITests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCLITests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCLITests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCLITests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCLITests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCLITests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCLITests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/TendCommentsCLITests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsCLITests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsCLITests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsCLITests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsCLITests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsCLITests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsCLITests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsCLITests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsCLITests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/TendCommentsTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCommentsTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/TendCoreTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCoreTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCoreTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCoreTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCoreTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCoreTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCoreTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCoreTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TendCoreTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/TranscriptTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TranscriptTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TranscriptTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TranscriptTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TranscriptTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TranscriptTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TranscriptTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TranscriptTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/TranscriptTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/UpdatesTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/UpdatesTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/UpdatesTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/UpdatesTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/UpdatesTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/UpdatesTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/UpdatesTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/UpdatesTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/UpdatesTests~partial.swiftmodule"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Tests/GlidepathTests/WindowRouterTests.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/WindowRouterTests.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/WindowRouterTests.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/WindowRouterTests.dia",
+    "index-unit-output-path" : "/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/WindowRouterTests.o",
+    "llvm-bc" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/WindowRouterTests.bc",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/WindowRouterTests.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/WindowRouterTests.swiftdeps",
+    "swiftmodule" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/GlidepathTests-p.build/Objects-normal/arm64/WindowRouterTests~partial.swiftmodule"
+  }
+}

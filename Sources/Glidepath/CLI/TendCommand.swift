@@ -11,11 +11,11 @@ enum TendJob {
         let plist = Launchd.tendPlist(binary: binary, path: InitCommand.jobPath(paths: paths), logFile: paths.tendLogFile)
         let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         try data.write(to: URL(fileURLWithPath: paths.tendPlistFile), options: .atomic)
-        try InitCommand.loadJob(label: Launchd.tendLabel, plist: paths.tendPlistFile)
+        try InitCommand.loadJob(label: Launchd.tendLabel, plist: paths.tendPlistFile, paths: paths)
     }
 
     static func remove(paths: Paths) {
-        _ = Shell.run("launchctl", ["bootout", "gui/\(getuid())/\(Launchd.tendLabel)"])
+        if paths.isUserHome { _ = Shell.run("launchctl", ["bootout", "gui/\(getuid())/\(Launchd.tendLabel)"]) }
         try? FileManager.default.removeItem(atPath: paths.tendPlistFile)
     }
 }

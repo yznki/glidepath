@@ -334,7 +334,7 @@ enum Uninstall {
             if !r.ok { eprint("could not remove the login item; remove it in System Settings > General > Login Items") }
         }
 
-        _ = Shell.run("launchctl", ["bootout", "gui/\(uid)/\(Launchd.label)"])
+        if paths.isUserHome { _ = Shell.run("launchctl", ["bootout", "gui/\(uid)/\(Launchd.label)"]) }
         remove(paths.plistFile, "scheduled job")
         TendJob.remove(paths: paths)
         remove(paths.skillDir, "skill")

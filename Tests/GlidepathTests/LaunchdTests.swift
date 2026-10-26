@@ -2,6 +2,15 @@ import XCTest
 @testable import Glidepath
 
 final class LaunchdTests: XCTestCase {
+    /// A scratch HOME (scripts/try-v2.sh, tests) never loads or boots out the user's launchd jobs or login item.
+    func testOnlyTheRealHomeManagesJobs() throws {
+        let real = String(cString: try XCTUnwrap(getpwuid(getuid())).pointee.pw_dir)
+        XCTAssertTrue(Paths(home: real).isUserHome)
+        XCTAssertTrue(Paths(home: real + "/").isUserHome)
+        XCTAssertFalse(Paths(home: NSTemporaryDirectory() + "glidepath-scratch").isUserHome)
+        XCTAssertThrowsError(try WindowFixtures.seedDemo(Paths(home: real)), "the demo seed never replaces the real config")
+    }
+
     func testPlistHasScheduleAndPath() throws {
         let schedule = [ScheduleTime("07:00")!, ScheduleTime("19:15")!]
         let data = try Launchd.data(binary: "/opt/homebrew/bin/glidepath", schedule: schedule,

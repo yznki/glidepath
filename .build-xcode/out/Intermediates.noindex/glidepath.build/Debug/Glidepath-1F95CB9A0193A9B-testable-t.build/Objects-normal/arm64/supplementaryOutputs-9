@@ -1,0 +1,51 @@
+{
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Sources/Glidepath/Core/Status.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Status.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Status.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Status.dia",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Status.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Status.swiftdeps"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Sources/Glidepath/Core/TOML.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/TOML.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/TOML.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/TOML.dia",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/TOML.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/TOML.swiftdeps"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Sources/Glidepath/Core/Tend.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Tend.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Tend.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Tend.dia",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Tend.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Tend.swiftdeps"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Sources/Glidepath/Core/Threads.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Threads.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Threads.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Threads.dia",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Threads.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Threads.swiftdeps"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Sources/Glidepath/Core/Transcript.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Transcript.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Transcript.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Transcript.dia",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Transcript.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Transcript.swiftdeps"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Sources/Glidepath/Core/Updates.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Updates.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Updates.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Updates.dia",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Updates.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/Updates.swiftdeps"
+  },
+  "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/Sources/Glidepath/Core/UsageGuard.swift" : {
+    "const-values" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/UsageGuard.swiftconstvalues",
+    "dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/UsageGuard.d",
+    "diagnostics" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/UsageGuard.dia",
+    "object" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/UsageGuard.o",
+    "swift-dependencies" : "/Users/yznki/.t3/worktrees/glidepath/t3-a5b9cc0a/.build-xcode/out/Intermediates.noindex/glidepath.build/Debug/Glidepath-1F95CB9A0193A9B-testable-t.build/Objects-normal/arm64/UsageGuard.swiftdeps"
+  }
+}

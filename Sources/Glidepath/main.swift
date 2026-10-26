@@ -22,6 +22,10 @@ if argv.isEmpty || argv == ["app"] {
     }
     withExtendedLifetime(lock) { GlidepathApp.main() }
 }
+if argv == ["--seed-demo"] {
+    do { try WindowFixtures.seedDemo(Paths()) } catch { eprint("\(error)"); exit(1) }
+    exit(0)
+}
 if argv.first == "--kit-gallery" {
     MainActor.assumeIsolated { KitGallery.run(argv.dropFirst().first) }
 }

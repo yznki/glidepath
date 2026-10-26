@@ -1,0 +1,10 @@
+Target dependency graph (4 targets)
+Target 'AllIncludingTests' in project 'Aggregate'
+➜ Explicit dependency on target 'GlidepathTests-product' in project 'glidepath'
+➜ Dependency on target 'GlidepathTests-product' in project 'glidepath' via transitive dependency through 'GlidepathTests-test-runner'
+➜ Explicit dependency on target 'glidepath-product' in project 'glidepath'
+Target 'GlidepathTests-product' in project 'glidepath'
+➜ Explicit dependency on target 'glidepath-product' in project 'glidepath'
+➜ Explicit dependency on target 'Glidepath' in project 'glidepath'
+Target 'Glidepath' in project 'glidepath' (no dependencies)
+Target 'glidepath-product' in project 'glidepath' (no dependencies)

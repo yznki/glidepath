@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'AllExcludingTests' in project 'Aggregate'
+➜ Explicit dependency on target 'glidepath-product' in project 'glidepath'
+Target 'glidepath-product' in project 'glidepath' (no dependencies)

@@ -1,8 +1,8 @@
 import Foundation
 
-/// Fixtures for the window screens and the onboarding steps, used only by snapshot rendering. Repos are lumen/api and
-/// lumen/web, and the rows follow the v1.2 mockups in docs/design/v1.2/, so a render can be set against its mockup.
-/// Nothing here reads or writes disk: the stores these feed are `Store(snapshot:)` stores.
+/// Fixtures for the window screens and the onboarding steps, used by snapshot rendering and `seedDemo`. Repos are
+/// lumen/api and lumen/web, and the rows follow the v1.2 mockups in docs/design/v1.2/, so a render can be set against
+/// its mockup. Only `seedDemo` writes disk; the stores the rest feed are `Store(snapshot:)` stores.
 enum WindowFixtures {
     static let repos = ["lumen/api", "lumen/web"]
     static let head = "a3f09c1"
@@ -631,5 +631,32 @@ enum WindowFixtures {
         }
         return OnboardingModel(fixture: state, paths: paths, tools: tools, repos: discovered,
                                repoList: .loaded, liveStrips: strips)
+    }
+
+    /// `glidepath --seed-demo`: writes the fixtures as this HOME's config and runs, so a try-out build opens with Needs
+    /// you full (scripts/try-v2.sh demo). Dry run on; tending, the hotkey and update checks off. The runs are dated
+    /// yesterday, so none starts in the future. Refuses the user's real home, whose config it would replace.
+    static func seedDemo(_ paths: Paths) throws {
+        guard !paths.isUserHome else { throw StateError("--seed-demo writes a scratch HOME only; set HOME first") }
+        let day = Date().addingTimeInterval(-86_400)
+        var config = config()
+        config.dryRun = true
+        config.hotkey = .off
+        config.checkUpdates = false
+        config.tend.enabled = false
+        for i in config.repos.indices { config.repos[i].tend = false }
+        try FileManager.default.createDirectory(atPath: paths.configDir, withIntermediateDirectories: true)
+        try config.render().write(toFile: paths.configFile, atomically: true, encoding: .utf8)
+        let store = RunStore(paths: paths)
+        let current = sweepAfternoon(day)
+        for run in [sweepMorning(day), current, authorRun(day)] { try store.save(run) }
+        try store.makeCurrent(current.id)
+        for (key, record) in reviewTexts(day) {
+            // "runId|repo#n"
+            let parts = key.split(separator: "|")
+            let pr = parts.last?.split(separator: "#") ?? []
+            guard parts.count == 2, pr.count == 2, let n = Int(pr[1]) else { continue }
+            try ReviewText.write(record, runId: String(parts[0]), slug: String(pr[0]), n: n, paths)
+        }
     }
 }
