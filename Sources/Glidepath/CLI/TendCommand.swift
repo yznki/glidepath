@@ -33,7 +33,7 @@ enum TendCommand {
            glidepath tend land owner/name N
            glidepath tend revert owner/name N
            glidepath tend ping owner/name N login
-           glidepath tend split plan owner/name N
+           glidepath tend split plan|build|keep owner/name N
            glidepath teach owner/name "text"
     """
     static let callUsage = """
@@ -132,9 +132,11 @@ enum TendCommand {
         }
     }
 
-    /// `tend split plan owner/name N` plans a split of one of the user's PRs now.
+    /// `tend split plan|build|keep owner/name N`: plans a split of one of the user's PRs now, builds its proposed stack,
+    /// or keeps the PR as one.
     private static func split(_ args: [String], paths: Paths, config: Config) -> Int32 {
-        guard args.count == 4, args[1] == "plan", RepoConfig.isValidSlug(args[2]), let n = Int(args[3]), n > 0 else {
+        guard args.count == 4, ["plan", "build", "keep"].contains(args[1]), RepoConfig.isValidSlug(args[2]),
+              let n = Int(args[3]), n > 0 else {
             eprint(usage)
             return 2
         }
@@ -143,7 +145,12 @@ enum TendCommand {
             return 1
         }
         do {
-            try Tender(paths: paths, config: config).splitPlanNow(repo, n)
+            let tender = Tender(paths: paths, config: config)
+            switch args[1] {
+            case "plan": try tender.splitPlanNow(repo, n)
+            case "build": try tender.splitBuildNow(repo, n)
+            default: try tender.splitKeep(repo, n)
+            }
             return 0
         } catch {
             eprint("\(error)")
@@ -1902,7 +1909,10 @@ final class Tender {
                 + parts.enumerated().map { i, part in "\(i + 1). \(part.title) · \(part.files.joined(separator: ", "))" }
                     .joined(separator: "\n")
                 + "\n\n# Diff stat\n" + stat
-            _ = runCouncil(slug: repo.slug, n: pr.n, topic: "Split #\(pr.n) into these parts?", evidence: evidence, now: now)
+            if runCouncil(slug: repo.slug, n: pr.n, topic: "Split #\(pr.n) into these parts?", evidence: evidence, now: now)?
+                .outcome == "act" {
+                try buildSplit(repo, pr, plan, now: Date())
+            }
         }
         return plan
     }
@@ -1912,6 +1922,161 @@ final class Tender {
         let pr = try openPR(repo, n)
         guard Approach.tendable(pr, store.load(repo.slug, n)) else { throw RunError("tending is off for #\(n)") }
         try planSplit(repo, pr, cls: .urgent, now: Date())
+    }
+
+    /// `tend split build`: builds the stack of the PR's proposed split now.
+    func splitBuildNow(_ repo: RepoConfig, _ n: Int) throws {
+        let pr = try openPR(repo, n)
+        guard let plan = store.loadSplit(repo.slug, n), plan.status == "proposed" else {
+            throw RunError("no proposed split for #\(n)")
+        }
+        let built = try buildSplit(repo, pr, plan, now: Date())
+        if built.status != "built" { throw RunError(built.failed ?? "the split failed") }
+    }
+
+    /// `tend split keep`: keeps the PR as one. Its plan is `kept` and nothing is built.
+    func splitKeep(_ repo: RepoConfig, _ n: Int) throws {
+        try withPRLock(repo.slug, n) {
+            guard var plan = store.loadSplit(repo.slug, n), plan.status == "proposed" else {
+                throw RunError("no proposed split for #\(n)")
+            }
+            plan.status = "kept"
+            plan.at = Date()
+            try store.saveSplit(plan)
+        }
+        dropNeeds(repo.slug, n)
+        tower(repo.slug, n, "kept as one PR", amber: false)
+    }
+
+    /// Builds the stack of a proposed split. Each part is a branch on the one before it, with only its own files, and is
+    /// checked when the playbook has verified commands. Then the branches are pushed, the PRs are opened with their bases
+    /// chained, and the source PR goes back to draft with a comment that links the stack. A failing part stops the build
+    /// and nothing is pushed. The plan is saved `built` or `failed`, and returned. Only a moved head or a changed file
+    /// list throws, and then the plan stays proposed.
+    @discardableResult
+    private func buildSplit(_ repo: RepoConfig, _ pr: OpenPR, _ proposed: SplitPlan, now: Date) throws -> SplitPlan {
+        guard proposed.head == pr.head else { throw RunError("PR changed; plan again") }
+        let wt = store.splitWtDir(repo.slug, pr.n)
+        guard try prepare(repo, pr, wt: wt) else { throw RunError("PR changed; plan again") }
+        defer { try? locked(repo.slug) { removeWorktree(repo, wt) } }
+        let changed = Tender.splitChangedFiles(try gitOK(["-C", wt, "-c", "core.quotePath=false", "diff", "--no-renames",
+                                                          "--name-status", "origin/\(pr.base)...HEAD"]))
+        if let why = Split.validate(proposed.parts, changed: changed.map(\.path)) { throw RunError("\(why); plan again") }
+
+        var plan = proposed
+        plan.status = "building"
+        try withPRLock(repo.slug, pr.n) { try store.saveSplit(plan) }
+        let branches = Split.branches(branch: pr.branch, base: pr.base, count: plan.parts.count)
+        let id = Runner.makeID(now)
+        let scratch = paths.scratchDir + "/tend-" + id + "/" + repo.owner + "-" + repo.name + "-\(pr.n)"
+        let commands = Playbook.load(repo.slug, paths: paths).commands.map(\.command)
+        if commands.isEmpty {
+            tower(repo.slug, pr.n, "no verified commands; CI checks each part", amber: false, now: now)
+        }
+        var tokens = 0
+        var prs: [Int] = []
+        do {
+            for (k, part) in plan.parts.enumerated() {
+                let files = Tender.splitPartFiles(changed: changed, part: part)
+                try locked(repo.slug) {
+                    _ = try gitOK(["-C", wt, "checkout", "--quiet", "-B", branches[k].branch,
+                                   k == 0 ? "origin/\(pr.base)" : branches[k - 1].branch])
+                    if !files.checkout.isEmpty {
+                        _ = try gitOK(["-C", wt, "checkout", "--quiet", pr.head, "--"] + files.checkout)
+                    }
+                    if !files.remove.isEmpty { _ = try gitOK(["-C", wt, "rm", "-q", "--"] + files.remove) }
+                    _ = try gitOK(["-C", wt, "commit", "--quiet", "-m", part.title])
+                }
+                if !commands.isEmpty {
+                    let verdict = checkPart(repo, wt: wt, commands: commands, scratch: scratch, tokens: &tokens)
+                    // The checks may leave files behind or replace the git link: both go before the next part.
+                    try locked(repo.slug) {
+                        try restoreGitLink(repo, wt)
+                        _ = try gitOK(["-C", wt, "reset", "--quiet", "--hard"])
+                        _ = try gitOK(["-C", wt, "clean", "-fdq"])
+                    }
+                    guard verdict.ok else {
+                        throw RunError("Part \(k + 1) failed: \(verdict.failed.isEmpty ? "checks did not pass" : verdict.failed)")
+                    }
+                }
+            }
+
+            // Nothing is pushed over a branch that is already there: a new stack only.
+            let url = RepoClone.cloneURL(repo.slug)
+            let auth = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
+            for b in branches {
+                let remote = try locked(repo.slug) {
+                    git(["-C", repo.clone] + auth + ["ls-remote", "--heads", url, "refs/heads/\(b.branch)"])
+                }
+                guard remote.ok, remote.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw RunError("\(b.branch) is already on GitHub, or could not be read")
+                }
+            }
+            for b in branches {
+                let pushed = try locked(repo.slug) {
+                    git(["-C", repo.clone] + auth + ["push", url, "refs/heads/\(b.branch):refs/heads/\(b.branch)"])
+                }
+                guard pushed.ok else { throw RunError("push of \(b.branch) was refused") }
+            }
+
+            for (k, part) in plan.parts.enumerated() {
+                let base = k == 0 ? pr.base : branches[k - 1].branch
+                let r = Shell.run("gh", ["pr", "create", "-R", repo.slug, "--head", branches[k].branch, "--base", base,
+                                         "--title", part.title, "--body", part.why + "\n\n## Stack\n\n(filled in once every part is open)"],
+                                  env: env, timeout: 120)
+                let last = r.stdout.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "/").last.map(String.init) ?? ""
+                guard r.ok, let number = Int(last) else {
+                    throw RunError("could not open part \(k + 1): \(r.stderr.trimmingCharacters(in: .whitespacesAndNewlines))")
+                }
+                prs.append(number)
+            }
+            for (k, part) in plan.parts.enumerated() {
+                let body = part.why + "\n\n## Stack\n\n" + Split.stackTable(plan.parts, prs: prs, current: k + 1)
+                guard Shell.run("gh", ["pr", "edit", String(prs[k]), "-R", repo.slug, "--body", body], env: env, timeout: 120).ok else {
+                    throw RunError("could not write the stack into #\(prs[k])")
+                }
+            }
+            guard Shell.run("gh", ["pr", "ready", String(pr.n), "-R", repo.slug, "--undo"], env: env, timeout: 120).ok else {
+                throw RunError("could not turn #\(pr.n) back into a draft")
+            }
+            _ = postComment(repo.slug, pr.n, Tender.splitComment(prs: prs))
+
+            plan.status = "built"
+            plan.prs = prs
+            plan.failed = nil
+            plan.at = Date()
+            try withPRLock(repo.slug, pr.n) { try store.saveSplit(plan) }
+            let line = "split into " + prs.map { "#\($0)" }.joined(separator: ", ")
+            tower(repo.slug, pr.n, line, amber: false, now: now)
+            dropNeeds(repo.slug, pr.n)
+            try? saveRun(id, now: now, repo: repo, pr: pr, summary: line, action: "split", check: nil, tokens: tokens)
+        } catch {
+            plan.status = "failed"
+            plan.failed = "\(error)"
+            plan.prs = prs
+            plan.at = Date()
+            try? withPRLock(repo.slug, pr.n) { try store.saveSplit(plan) }
+            tower(repo.slug, pr.n, "split failed · \(error)", amber: true, now: now)
+            try? saveRun(id, now: now, repo: repo, pr: pr, summary: "\(error)", action: "split", check: nil, tokens: tokens)
+        }
+        return plan
+    }
+
+    /// One part's checks: a small session runs the playbook's verified commands in the part's worktree and answers with
+    /// one JSON line. Its tokens are added to `tokens`. An answer that does not read fails the part.
+    private func checkPart(_ repo: RepoConfig, wt: String, commands: [String], scratch: String,
+                           tokens: inout Int) -> (ok: Bool, failed: String) {
+        try? FileManager.default.createDirectory(atPath: scratch, withIntermediateDirectories: true)
+        let prompt = "Run each command below from the worktree root, in order, stopping at the first that fails. "
+            + "Reply with one line of JSON {\"ok\":bool,\"failed\":\"cmd or empty\",\"tail\":\"last 20 lines\"} and nothing else.\n\n"
+            + commands.map { "- `\($0)`" }.joined(separator: "\n")
+        let out = Shell.run("claude", Self.splitCheckArguments(prompt: prompt, scratch: scratch, config: config),
+                            cwd: wt, env: claudeEnv(), timeout: 1800)
+        try? out.stdout.write(toFile: scratch + "/claude-checks.jsonl", atomically: true, encoding: .utf8)
+        Runner.recordUsage(stream: out.stdout, paths: paths)
+        tokens += Transcript.tokens(lines: out.stdout.split(separator: "\n").map(String.init))
+        return Tender.splitCheckResult(UsageGuard.resultText(stream: out.stdout) ?? out.stdout)
+            ?? (ok: false, failed: "checks gave no result")
     }
 
     /// The signed-in user's open PR with this number in the repo, read now.
