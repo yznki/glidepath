@@ -30,7 +30,7 @@ Reply with one line of JSON and nothing else:
 {"parts": [{"title": "…", "why": "…", "files": ["path/a.swift"], "depends_on": null}, {"title": "…", "why": "…", "files": ["path/b.swift", "Tests/b.swift"], "depends_on": 1}]}
 ```
 
-- `title`: short, in the style of the repo's commit subjects. The prompt shows recent subjects when Glidepath has them.
+- `title`: one line, at most 120 characters, in the style of the repo's commit subjects. The prompt shows recent subjects when Glidepath has them.
 - `why`: one terse sentence, at most 200 characters: what the part does and why it stands alone.
 - `files`: the paths from the prompt's list that this part takes. Never a path not in that list.
 - `depends_on`: as above.
