@@ -10,11 +10,19 @@ final class SplitCLITests: XCTestCase {
         args.firstIndex(of: name).flatMap { i in i + 1 < args.count ? args[i + 1] : nil }
     }
 
-    func testChangedFilesReadNameStatus() {
-        let text = "M\tCore/A.swift\nD\tCore/Old.swift\nA\tTests/New.swift\n"
+    func testChangedFilesReadNameStatusWithNULSeparators() {
+        let text = "M\0Core/A.swift\0D\0Core/Old.swift\0A\0Tests/New.swift\0"
         let changed = Tender.splitChangedFiles(text)
         XCTAssertEqual(changed.map(\.status), ["M", "D", "A"])
         XCTAssertEqual(changed.map(\.path), ["Core/A.swift", "Core/Old.swift", "Tests/New.swift"])
+    }
+
+    func testChangedFilesKeepSpacesAndBracketsInPaths() {
+        let text = "M\0Core/my file [1].swift\0D\0Old [x]\tname.swift\0"
+        let changed = Tender.splitChangedFiles(text)
+        XCTAssertEqual(changed.map(\.path), ["Core/my file [1].swift", "Old [x]\tname.swift"])
+        XCTAssertEqual(Tender.splitPartFiles(changed: changed, part: part("One", ["Core/my file [1].swift"])).checkout,
+                       ["Core/my file [1].swift"])
     }
 
     func testPartFilesSplitCheckoutFromRemoval() {
@@ -34,22 +42,43 @@ final class SplitCLITests: XCTestCase {
         XCTAssertEqual(files.remove, [])
     }
 
-    func testCheckResultReadsTheLastJSONLine() {
-        let text = "running npm test\n{\"ok\":false,\"failed\":\"npm test\",\"tail\":\"1 failing\"}\n"
-        let result = Tender.splitCheckResult(text)
-        XCTAssertEqual(result?.ok, false)
-        XCTAssertEqual(result?.failed, "npm test")
+    func testCheckLineRunsTheCommandUnderShWithItsLogAndExitFile() {
+        XCTAssertEqual(Tender.splitCheckLine("npm test", scratch: "/tmp/s", part: 2, index: 1),
+                       "sh -c 'npm test' > '/tmp/s/check-2-1.log' 2>&1; echo $? > '/tmp/s/check-2-1.exit'")
     }
 
-    func testCheckResultPassesWithNoFailure() {
-        let result = Tender.splitCheckResult("{\"ok\":true,\"failed\":\"\",\"tail\":\"\"}")
-        XCTAssertEqual(result?.ok, true)
-        XCTAssertEqual(result?.failed, "")
+    func testCheckLineQuotesSingleQuotesInTheCommand() {
+        XCTAssertEqual(Tender.splitCheckLine("grep 'x' a.swift", scratch: "/tmp/s", part: 1, index: 3),
+                       "sh -c 'grep '\\''x'\\'' a.swift' > '/tmp/s/check-1-3.log' 2>&1; echo $? > '/tmp/s/check-1-3.exit'")
     }
 
-    func testCheckResultIsNilWhenNoLineReads() {
-        XCTAssertNil(Tender.splitCheckResult("the tests look fine to me"))
-        XCTAssertNil(Tender.splitCheckResult("{\"ok\": maybe}"))
+    /// A temporary folder with the exit files written for the given part: one entry per command, nil for none.
+    private func exitFolder(_ codes: [String?]) throws -> String {
+        let dir = NSTemporaryDirectory() + "glidepath-exit-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        for (i, code) in codes.enumerated() {
+            guard let code else { continue }
+            try (code + "\n").write(toFile: dir + "/check-2-\(i + 1).exit", atomically: true, encoding: .utf8)
+        }
+        return dir
+    }
+
+    func testExitCodesPassWhenEveryCommandExitedZero() throws {
+        let dir = try exitFolder(["0", "0"])
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let result = Tender.splitExitCodes(dir: dir, part: 2, count: 2)
+        XCTAssertTrue(result.ok)
+        XCTAssertNil(result.failed)
+    }
+
+    func testExitCodesNameTheFirstNonZeroOrMissingCommand() throws {
+        let dir = try exitFolder(["0", "1", "0"])
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        XCTAssertEqual(Tender.splitExitCodes(dir: dir, part: 2, count: 3).failed, 2)
+        let missing = try exitFolder(["0", nil])
+        defer { try? FileManager.default.removeItem(atPath: missing) }
+        XCTAssertEqual(Tender.splitExitCodes(dir: missing, part: 2, count: 2).failed, 2)
+        XCTAssertEqual(Tender.splitExitCodes(dir: missing, part: 3, count: 1).failed, 1)
     }
 
     func testCommentLinksTheStackInOrder() {
