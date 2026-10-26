@@ -232,6 +232,9 @@ struct TendStore {
     /// The worktree a revert PR's commit is made in. Removed once the PR is open.
     func revertDir(_ slug: String, _ n: Int) -> String { dir + "/wt/revert-" + stem(slug, n) }
 
+    /// The worktree a split's parts are committed in. Removed when the build ends.
+    func splitWtDir(_ slug: String, _ n: Int) -> String { dir + "/wt/split-" + stem(slug, n) }
+
     func load(_ slug: String, _ n: Int) -> TendPR? {
         guard let data = FileManager.default.contents(atPath: file(slug, n)) else { return nil }
         return try? RunStore.decoder().decode(TendPR.self, from: data)
