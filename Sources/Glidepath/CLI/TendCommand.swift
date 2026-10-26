@@ -2233,21 +2233,26 @@ final class Tender {
         ["-p", prompt, "--model", "haiku", "--effort", "low"] + quietFlags()
     }
 
-    /// The arguments of one fix session: a `claude -p` in the worktree, sandboxed, with no GitHub access and network only
-    /// to the registries. Pure, so the flags can be pinned.
-    static func sessionArguments(prompt: String, systemPrompt: String, scratch: String, worktree: String,
-                                 config: Config) -> [String] {
+    /// The sandbox every tend session runs under: Bash sandboxed, no unsandboxed commands, network to the registries
+    /// only, and the credential folders denied for reads. Passed to `claude --settings`.
+    static func sandboxSettings(config: Config) -> [String: Any] {
         var denyRead = ["~/.config/gh", "~/.ssh", "~/.git-credentials", "~/Library/Keychains",
                         "~/.claude", "~/.npmrc", "~/.aws", "~/.netrc", "~/.docker", "~/.kube", "~/.gnupg",
                         "~/.config/glidepath", "~/Library/Application Support"]
         if let dir = config.claudeConfigDir { denyRead.append(dir) }
-        let sandbox: [String: Any] = ["sandbox": [
+        return ["sandbox": [
             "enabled": true,
             "autoAllowBashIfSandboxed": true,
             "allowUnsandboxedCommands": false,
             "network": ["allowedDomains": config.tend.registries],
             "filesystem": ["denyRead": denyRead],
         ] as [String: Any]]
+    }
+
+    /// The arguments of one fix session: a `claude -p` in the worktree, sandboxed, with no GitHub access and network only
+    /// to the registries. Pure, so the flags can be pinned.
+    static func sessionArguments(prompt: String, systemPrompt: String, scratch: String, worktree: String,
+                                 config: Config) -> [String] {
         let tree = Claude.permissionPath(worktree) + "/**"
         let notes = Claude.permissionPath(scratch) + "/**"
         let allowed = ["Read(\(tree))", "Edit(\(tree))", "Read(\(notes))", "Edit(\(notes))", "Bash"]
@@ -2262,13 +2267,96 @@ final class Tender {
             "--output-format", "stream-json", "--verbose",
             "--permission-mode", "dontAsk",
             "--setting-sources", "user",
-            "--settings", Claude.json(sandbox),
+            "--settings", Claude.json(sandboxSettings(config: config)),
             "--strict-mcp-config", "--mcp-config", Claude.json(["mcpServers": [String: Any]()]),
             "--add-dir", scratch,
             "--allowedTools", allowed.joined(separator: ","),
             "--disallowedTools", "WebFetch,WebSearch,Skill,Agent",
         ]
         return args
+    }
+
+    /// The arguments of a split plan session: `claude -p` in the PR's tend worktree, read-only (Read, Grep and Glob), on
+    /// Opus at high effort, under the tend sandbox and budget. No advisor.
+    static func splitPlanArguments(prompt: String, system: String, scratch: String, worktree: String,
+                                   config: Config) -> [String] {
+        let tree = Claude.permissionPath(worktree) + "/**"
+        let notes = Claude.permissionPath(scratch) + "/**"
+        return [
+            "-p", prompt,
+            "--append-system-prompt", system,
+            "--tools", "Read,Grep,Glob",
+            "--model", "opus", "--effort", "high",
+            "--max-budget-usd", String(config.tend.maxUsdPerSession),
+            "--output-format", "stream-json", "--verbose",
+            "--permission-mode", "dontAsk",
+            "--setting-sources", "user",
+            "--settings", Claude.json(sandboxSettings(config: config)),
+            "--strict-mcp-config", "--mcp-config", Claude.json(["mcpServers": [String: Any]()]),
+            "--add-dir", scratch,
+            "--allowedTools", "Read(\(tree)),Read(\(notes)),Grep,Glob",
+            "--disallowedTools", "WebFetch,WebSearch,Skill,Agent,Bash",
+        ]
+    }
+
+    /// The arguments of a split check session: a small model that runs the playbook's verified commands in the part's
+    /// worktree, with Bash only, under the tend sandbox and a dollar at most.
+    static func splitCheckArguments(prompt: String, scratch: String, config: Config) -> [String] {
+        [
+            "-p", prompt,
+            "--tools", "Bash",
+            "--model", "haiku", "--effort", "low",
+            "--max-budget-usd", "1",
+            "--output-format", "stream-json", "--verbose",
+            "--permission-mode", "dontAsk",
+            "--setting-sources", "user",
+            "--settings", Claude.json(sandboxSettings(config: config)),
+            "--strict-mcp-config", "--mcp-config", Claude.json(["mcpServers": [String: Any]()]),
+            "--add-dir", scratch,
+            "--allowedTools", "Bash",
+            "--disallowedTools", "WebFetch,WebSearch,Skill,Agent",
+        ]
+    }
+
+    /// The changed files of `git diff --no-renames --name-status`: one (status, path) per line, the status its first
+    /// letter. Lines that do not read are skipped.
+    static func splitChangedFiles(_ nameStatus: String) -> [(status: Character, path: String)] {
+        nameStatus.split(whereSeparator: \.isNewline).compactMap { line -> (status: Character, path: String)? in
+            let fields = line.split(separator: "\t", maxSplits: 1)
+            guard fields.count == 2, let status = fields[0].first else { return nil }
+            return (status: status, path: String(fields[1]))
+        }
+    }
+
+    /// The files a part takes from the PR's head, and the files it deletes. A file the PR deleted is removed in the part,
+    /// not checked out.
+    static func splitPartFiles(changed: [(status: Character, path: String)], part: SplitPart)
+        -> (checkout: [String], remove: [String]) {
+        let mine = changed.filter { part.files.contains($0.path) }
+        return (checkout: mine.filter { $0.status != "D" }.map(\.path),
+                remove: mine.filter { $0.status == "D" }.map(\.path))
+    }
+
+    /// The verdict of a split check session: the last JSON line of its answer, `{"ok": bool, "failed": cmd}`. Nil when no
+    /// line reads. `failed` is empty when none failed.
+    static func splitCheckResult(_ text: String) -> (ok: Bool, failed: String)? {
+        struct Reply: Decodable {
+            let ok: Bool
+            let failed: String?
+        }
+        for line in text.split(separator: "\n").reversed() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("{"), let reply = try? JSONDecoder().decode(Reply.self, from: Data(trimmed.utf8)) else {
+                continue
+            }
+            return (ok: reply.ok, failed: reply.failed ?? "")
+        }
+        return nil
+    }
+
+    /// The comment on the source PR once its split is built: "Split into #a → #b → #c."
+    static func splitComment(prs: [Int]) -> String {
+        "Split into " + prs.map { "#\($0)" }.joined(separator: " → ") + "."
     }
 
     /// The lines of a file in the worktree, or nil. A path that leaves the worktree, through `..` or a link, is refused:
