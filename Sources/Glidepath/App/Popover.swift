@@ -265,10 +265,10 @@ struct PopoverView: View {
         let now = Date()
         let kind = Presentation.headerKind(store.snap, now: now)
         switch kind {
-        case .idle where store.draftCount > 0:
-            return HeaderCopy.make(kind, now: now, drafts: store.draftCount)
+        case .idle where store.needsCount > 0:
+            return HeaderCopy.make(kind, now: now, drafts: store.needsCount)
         case .idle, .emptyRun: return nil
-        default: return HeaderCopy.make(kind, now: now, drafts: store.draftCount)
+        default: return HeaderCopy.make(kind, now: now, drafts: store.needsCount)
         }
     }
 

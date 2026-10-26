@@ -72,8 +72,15 @@ final class DirectoryWatcher {
 final class Store: ObservableObject {
     static let shared = Store()
     static let ackKey = "acknowledgedRunID"
+    static let lastLookedKey = "lastLookedAt"
 
     @Published private(set) var snap: Snapshot
+    /// Everything that needs the user, oldest first, and the one state every surface shows. Derived once per reload;
+    /// the icon, popover, Dock badge and window all read these, so their counts agree.
+    @Published private(set) var needsYou: [Need] = []
+    @Published private(set) var status: GlideState = .quiet(next: nil)
+    /// What Glidepath did since the popover was last closed. Nil when nothing, or before the first look.
+    @Published private(set) var sinceLastLooked: SinceLastLooked?
     /// True when the store was built from a snapshot. Fixture stores never read or write disk, run checks or touch launchd.
     let isFixture: Bool
     /// Errors from actions in this app (run now, login item), shown until the next reload.
@@ -110,7 +117,9 @@ final class Store: ObservableObject {
     private var jobReinstallTimer: Timer?
     private var jobReinstalling = false
     /// The last reinstall of the launchd job that failed. Cleared by the next check that succeeds.
-    @Published private(set) var jobError: String?
+    @Published private(set) var jobError: String? {
+        didSet { if jobError != oldValue { derive() } }
+    }
     /// The tend needs seen by the last load, by id. Nil until the first load, which notifies nothing.
     private var seenNeeds: Set<String>?
     /// The landed PRs seen by the last load, by id. Nil until the first load, which notifies nothing.
@@ -130,6 +139,7 @@ final class Store: ObservableObject {
             snap = snapshot
             hovered = snapshot.hovered
             self.justLanded = justLanded
+            derive()
             return
         }
         snap = Snapshot()
@@ -159,11 +169,16 @@ final class Store: ObservableObject {
         }
     }
 
-    /// What waits on the user: drafts to post, and PRs too large to review. The Overview's "Waiting on you" count.
-    var waitingCount: Int { strips.filter { $0.draft || ($0.skipReason == "size" && $0.verdict == .skipped) }.count }
+    /// The one Needs-you count.
+    var needsCount: Int { needsYou.count }
 
-    /// Reviews held as drafts, from every run.
-    var draftCount: Int { strips.filter(\.draft).count }
+    /// Reads the Needs-you list and the state from the snapshot. Publishes only what changed.
+    private func derive() {
+        let needs = NeedsYou.derive(snap)
+        if needs != needsYou { needsYou = needs }
+        let state = GlideState.derive(snap, needs: needs.count, jobError: jobError)
+        if state != status { status = state }
+    }
 
     /// The cached release, when it is newer than this build.
     var availableUpdate: UpdateCache? {
@@ -212,6 +227,7 @@ final class Store: ObservableObject {
         s.dryRun = s.dryRunning ? currentSweepRun(paths: paths, since: .distantPast) : nil
         s.paused = Pause.isPaused(paths)
         s.pausedSince = s.paused ? Pause.since(paths) : nil
+        s.pausedUntil = s.paused ? Pause.until(paths) : nil
         s.jobInstalled = FileManager.default.fileExists(atPath: paths.plistFile)
         let config = try? Config.load(paths)
         s.nextRun = config.flatMap { ScheduleTimes.nextSweep(after: Date(), times: $0.schedule, days: $0.days) }
@@ -249,7 +265,7 @@ final class Store: ObservableObject {
         // A dry run is not current, so its end is noticed here: the run file it left is read once the lock is free.
         if let dry = s.dryRun {
             pendingDryRunID = dry.id
-            scheduleDryRunCheck()
+            scheduleLockCheck()
         } else if let id = pendingDryRunID {
             pendingDryRunID = nil
             // A tend self-review is a dry run too, but it is the tend's own work and says nothing to the user.
@@ -272,6 +288,9 @@ final class Store: ObservableObject {
             }
         }
         snap = s
+        derive()
+        // Releasing tend's lock writes nothing the watcher sees, so while a tend check runs the store looks again.
+        if s.tendRunning { scheduleLockCheck() }
         notifyNewNeeds(config: config)
         notifyLanded(config: config)
         notifyBriefing(config: config)
@@ -284,6 +303,9 @@ final class Store: ObservableObject {
     private func readTend(_ s: inout Snapshot, config: Config?) {
         let tend = TendStore(paths: paths)
         s.tendOn = config?.tend.enabled ?? false
+        s.tendRunning = RunLock.isHeld(paths.tendLockFile)
+        s.queue = s.tendOn ? tend.loadQueue() : []
+        s.usage = UsageState.load(paths).reading(reserve: config?.tend.usageReserve ?? TendConfig().usageReserve, now: Date())
         s.approach = tend.loadApproach()
         s.landed = tend.loadLanded()
         s.briefing = BriefingFile.load(paths)
@@ -418,8 +440,8 @@ final class Store: ObservableObject {
     }
 
     /// The lock is released after the run file is written, and releasing it writes nothing the watcher sees. So while a
-    /// dry run holds the lock, the store checks again shortly, and notices its end.
-    private func scheduleDryRunCheck() {
+    /// dry run or a tend check holds its lock, the store checks again shortly, and notices its end.
+    private func scheduleLockCheck() {
         guard !dryRunCheckPending, !isFixture else { return }
         dryRunCheckPending = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
@@ -478,30 +500,54 @@ final class Store: ObservableObject {
             UserDefaults.standard.set(run.id, forKey: Store.ackKey)
         }
         reload()
+        loadSinceLastLooked()
         checkIfDue(maxAge: Updates.popoverMaxAge)
     }
 
+    /// Closing the popover is a look: the next "Since you last looked" starts here.
     func popoverClosed() {
         popoverOpen = false
+        guard !isFixture else { return }
+        UserDefaults.standard.set(Date(), forKey: Store.lastLookedKey)
+    }
+
+    /// Reads the runs since the last look, a week at most, by their day-prefixed ids. Nothing before the first look.
+    private func loadSinceLastLooked() {
+        guard !isFixture, let last = UserDefaults.standard.object(forKey: Store.lastLookedKey) as? Date else { return }
+        let now = Date()
+        let from = max(last, now.addingTimeInterval(-7 * 86_400))
+        var runs: [RunState] = []
+        var day = Calendar.current.startOfDay(for: from)
+        while day <= now {
+            runs += RunStore(paths: paths).loadAll(prefix: Runner.dayPrefix(day))
+            guard let next = Calendar.current.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        let since = SinceLastLooked.make(runs: runs, landed: snap.landed, after: last)
+        sinceLastLooked = since.isEmpty ? nil : since
     }
 
     /// Stops the running sweep: signals its process group, then records the run as finished. Reviews already
     /// posted stay posted; the PRs not yet reviewed show "No result". A stopped run is not a failed run.
     func stopRun() {
-        guard let text = try? String(contentsOfFile: paths.pidFile, encoding: .utf8),
-              let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 else {
+        guard Stop.sweep(paths, run: sweepRunID) else {
             actionError = "no sweep to stop"
             return
-        }
-        _ = kill(-pid, SIGTERM)
-        // A dry run is not the current run, so the run to record is the dry run's own file.
-        let id = (snap.dryRunning ? snap.dryRun?.id : snap.run?.id) ?? ""
-        try? RunStore(paths: paths).mutate(id) { run in
-            if run.finished == nil { run.finish(at: Date(), error: nil) }
         }
         actionError = nil
         reload()
     }
+
+    /// Stops everything running: a sweep or dry run, and a tend check with its round. Nothing more goes to GitHub from
+    /// either; what was already posted stays. The next scheduled check starts as usual unless the user also pauses.
+    func stopAll() {
+        guard !isFixture else { return }
+        actionError = Stop.all(paths, run: sweepRunID) ? nil : "nothing to stop"
+        reload()
+    }
+
+    /// The run file a stop records as finished. A dry run is not the current run, so it is the dry run's own file.
+    private var sweepRunID: String? { snap.dryRunning ? snap.dryRun?.id : snap.run?.id }
 
     // MARK: Actions
 
@@ -589,8 +635,27 @@ final class Store: ObservableObject {
     }
 
     func togglePause() {
+        if snap.paused { resume() } else { pause(until: nil) }
+    }
+
+    /// Pause stops everything: what is running now, and every check (reviews and the user's PRs) until `until`, or
+    /// until Resume when nil.
+    func pause(until: Date?) {
         do {
-            try Pause.set(!snap.paused, paths)
+            try Pause.set(true, paths, until: until)
+            actionError = nil
+        } catch {
+            actionError = "pause: \(error.localizedDescription)"
+            reload()
+            return
+        }
+        if !isFixture { _ = Stop.all(paths, run: sweepRunID) }
+        reload()
+    }
+
+    func resume() {
+        do {
+            try Pause.set(false, paths)
             actionError = nil
         } catch {
             actionError = "pause: \(error.localizedDescription)"
