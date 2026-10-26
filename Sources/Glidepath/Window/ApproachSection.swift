@@ -11,19 +11,26 @@ struct ApproachSectionView: View {
     @StateObject private var model: ApproachModel
     /// The Edit sheet for a call from Needs you.
     @StateObject private var calls: CallEditModel
+    /// The Split builder, from a split need or a drawer.
+    @StateObject private var split: SplitBuilderModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("signalColour") private var signalKey = "amber"
 
-    /// `opened` is the plane whose drawer is open at first draw, and `editing` the call whose Edit sheet is open: snapshot
-    /// rendering only.
-    init(store: Store, opened: String? = nil, editing: String? = nil) {
+    /// `opened` is the plane whose drawer is open at first draw, `editing` the call whose Edit sheet is open, and
+    /// `splitting` the split need whose builder is open: snapshot rendering only.
+    init(store: Store, opened: String? = nil, editing: String? = nil, splitting: String? = nil) {
         self.store = store
         _model = StateObject(wrappedValue: ApproachModel(opened: opened))
         _calls = StateObject(wrappedValue: CallEditModel.preset(editing, store: store))
+        _split = StateObject(wrappedValue: SplitBuilderModel.preset(splitting, store: store))
     }
 
     private var approach: ApproachSnapshot? { store.snap.approach }
     private var signal: Color { Gotham.signal(signalKey) }
+
+    private func openSplit(_ slug: String, _ n: Int, _ title: String) {
+        split.open(slug: slug, n: n, title: title, store: store)
+    }
     private var openedPlane: ApproachPlane? {
         guard let id = model.opened else { return nil }
         return approach?.planes.first { $0.id == id }
@@ -53,7 +60,8 @@ struct ApproachSectionView: View {
                 .padding(.bottom, 26)
             }
             if let plane = openedPlane {
-                ApproachDrawer(plane: plane, store: store, model: model) { model.opened = nil }
+                ApproachDrawer(plane: plane, store: store, model: model, onClose: { model.opened = nil },
+                               onReviewSplit: { openSplit(plane.slug, plane.n, plane.title) })
                     .transition(.move(edge: .trailing))
                     .frame(maxHeight: .infinity, alignment: .top)
             }
@@ -61,10 +69,15 @@ struct ApproachSectionView: View {
                 CallEditCard(model: calls, store: store)
                     .transition(.opacity)
             }
+            if split.shown {
+                SplitBuilderCard(model: split, store: store)
+                    .transition(.opacity)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .animation(Motion.reduced(reduceMotion) ? .easeOut(duration: 0.15) : Motion.standard, value: model.opened)
         .animation(Motion.reduced(reduceMotion) ? .easeOut(duration: 0.15) : Motion.standard, value: calls.item?.id)
+        .animation(Motion.reduced(reduceMotion) ? .easeOut(duration: 0.15) : Motion.standard, value: split.shown)
     }
 
     // MARK: Header
@@ -187,9 +200,9 @@ struct ApproachSectionView: View {
             } else {
                 VStack(spacing: 6) {
                     ForEach(items, id: \.id) { item in
-                        TendNeedRow(item: item, url: store.approachPlane(item.slug, item.n)?.url ?? "", store: store) {
+                        TendNeedRow(item: item, url: store.approachPlane(item.slug, item.n)?.url ?? "", store: store, onEdit: {
                             calls.open(item, store: store)
-                        }
+                        }, onReview: { openSplit(item.slug, item.n, item.title) })
                     }
                 }
             }
@@ -398,6 +411,8 @@ struct TendNeedRow: View {
     @ObservedObject var store: Store
     /// Opens the Edit sheet for a call. Only call rows use it.
     var onEdit: () -> Void = {}
+    /// Opens the Split builder for a split row. Only split rows use it.
+    var onReview: () -> Void = {}
     @AppStorage("signalColour") private var signalKey = "amber"
 
     private var signal: Color { Gotham.signal(signalKey) }
@@ -406,6 +421,7 @@ struct TendNeedRow: View {
     private var land: Bool { item.kind == "land" }
     private var revert: Bool { item.kind == "revert" }
     private var blocked: Bool { item.kind == "blocked" }
+    private var split: Bool { item.kind == "split" }
     /// The reviewer a blocked row waits on: its id is "<slug>#<n>/wait-<login>".
     private var waitingLogin: String { String(item.callID.dropFirst("wait-".count)) }
     /// The reviewer was pinged today, per the PR's tend state.
@@ -413,8 +429,8 @@ struct TendNeedRow: View {
         guard let at = store.snap.prStates["\(item.slug)#\(item.n)"]?.pinged[waitingLogin] else { return false }
         return Calendar.current.isDateInToday(at)
     }
-    /// The row's mark: ? for a call, a down arrow for a ready PR, ! for the rest.
-    private var mark: String { call ? "?" : land ? "↓" : "!" }
+    /// The row's mark: ? for a call, a down arrow for a ready PR, a divide sign for a split, ! for the rest.
+    private var mark: String { call ? "?" : land ? "↓" : split ? "÷" : "!" }
     /// A tend command for this item is running: its buttons wait for it.
     private var busy: Bool { store.tendBusy.contains(item.id) }
 
@@ -499,6 +515,18 @@ struct TendNeedRow: View {
                 .id("\(item.id)#\(store.tendFailures[item.id] ?? 0)")
                 .disabled(busy)
             }
+        } else if split {
+            // Keeping the PR as one needs no review, so it sits as a plain button beside Review, as Discard does.
+            HStack(spacing: 8) {
+                Button("Keep as one") { store.tendCommand(["split", "keep", item.slug, "\(item.n)"], item: item.id) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Gotham.mute)
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
+                    .disabled(busy)
+                SettingButton(title: "Review", prominent: true, enabled: !busy) { onReview() }
+            }
         } else if blocked {
             // A wait on a reviewer: one ping a reviewer a day, so the button stays off once it has pinged today.
             let pinged = pingedToday
@@ -544,6 +572,8 @@ struct ApproachDrawer: View {
     @ObservedObject var store: Store
     @ObservedObject var model: ApproachModel
     let onClose: () -> Void
+    /// Opens the Split builder on this PR's proposed plan.
+    var onReviewSplit: () -> Void = {}
 
     @Environment(\.offscreenRender) private var offscreen
     @AppStorage("signalColour") private var signalKey = "amber"
@@ -556,6 +586,7 @@ struct ApproachDrawer: View {
                 markers
                 reviewLines
                 if plane.phase == .landed { landedRecord } else { gates }
+                splitRow
                 rounds
                 teach
                 lessons
@@ -687,6 +718,44 @@ struct ApproachDrawer: View {
             }
         }
         .padding(.top, 20)
+    }
+
+    /// Split: plans this PR into parts, or opens the proposed plan for review. Shown while tend tends the PR.
+    @ViewBuilder private var splitRow: some View {
+        if !plane.off && plane.phase != .landed {
+            let plan = store.snap.splits[plane.id]
+            let planning = store.tendBusy.contains("\(plane.id)/split")
+            let proposed = plan?.status == "proposed"
+            HStack(spacing: 10) {
+                Text(verbatim: splitCaption(plan))
+                    .font(.system(size: 12))
+                    .foregroundStyle(plan?.status == "failed" ? signal : Gotham.mute)
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                SettingButton(title: planning ? "Planning a split…" : proposed ? "Review split" : "Split…",
+                              prominent: proposed && !planning, enabled: !planning) {
+                    if proposed {
+                        onReviewSplit()
+                    } else {
+                        store.tendCommand(["split", "plan", plane.slug, String(plane.n)], item: "\(plane.id)/split")
+                    }
+                }
+            }
+            .padding(.top, 18)
+        }
+    }
+
+    /// What the PR's split plan says: nothing planned, the proposal's part count, or how the plan ended.
+    private func splitCaption(_ plan: SplitPlan?) -> String {
+        guard let plan else { return "Not split" }
+        switch plan.status {
+        case "proposed": return "Proposed · \(plan.parts.count) parts"
+        case "building": return "Building the stack…"
+        case "built": return "Built as \(plan.prs.count) PRs"
+        case "kept": return "Kept as one"
+        case "failed": return plan.failed.map { "Split failed · \($0)" } ?? "Split failed"
+        default: return "Planning…"
+        }
     }
 
     /// Today's tend rounds on this PR, newest first, with the time, tokens and what the round said.
