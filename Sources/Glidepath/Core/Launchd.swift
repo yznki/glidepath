@@ -92,6 +92,44 @@ enum GitNexus {
 
 /// Pause is a marker file, so the launchd job and the menu bar app agree without talking to each other. Its lines are
 /// "paused <time>" and, for a timed pause, "until <time>".
+/// Stop: signals a running check's process group. A pid file counts only while its lock is held, so a pid left behind by a
+/// crash is never signalled.
+enum Stop {
+    /// Sends SIGTERM to the process group named in `pidFile` while `lock` is held. True when it signalled.
+    static func signal(pidFile: String, lock: String) -> Bool {
+        guard RunLock.isHeld(lock), let text = try? String(contentsOfFile: pidFile, encoding: .utf8),
+              let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 else { return false }
+        return kill(-pid, SIGTERM) == 0
+    }
+
+    /// Stops a running sweep or dry run, and records `run` (its run file) as finished: a stopped run is not a failed one.
+    static func sweep(_ paths: Paths, run: String?) -> Bool {
+        guard signal(pidFile: paths.pidFile, lock: paths.lockFile) else { return false }
+        if let run {
+            try? RunStore(paths: paths).mutate(run) { if $0.finished == nil { $0.finish(at: Date(), error: nil) } }
+        }
+        return true
+    }
+
+    /// Stops a running tend check and the round it is in, and clears the round's working line from the snapshot it wrote.
+    static func tend(_ paths: Paths) -> Bool {
+        guard signal(pidFile: paths.tendPidFile, lock: paths.tendLockFile) else { return false }
+        let store = TendStore(paths: paths)
+        if var approach = store.loadApproach(), approach.working != nil {
+            approach.working = nil
+            try? store.saveApproach(approach)
+        }
+        return true
+    }
+
+    /// Stops both. True when either was running.
+    static func all(_ paths: Paths, run: String?) -> Bool {
+        let sweep = sweep(paths, run: run)
+        let tend = tend(paths)
+        return sweep || tend
+    }
+}
+
 enum Pause {
     /// True while the marker exists. A timed pause ends on its own: once `until` has passed, the marker is removed.
     static func isPaused(_ paths: Paths, now: Date = Date()) -> Bool {

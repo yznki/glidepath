@@ -189,6 +189,17 @@ struct TendPR: Codable, Equatable {
     }
 }
 
+/// A PR whose round waits for usage to reset or for quiet hours. Written to `tend/queue.json` for the app.
+struct TendQueueItem: Codable, Equatable {
+    var slug: String
+    var n: Int
+    var cls: WorkClass
+    var until: Date?
+    var reason: String
+
+    enum CodingKeys: String, CodingKey { case slug, n, cls = "class", until, reason }
+}
+
 /// One line of `stateDir/tend/tower.jsonl`: something tend did or needs, for the tower view. `amber` marks a line that
 /// needs the user.
 struct TowerLine: Codable, Equatable {
@@ -306,6 +317,12 @@ struct TendStore {
         return text.split(separator: "\n").suffix(limit).reversed().compactMap { line in
             try? decoder.decode(TowerLine.self, from: Data(line.utf8))
         }
+    }
+
+    /// What the last check left waiting for usage or quiet hours. Empty when there is no queue file.
+    func loadQueue() -> [TendQueueItem] {
+        guard let data = FileManager.default.contents(atPath: dir + "/queue.json") else { return [] }
+        return (try? RunStore.decoder().decode([TendQueueItem].self, from: data)) ?? []
     }
 
     func loadBriefing() -> Briefing? {

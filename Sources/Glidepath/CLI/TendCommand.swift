@@ -208,17 +208,6 @@ enum TendCommand {
     }
 }
 
-/// A PR whose round waits for usage to reset or for quiet hours. Written to `tend/queue.json` for the app.
-struct TendQueueItem: Codable, Equatable {
-    var slug: String
-    var n: Int
-    var cls: WorkClass
-    var until: Date?
-    var reason: String
-
-    enum CodingKeys: String, CodingKey { case slug, n, cls = "class", until, reason }
-}
-
 /// What a fix session writes to `result.json` in its scratch folder.
 struct TendResult: Decodable, Equatable {
     var action: String
@@ -323,7 +312,7 @@ final class Tender {
         }
         let lock: RunLock?
         do {
-            lock = try RunLock.acquire(paths.stateDir + "/tend.lock")
+            lock = try RunLock.acquire(paths.tendLockFile)
         } catch {
             eprint("\(error)")
             return 1
@@ -332,6 +321,10 @@ final class Tender {
             print("another tend check is running")
             return 0
         }
+        // A group of its own, so Stop can signal this check and the sessions it starts together.
+        _ = setpgid(0, 0)
+        try? "\(getpid())".write(toFile: paths.tendPidFile, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(atPath: paths.tendPidFile) }
         return withExtendedLifetime(lock) { run(now, tended) }
     }
 
@@ -1367,7 +1360,7 @@ final class Tender {
 
     /// `tend land`: merges one PR now, when it is ready. A PR that is not says the first gate it has not met.
     func landNow(_ repo: RepoConfig, _ n: Int) throws {
-        let lock = try RunLock.acquire(paths.stateDir + "/tend.lock", wait: true)
+        let lock = try RunLock.acquire(paths.tendLockFile, wait: true)
         try withExtendedLifetime(lock) {
             me = try login()
             seedLandable()
@@ -1470,7 +1463,7 @@ final class Tender {
 
     /// `tend revert`: opens the revert PR of a landed PR that broke main, and nothing else.
     func revertNow(_ repo: RepoConfig, _ n: Int) throws {
-        let lock = try RunLock.acquire(paths.stateDir + "/tend.lock", wait: true)
+        let lock = try RunLock.acquire(paths.tendLockFile, wait: true)
         try withExtendedLifetime(lock) {
             var records = store.loadLanded()
             guard let i = records.firstIndex(where: { $0.slug == repo.slug && $0.n == n && $0.status == "broke" && $0.revert == nil })

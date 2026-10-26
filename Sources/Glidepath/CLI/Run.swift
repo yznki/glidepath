@@ -497,6 +497,7 @@ final class Runner {
         do {
             let kind = selfReview ? "self-review" : (target == nil ? nil : "review")
             var fresh = RunState.new(id: id, now: now, kind: kind, target: target?.runTarget)
+            if dryRun { fresh.dryRun = true }
             if target != nil, !dryRun, let previous = try? store.loadCurrent() {
                 fresh.carryRows(from: previous)
             }

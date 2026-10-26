@@ -86,6 +86,11 @@ struct RunState: Codable, Equatable {
     var tendThreads: [ThreadVerdict]? = nil
     /// For a tend run that held a council sitting: one record per sitting. Optional so older run files decode.
     var council: [CouncilRecord]? = nil
+    /// True for a dry run, which posts nothing. Nil for other runs and for files from before 2.0.
+    var dryRun: Bool? = nil
+
+    /// A run a tend check wrote: one round, landing or tidy on the user's PRs.
+    var isTend: Bool { kind == "tend" }
 
     static func new(id: String, now: Date, kind: String? = nil, target: String? = nil) -> RunState {
         RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil, kind: kind, target: target)
