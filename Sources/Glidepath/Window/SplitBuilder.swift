@@ -161,7 +161,7 @@ struct SplitBuilderCard: View {
     /// Build is a hold, as the Needs rows' pushes are. Off while the plan is invalid or a command runs.
     private var buildButton: some View {
         let disabled = model.problem != nil || store.tendBusy.contains(model.id)
-        return HoldButton(title: "Hold to build stack", doneTitle: "Building…", tint: signal, compact: true) {
+        return GothamHoldButton(title: "Hold to build stack", doneTitle: "Building…", tint: signal, compact: true) {
             model.build(store: store)
         }
         // A failed build or save gives the hold a new identity, so it starts again.

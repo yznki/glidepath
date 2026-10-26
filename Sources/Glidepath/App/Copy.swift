@@ -21,6 +21,7 @@ enum Copy {
     static let pause = "Pause"
     static let resume = "Resume"
     static let stop = "Stop"
+    static let undo = "Undo"
     static let open = "Open"
     static let quietHours = "Quiet hours"
     static let learned = "Learned"

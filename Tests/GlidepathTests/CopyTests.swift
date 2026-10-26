@@ -74,8 +74,10 @@ final class CopyTests: XCTestCase {
     static let cut = ["approach", "plane", "marker", "gate", "runway", "tower", "lane", "in the air", "flight recorder",
                       "round", "try", "council", "sweep", "landed", "briefing", "playbook", "tend", "hands-off"]
 
-    /// The files whose string literals must be clean. Phase 1 covers the new model and Copy; later phases add the UI.
+    /// The files whose string literals must be clean: the new model, Copy, and every file in these folders.
+    /// Later phases add their folders.
     static let files = ["Core/NeedsYou.swift", "Core/Status.swift", "App/Copy.swift"]
+    static let folders = ["Kit"]
 
     static func hits(in literal: String) -> [String] {
         let text = literal.replacingOccurrences(of: "Try again", with: "", options: .caseInsensitive)
@@ -100,7 +102,13 @@ final class CopyTests: XCTestCase {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/Glidepath")
         let literal = try NSRegularExpression(pattern: #""((?:[^"\\]|\\.)*)""#)
-        for file in Self.files {
+        var files = Self.files
+        for folder in Self.folders {
+            let names = try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(folder).path)
+            XCTAssertFalse(names.isEmpty, folder)
+            files += names.filter { $0.hasSuffix(".swift") }.sorted().map { "\(folder)/\($0)" }
+        }
+        for file in files {
             let text = try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
             for (i, line) in text.components(separatedBy: "\n").enumerated() {
                 if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") { continue }

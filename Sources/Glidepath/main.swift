@@ -22,6 +22,9 @@ if argv.isEmpty || argv == ["app"] {
     }
     withExtendedLifetime(lock) { GlidepathApp.main() }
 }
+if argv.first == "--kit-gallery" {
+    MainActor.assumeIsolated { KitGallery.run(argv.dropFirst().first) }
+}
 if argv.first == "--snapshot" || argv.first == "--hero-gif" {
     GlidepathApp.main()
 }

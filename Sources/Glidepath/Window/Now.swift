@@ -262,7 +262,7 @@ struct NowView: View {
                     .padding(.horizontal, 10)
                     .frame(height: 44)
                     .disabled(store.snap.running)
-                HoldButton(title: "Hold to post", doneTitle: "Posting…", tint: tint) {
+                GothamHoldButton(title: "Hold to post", doneTitle: "Posting…", tint: tint) {
                     store.postDraft(strip)
                 }
                 .id(strip.id)

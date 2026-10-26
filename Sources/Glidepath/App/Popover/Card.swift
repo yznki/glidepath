@@ -246,9 +246,9 @@ struct StackCard: View {
     @ViewBuilder
     private var actions: some View {
         if held {
-            // HoldButton ignores the environment's disabled state, so a running sweep is shown and blocked here.
+            // GothamHoldButton ignores the environment's disabled state, so a running sweep is shown and blocked here.
             HStack(spacing: 8) {
-                HoldButton(title: "Hold to post", doneTitle: "Posted",
+                GothamHoldButton(title: "Hold to post", doneTitle: "Posted",
                            tint: strip.verdict == .changes ? signal : Gotham.approve) {
                     store.postDraft(strip)
                 }
