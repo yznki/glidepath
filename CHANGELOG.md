@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.0
+
+- Split big PRs: when one of your PRs goes over `split_over_lines`, Glidepath proposes splitting it into 2 to 6 parts by file (planned by Opus, read-only). You can also click Split… in the PR's drawer.
+- The Split builder lets you move files between parts and rename them, then Hold to build stack or Keep as one.
+- Building creates a branch per part, runs your playbook's verified commands on each part in the sandbox, then opens the parts as a stacked set of PRs with a stack table. The original PR becomes a draft with a link to the stack; it is never closed.
+- With autopilot, a PR with no reviews yet can be split automatically after the council agrees, and only when the playbook has verified commands.
+
 ## 1.9.0
 
 - Self-review: when one of your PRs is opened or marked ready, Glidepath reviews it first with the usual review pipeline and posts nothing. Verified findings are fixed in the next round. Switch it in Settings → Tending.
