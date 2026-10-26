@@ -20,12 +20,28 @@ enum Describe {
         return out + close
     }
 
-    /// The body with the block in place of the marked span. Without a marked span, the block goes at the end.
-    static func rewrite(_ body: String?, block: String) -> String {
+    /// The body with the block in place of the marked span. No markers: the block goes at the end. Exactly one open
+    /// marker followed by exactly one close marker: the span between them is replaced. Anything else (a lone marker,
+    /// repeated markers, a close before its open) is nil, and the caller leaves the body alone.
+    static func rewrite(_ body: String?, block: String) -> String? {
         let text = body ?? ""
-        if let start = text.range(of: open), let end = text.range(of: close, range: start.upperBound..<text.endIndex) {
-            return String(text[..<start.lowerBound]) + block + String(text[end.upperBound...])
+        let opens = occurrences(of: open, in: text)
+        let closes = occurrences(of: close, in: text)
+        if opens.isEmpty && closes.isEmpty {
+            return text.isEmpty ? block : text + "\n\n" + block
         }
-        return text.isEmpty ? block : text + "\n\n" + block
+        guard opens.count == 1, closes.count == 1, let start = opens.first, let end = closes.first,
+              start.upperBound <= end.lowerBound else { return nil }
+        return String(text[..<start.lowerBound]) + block + String(text[end.upperBound...])
+    }
+
+    private static func occurrences(of marker: String, in text: String) -> [Range<String.Index>] {
+        var found: [Range<String.Index>] = []
+        var from = text.startIndex
+        while let r = text.range(of: marker, range: from..<text.endIndex) {
+            found.append(r)
+            from = r.upperBound
+        }
+        return found
     }
 }

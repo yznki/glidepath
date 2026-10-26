@@ -11,8 +11,10 @@ enum Transcript {
 
     /// The folder Claude keeps a clone's session transcripts in. `claudeDir` is the config folder a session ran with
     /// (`CLAUDE_CONFIG_DIR`); nil means the user's own `~/.claude`.
+    /// The cwd is resolved first: Claude names the folder by the real path, so /tmp (a link to /private/tmp) encodes as the target.
     static func projectDir(paths: Paths, cwd: String, claudeDir: String? = nil) -> String {
-        let encoded = String(cwd.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" })
+        let real = URL(fileURLWithPath: cwd).resolvingSymlinksInPath().path
+        let encoded = String(real.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" })
         return (claudeDir.map { $0 + "/projects" } ?? paths.claudeProjectsDir) + "/" + encoded
     }
 

@@ -36,4 +36,15 @@ final class TranscriptTests: XCTestCase {
         XCTAssertEqual(Transcript.projectDir(paths: paths, cwd: "/fake/home/dev.x/clone"),
                        "/fake/home/.claude/projects/-fake-home-dev-x-clone")
     }
+
+    func testProjectDirFollowsSymlinkedCwd() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("gp-link-" + UUID().uuidString).path
+        defer { try? fm.removeItem(atPath: root) }
+        try fm.createDirectory(atPath: root + "/real", withIntermediateDirectories: true)
+        try fm.createSymbolicLink(atPath: root + "/link", withDestinationPath: root + "/real")
+        let paths = Paths(home: "/fake/home")
+        XCTAssertEqual(Transcript.projectDir(paths: paths, cwd: root + "/link"),
+                       Transcript.projectDir(paths: paths, cwd: root + "/real"))
+    }
 }
