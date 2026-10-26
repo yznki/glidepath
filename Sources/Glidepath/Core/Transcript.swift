@@ -13,9 +13,16 @@ enum Transcript {
     /// (`CLAUDE_CONFIG_DIR`); nil means the user's own `~/.claude`.
     /// The cwd is resolved first: Claude names the folder by the real path, so /tmp (a link to /private/tmp) encodes as the target.
     static func projectDir(paths: Paths, cwd: String, claudeDir: String? = nil) -> String {
-        let real = URL(fileURLWithPath: cwd).resolvingSymlinksInPath().path
+        let real = realPath(cwd)
         let encoded = String(real.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" })
         return (claudeDir.map { $0 + "/projects" } ?? paths.claudeProjectsDir) + "/" + encoded
+    }
+
+    /// Darwin realpath. Foundation's symlink resolution strips a leading /private again, so /tmp stays /tmp.
+    static func realPath(_ path: String) -> String {
+        guard let resolved = realpath(path, nil) else { return path }
+        defer { free(resolved) }
+        return String(cString: resolved)
     }
 
     /// Sums usage over distinct assistant messages. A streamed message is written as several lines

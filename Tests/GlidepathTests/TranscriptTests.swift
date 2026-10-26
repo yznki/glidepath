@@ -37,6 +37,24 @@ final class TranscriptTests: XCTestCase {
                        "/fake/home/.claude/projects/-fake-home-dev-x-clone")
     }
 
+    func testProjectDirResolvesTmpToPrivate() {
+        let paths = Paths(home: "/fake/home")
+        let dir = Transcript.projectDir(paths: paths, cwd: "/tmp")
+        print("PROJECT_DIR /tmp -> \(dir)")
+        XCTAssertTrue(dir.contains("-private-tmp"), dir)
+
+        let fm = FileManager.default
+        let name = "gp-enc-" + UUID().uuidString
+        let fresh = "/tmp/" + name + "/clone"
+        defer { try? fm.removeItem(atPath: "/tmp/" + name) }
+        try? fm.createDirectory(atPath: fresh, withIntermediateDirectories: true)
+        let encoded = Transcript.projectDir(paths: paths, cwd: fresh).components(separatedBy: "/").last ?? ""
+        XCTAssertEqual(encoded, "-private-tmp-" + name + "-clone")
+
+        let live = Transcript.projectDir(paths: paths, cwd: "/tmp/gp-live/clone").components(separatedBy: "/").last ?? ""
+        print("LIVE_ENCODING /tmp/gp-live/clone -> \(live)")
+    }
+
     func testProjectDirFollowsSymlinkedCwd() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent("gp-link-" + UUID().uuidString).path
