@@ -140,6 +140,22 @@ final class NeedsYouTests: XCTestCase {
         XCTAssertFalse(try need(NeedsYou.derive(snap), "acme/web#11/size").outward)
     }
 
+    /// A call item whose call is gone from disk (answered, or the snapshot is stale) still reads as a question, with the
+    /// item's own detail as the reason: never a blank one.
+    func testCallWithNoCallDataIsNeverBlank() {
+        var snap = Snapshot()
+        snap.approach = ApproachSnapshot(updated: t0, planes: [], needs: [
+            NeedsItem(id: "acme/api#30/c9", slug: "acme/api", n: 30, title: "Asked", kind: "call", detail: "Reviewer asked about caching"),
+        ], queued: 0)
+        let need = NeedsYou.derive(snap)[0]
+        XCTAssertEqual(need.kind, .question(from: ""))
+        XCTAssertEqual(Copy.label(need.kind), "Needs your answer")
+        XCTAssertEqual(Copy.reason(need), "Reviewer asked about caching.")
+        let bare = Need(id: need.id, kind: need.kind, repo: need.repo, number: need.number, title: need.title, author: nil,
+                        reason: "", action: need.action, outward: need.outward, since: nil)
+        XCTAssertEqual(Copy.reason(bare), "A question on this PR waits on you.")
+    }
+
     func testEmptySnapshotNeedsNothing() {
         XCTAssertEqual(NeedsYou.derive(Snapshot()), [])
     }

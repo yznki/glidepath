@@ -126,7 +126,9 @@ enum Copy {
         switch need.kind {
         case .reviewReady(let verdict): return verdict == .changes ? "Asks for changes." : "Approves."
         case .fixReady: return need.reason.isEmpty ? "A fix for the failing check." : sentence(need.reason)
-        case .replyReady(let who), .question(let who): return "\(who): \u{201C}\(need.reason)\u{201D}"
+        case .replyReady(let who), .question(let who):
+            guard !who.isEmpty else { return need.reason.isEmpty ? "A question on this PR waits on you." : sentence(need.reason) }
+            return "\(who): \u{201C}\(need.reason)\u{201D}"
         case .readyToMerge: return "Approved, checks pass, no conflicts."
         case .mainBroke(let failing):
             guard !failing.isEmpty else { return "Main failed after it merged." }

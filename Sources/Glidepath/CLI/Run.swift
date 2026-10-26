@@ -165,10 +165,14 @@ enum RunCommand {
             eprint("\(error)")
             return 1
         }
-        // A group of its own, so Stop can signal this runner and the review sessions it starts together.
-        _ = setpgid(0, 0)
-        try? "\(getpid())".write(toFile: paths.pidFile, atomically: true, encoding: .utf8)
+        // Stop can end this runner and the review sessions it starts together.
+        Stop.register(pidFile: paths.pidFile)
         defer { try? FileManager.default.removeItem(atPath: paths.pidFile) }
+        // Read again under the lock: a pause made while this run was starting found nothing to stop.
+        if a.has("--scheduled") && Pause.isPaused(paths) {
+            print("paused; scheduled run skipped")
+            return 0
+        }
         let runner = Runner(paths: paths, config: config, dryRun: a.has("--dry-run") || config.dryRun)
         runner.scheduled = a.has("--scheduled")
         return withExtendedLifetime(lock) { runner.execute(repos: repos) }
@@ -383,9 +387,8 @@ enum ReviewCommand {
             eprint("\(error)")
             return 1
         }
-        // Same process group as a sweep, so Stop reaches the review session too.
-        _ = setpgid(0, 0)
-        try? "\(getpid())".write(toFile: paths.pidFile, atomically: true, encoding: .utf8)
+        // Stoppable like a sweep, so Stop reaches the review session too.
+        Stop.register(pidFile: paths.pidFile)
         defer { try? FileManager.default.removeItem(atPath: paths.pidFile) }
         let runner = Runner(paths: paths, config: config, dryRun: parsed.dryRun || config.dryRun)
         runner.target = target

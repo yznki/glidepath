@@ -527,23 +527,53 @@ final class Store: ObservableObject {
         sinceLastLooked = since.isEmpty ? nil : since
     }
 
-    /// Stops the running sweep: signals its process group, then records the run as finished. Reviews already
-    /// posted stay posted; the PRs not yet reviewed show "No result". A stopped run is not a failed run.
+    /// Stops the running sweep, then records the run as finished. Reviews already posted stay posted; the PRs not yet
+    /// reviewed show "No result". A stopped run is not a failed run.
     func stopRun() {
-        guard Stop.sweep(paths, run: sweepRunID) else {
+        guard !isFixture, Stop.signal(pidFile: paths.pidFile, lock: paths.lockFile) else {
             actionError = "no sweep to stop"
             return
         }
-        actionError = nil
-        reload()
+        settle(Stop.Signalled(sweep: true))
     }
 
     /// Stops everything running: a sweep or dry run, and a tend check with its round. Nothing more goes to GitHub from
     /// either; what was already posted stays. The next scheduled check starts as usual unless the user also pauses.
     func stopAll() {
         guard !isFixture else { return }
-        actionError = Stop.all(paths, run: sweepRunID) ? nil : "nothing to stop"
-        reload()
+        let signalled = Stop.signal(paths)
+        guard signalled.any else {
+            actionError = "nothing to stop"
+            reload()
+            return
+        }
+        settle(signalled)
+    }
+
+    static let stillStopping = "Still stopping: it finishes the merge or push it is in first"
+
+    /// Waits off the main thread, up to 5 s, for the stopped checks to end and tidies after them, then reloads. One still
+    /// finishing a merge or push is said so, and tidied once it ends.
+    private func settle(_ signalled: Stop.Signalled) {
+        let paths = paths
+        let run = sweepRunID
+        DispatchQueue.global().async { [weak self] in
+            let running = Stop.settle(paths, signalled, run: run, within: 5)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.actionError = running.any ? Store.stillStopping : nil
+                    self?.reload()
+                }
+            }
+            guard running.any else { return }
+            _ = Stop.settle(paths, running, run: run, within: 300)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    if self?.actionError == Store.stillStopping { self?.actionError = nil }
+                    self?.reload()
+                }
+            }
+        }
     }
 
     /// The run file a stop records as finished. A dry run is not the current run, so it is the dry run's own file.
@@ -641,16 +671,22 @@ final class Store: ObservableObject {
     /// Pause stops everything: what is running now, and every check (reviews and the user's PRs) until `until`, or
     /// until Resume when nil.
     func pause(until: Date?) {
+        let signalled: Stop.Signalled
         do {
-            try Pause.set(true, paths, until: until)
+            if isFixture {
+                try Pause.set(true, paths, until: until)
+                signalled = Stop.Signalled()
+            } else {
+                signalled = try Pause.pause(paths, until: until)
+            }
             actionError = nil
         } catch {
             actionError = "pause: \(error.localizedDescription)"
             reload()
             return
         }
-        if !isFixture { _ = Stop.all(paths, run: sweepRunID) }
         reload()
+        if signalled.any { settle(signalled) }
     }
 
     func resume() {

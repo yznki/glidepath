@@ -90,46 +90,131 @@ enum GitNexus {
     }
 }
 
-/// Pause is a marker file, so the launchd job and the menu bar app agree without talking to each other. Its lines are
-/// "paused <time>" and, for a timed pause, "until <time>".
-/// Stop: signals a running check's process group. A pid file counts only while its lock is held, so a pid left behind by a
-/// crash is never signalled.
+/// Stop ends a running check. A pid file counts only while its lock is held, and only when it names a glidepath process
+/// other than this one, so a pid left behind by a crash, or reused by the OS, is never signalled. Stop signals that one
+/// process; the check, on SIGTERM, ends its own process group (the sessions it started) unless it is inside a merge or a
+/// push, which it finishes first.
 enum Stop {
-    /// Sends SIGTERM to the process group named in `pidFile` while `lock` is held. True when it signalled.
-    static func signal(pidFile: String, lock: String) -> Bool {
+    /// Which checks were signalled.
+    struct Signalled: Equatable {
+        var sweep = false
+        var tend = false
+        var any: Bool { sweep || tend }
+    }
+
+    /// Sends SIGTERM to the process named in `pidFile` while `lock` is held, then removes the pid file. True when it
+    /// signalled. `isOurs` is for tests, which cannot start a binary named glidepath.
+    static func signal(pidFile: String, lock: String, isOurs: (pid_t) -> Bool = isGlidepath) -> Bool {
         guard RunLock.isHeld(lock), let text = try? String(contentsOfFile: pidFile, encoding: .utf8),
-              let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 else { return false }
-        return kill(-pid, SIGTERM) == 0
+              let pid = pid_t(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1, pid != getpid(),
+              isOurs(pid) else { return false }
+        let sent = kill(pid, SIGTERM) == 0
+        try? FileManager.default.removeItem(atPath: pidFile)
+        return sent
     }
 
-    /// Stops a running sweep or dry run, and records `run` (its run file) as finished: a stopped run is not a failed one.
-    static func sweep(_ paths: Paths, run: String?) -> Bool {
-        guard signal(pidFile: paths.pidFile, lock: paths.lockFile) else { return false }
-        if let run {
-            try? RunStore(paths: paths).mutate(run) { if $0.finished == nil { $0.finish(at: Date(), error: nil) } }
+    /// Whether `pid` runs a binary named glidepath.
+    static func isGlidepath(_ pid: pid_t) -> Bool {
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return false }
+        return (String(cString: buffer) as NSString).lastPathComponent == "glidepath"
+    }
+
+    /// Signals the running sweep or dry run, and the running tend check.
+    static func signal(_ paths: Paths, isOurs: (pid_t) -> Bool = isGlidepath) -> Signalled {
+        Signalled(sweep: signal(pidFile: paths.pidFile, lock: paths.lockFile, isOurs: isOurs),
+                  tend: signal(pidFile: paths.tendPidFile, lock: paths.tendLockFile, isOurs: isOurs))
+    }
+
+    /// Waits up to `within` seconds for the signalled checks to end, then tidies after each one that did: a stopped sweep's
+    /// run file (`run`) is recorded as finished, since a stopped run is not a failed one, and a stopped tend check's working
+    /// line is cleared from its snapshot. Returns the checks still running.
+    static func settle(_ paths: Paths, _ signalled: Signalled, run: String?, within: TimeInterval) -> Signalled {
+        let deadline = Date().addingTimeInterval(within)
+        func ended(_ lock: String) -> Bool {
+            while RunLock.isHeld(lock) {
+                guard Date() < deadline else { return false }
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            return true
         }
-        return true
-    }
-
-    /// Stops a running tend check and the round it is in, and clears the round's working line from the snapshot it wrote.
-    static func tend(_ paths: Paths) -> Bool {
-        guard signal(pidFile: paths.tendPidFile, lock: paths.tendLockFile) else { return false }
-        let store = TendStore(paths: paths)
-        if var approach = store.loadApproach(), approach.working != nil {
-            approach.working = nil
-            try? store.saveApproach(approach)
+        var running = Signalled()
+        if signalled.sweep {
+            if ended(paths.lockFile) {
+                if let run {
+                    try? RunStore(paths: paths).mutate(run) { if $0.finished == nil { $0.finish(at: Date(), error: nil) } }
+                }
+            } else {
+                running.sweep = true
+            }
         }
-        return true
+        if signalled.tend {
+            if ended(paths.tendLockFile) {
+                let store = TendStore(paths: paths)
+                if var approach = store.loadApproach(), approach.working != nil {
+                    approach.working = nil
+                    try? store.saveApproach(approach)
+                }
+            } else {
+                running.tend = true
+            }
+        }
+        return running
     }
 
-    /// Stops both. True when either was running.
-    static func all(_ paths: Paths, run: String?) -> Bool {
-        let sweep = sweep(paths, run: run)
-        let tend = tend(paths)
-        return sweep || tend
+    // MARK: In the check
+
+    /// [0] is how deep the check is in `finishing` sections; [1] is set when a stop came in during one. Raw memory, since
+    /// the signal handler reads it.
+    private static let flags: UnsafeMutablePointer<sig_atomic_t> = {
+        let p = UnsafeMutablePointer<sig_atomic_t>.allocate(capacity: 2)
+        p.initialize(repeating: 0, count: 2)
+        return p
+    }()
+    private static let depth = NSLock()
+
+    /// Called by a check right after it takes its lock. Any pid file there is stale, since the lock is this process's
+    /// now, so it is replaced. Away from a terminal (launchd, the app) the check leads a process group of its own, so a
+    /// stop ends the sessions it started too. Run by hand in a terminal it stays in the terminal's group, so Ctrl-C still
+    /// reaches it, and a stop ends only this process.
+    static func register(pidFile: String) {
+        try? FileManager.default.removeItem(atPath: pidFile)
+        if tcgetpgrp(STDIN_FILENO) != getpgrp(), setpgid(0, 0) != 0 {
+            eprint("could not start a process group (errno \(errno)); Stop ends only this process")
+        }
+        _ = flags
+        _ = Darwin.signal(SIGTERM) { _ in
+            if Stop.flags[0] > 0 { Stop.flags[1] = 1 } else { Stop.halt() }
+        }
+        try? "\(getpid())".write(toFile: pidFile, atomically: true, encoding: .utf8)
+    }
+
+    /// Runs `body` without being stopped part way: a SIGTERM that comes in during it takes effect when it returns. For a
+    /// merge or a push and the record of it, so a stop never leaves one done on GitHub and missing on disk.
+    static func finishing<T>(_ body: () throws -> T) rethrows -> T {
+        depth.lock()
+        flags[0] += 1
+        depth.unlock()
+        defer {
+            depth.lock()
+            flags[0] -= 1
+            let stop = flags[0] == 0 && flags[1] != 0
+            depth.unlock()
+            if stop { halt() }
+        }
+        return try body()
+    }
+
+    /// Ends this process, and its group when it leads one. Async-signal-safe.
+    private static func halt() -> Never {
+        _ = Darwin.signal(SIGTERM, SIG_DFL)
+        if getpgrp() == getpid() { kill(0, SIGTERM) }
+        _exit(143)
     }
 }
 
+/// Pause is a marker file, so the launchd job and the menu bar app agree without talking to each other. Its lines are
+/// "paused <time>" and, for a timed pause, "until <time>".
 enum Pause {
     /// True while the marker exists. A timed pause ends on its own: once `until` has passed, the marker is removed.
     static func isPaused(_ paths: Paths, now: Date = Date()) -> Bool {
@@ -164,6 +249,13 @@ enum Pause {
     /// Whether "Post nothing yet" pauses the schedule. Only a job this setup created is paused; an existing job keeps its state.
     static func pausesOnPostNothing(createdJob: Bool) -> Bool {
         createdJob
+    }
+
+    /// Pauses, optionally until `until`, and signals what runs now. A check that is just starting reads the marker again
+    /// once it holds its lock, so it stops itself.
+    static func pause(_ paths: Paths, until: Date? = nil, isOurs: (pid_t) -> Bool = Stop.isGlidepath) throws -> Stop.Signalled {
+        try set(true, paths, until: until)
+        return Stop.signal(paths, isOurs: isOurs)
     }
 
     /// Pauses, optionally until `until`, or resumes. Resuming removes the marker.

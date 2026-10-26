@@ -163,13 +163,15 @@ final class StatusTests: XCTestCase {
 
     // MARK: Stop
 
-    /// Starts `sleep` in a process group of its own, as `glidepath run` and `glidepath tend` put themselves.
-    private func spawnGroupLeader() throws -> pid_t {
+    /// Starts `sleep`, in a process group of its own when `leader`, as `glidepath run` and `glidepath tend` put themselves.
+    private func spawnSleep(leader: Bool = true) throws -> pid_t {
         var attr: posix_spawnattr_t?
         posix_spawnattr_init(&attr)
         defer { posix_spawnattr_destroy(&attr) }
-        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETPGROUP))
-        posix_spawnattr_setpgroup(&attr, 0)
+        if leader {
+            posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETPGROUP))
+            posix_spawnattr_setpgroup(&attr, 0)
+        }
         var pid: pid_t = 0
         let argv: [UnsafeMutablePointer<CChar>?] = [strdup("/bin/sleep"), strdup("30"), nil]
         defer { argv.forEach { free($0) } }
@@ -185,41 +187,116 @@ final class StatusTests: XCTestCase {
         return sig == 0 ? nil : sig
     }
 
-    func testStopAllStopsTheSweepAndTheTendRound() throws {
+    private func kill9(_ pid: pid_t) {
+        kill(pid, SIGKILL)
+        _ = endSignal(pid)
+    }
+
+    private func tempPaths() throws -> Paths {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("gp-stop-\(UUID().uuidString)").path
-        defer { try? FileManager.default.removeItem(atPath: home) }
+        addTeardownBlock { try? FileManager.default.removeItem(atPath: home) }
         let paths = Paths(home: home, env: [:])
         try FileManager.default.createDirectory(atPath: paths.runsDir, withIntermediateDirectories: true)
+        return paths
+    }
 
-        let sweepPid = try spawnGroupLeader()
-        let tendPid = try spawnGroupLeader()
-        let sweepLock = try XCTUnwrap(try RunLock.acquire(paths.lockFile))
-        let tendLock = try XCTUnwrap(try RunLock.acquire(paths.tendLockFile))
+    /// A test cannot start a binary named glidepath, so `sleep` stands in for one.
+    private let anySleep: (pid_t) -> Bool = { _ in true }
+
+    func testStopSignalsTheSweepAndTheTendRoundThenTidies() throws {
+        let paths = try tempPaths()
+        let sweepPid = try spawnSleep()
+        let tendPid = try spawnSleep()
+        var locks = [try XCTUnwrap(try RunLock.acquire(paths.lockFile)), try XCTUnwrap(try RunLock.acquire(paths.tendLockFile))]
         try "\(sweepPid)".write(toFile: paths.pidFile, atomically: true, encoding: .utf8)
         try "\(tendPid)".write(toFile: paths.tendPidFile, atomically: true, encoding: .utf8)
         try RunStore(paths: paths).save(RunState.new(id: "live", now: t0))
         let tend = TendStore(paths: paths)
         try tend.saveApproach(ApproachSnapshot(updated: t0, planes: [], needs: [], queued: 0, working: "Fixing lint on #4"))
 
-        XCTAssertTrue(Stop.all(paths, run: "live"))
+        let signalled = Stop.signal(paths, isOurs: anySleep)
+        XCTAssertEqual(signalled, Stop.Signalled(sweep: true, tend: true))
         XCTAssertEqual(endSignal(sweepPid), SIGTERM)
         XCTAssertEqual(endSignal(tendPid), SIGTERM)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.pidFile), "a signalled pid is never read again")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: paths.tendPidFile))
+
+        // Still held: settle waits, then says what still runs, and tidies nothing.
+        XCTAssertEqual(Stop.settle(paths, signalled, run: "live", within: 0.2), signalled)
+        XCTAssertNil(try RunStore(paths: paths).load("live").finished)
+        XCTAssertNotNil(tend.loadApproach()?.working)
+
+        locks.removeAll()
+        XCTAssertEqual(Stop.settle(paths, signalled, run: "live", within: 0.2), Stop.Signalled())
         XCTAssertNotNil(try RunStore(paths: paths).load("live").finished, "a stopped run is recorded as finished")
         XCTAssertNil(tend.loadApproach()?.working, "the round's working line goes")
-        withExtendedLifetime((sweepLock, tendLock)) {}
     }
 
     func testStopNeverSignalsAPidWhoseLockIsFree() throws {
-        let home = FileManager.default.temporaryDirectory.appendingPathComponent("gp-stop-\(UUID().uuidString)").path
-        defer { try? FileManager.default.removeItem(atPath: home) }
-        let paths = Paths(home: home, env: [:])
-        try FileManager.default.createDirectory(atPath: paths.stateDir, withIntermediateDirectories: true)
-        let pid = try spawnGroupLeader()
+        let paths = try tempPaths()
+        let pid = try spawnSleep()
+        defer { kill9(pid) }
         try "\(pid)".write(toFile: paths.tendPidFile, atomically: true, encoding: .utf8)
 
-        XCTAssertFalse(Stop.all(paths, run: nil), "a pid left by a crash is not a running check")
+        XCTAssertFalse(Stop.signal(paths, isOurs: anySleep).any, "a pid left by a crash is not a running check")
         XCTAssertEqual(kill(pid, 0), 0, "the process was not signalled")
-        kill(pid, SIGKILL)
-        _ = endSignal(pid)
+    }
+
+    func testStopNeverSignalsAPidReusedByAnotherProgram() throws {
+        let paths = try tempPaths()
+        let lock = try XCTUnwrap(try RunLock.acquire(paths.tendLockFile))
+        defer { withExtendedLifetime(lock) {} }
+        // A stale pid the OS gave to another program: not a glidepath binary, whether or not it leads a group.
+        for leader in [true, false] {
+            let pid = try spawnSleep(leader: leader)
+            defer { kill9(pid) }
+            try "\(pid)".write(toFile: paths.tendPidFile, atomically: true, encoding: .utf8)
+            XCTAssertFalse(Stop.isGlidepath(pid))
+            XCTAssertFalse(Stop.signal(paths).any)
+            XCTAssertEqual(kill(pid, 0), 0, "the process was not signalled")
+        }
+        // A pid that no longer exists.
+        let gone = try spawnSleep()
+        kill9(gone)
+        try "\(gone)".write(toFile: paths.tendPidFile, atomically: true, encoding: .utf8)
+        XCTAssertFalse(Stop.signal(paths, isOurs: anySleep).any)
+    }
+
+    func testStopNeverSignalsItselfOrItsOwnGroup() throws {
+        let paths = try tempPaths()
+        let lock = try XCTUnwrap(try RunLock.acquire(paths.tendLockFile))
+        defer { withExtendedLifetime(lock) {} }
+        for pid in [getpid(), 1, 0, -getpgrp()] {
+            try "\(pid)".write(toFile: paths.tendPidFile, atomically: true, encoding: .utf8)
+            XCTAssertFalse(Stop.signal(paths, isOurs: anySleep).any, "pid \(pid)")
+        }
+        // A process in this test's own group is signalled alone, never with the group.
+        let member = try spawnSleep(leader: false)
+        try "\(member)".write(toFile: paths.tendPidFile, atomically: true, encoding: .utf8)
+        XCTAssertTrue(Stop.signal(paths, isOurs: anySleep).tend)
+        XCTAssertEqual(endSignal(member), SIGTERM, "and this test is still running")
+    }
+
+    func testPauseMarksPausedAndStopsWhatRuns() throws {
+        let paths = try tempPaths()
+        let pid = try spawnSleep()
+        var lock = try RunLock.acquire(paths.tendLockFile)
+        XCTAssertNotNil(lock)
+        try "\(pid)".write(toFile: paths.tendPidFile, atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(try Pause.pause(paths, isOurs: anySleep), Stop.Signalled(tend: true))
+        XCTAssertTrue(Pause.isPaused(paths), "the marker is written first, so a check starting now skips itself")
+        XCTAssertEqual(endSignal(pid), SIGTERM)
+        lock = nil
+        XCTAssertEqual(try Pause.pause(paths, isOurs: anySleep), Stop.Signalled(), "nothing left to stop")
+    }
+
+    func testIsHeldDoesNotMakeAStartingCheckSkip() throws {
+        let paths = try tempPaths()
+        let probe = open(paths.tendLockFile, O_CREAT | O_RDONLY, 0o644)
+        XCTAssertEqual(flock(probe, LOCK_SH | LOCK_NB), 0)
+        // An isHeld probe's brief hold, released 50 ms in.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { flock(probe, LOCK_UN); close(probe) }
+        XCTAssertNotNil(try RunLock.acquire(paths.tendLockFile))
     }
 }

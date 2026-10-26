@@ -96,7 +96,8 @@ enum NeedsYou {
             if call?.draft != nil {
                 return make(.replyReady(to: who), .reply, outward: true, reason: call?.quote ?? "", since: call?.at)
             }
-            return make(.question(from: who), .reply, outward: true, reason: call?.quote ?? "", since: call?.at)
+            // A call no longer on file still needs the user: the item's own detail says why.
+            return make(.question(from: who), .reply, outward: true, reason: call?.quote ?? item.detail, since: call?.at)
         case "land":
             return make(.readyToMerge, .merge, outward: true)
         case "revert":
