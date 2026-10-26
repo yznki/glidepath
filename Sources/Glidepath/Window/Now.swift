@@ -29,7 +29,7 @@ struct NowView: View {
     /// Tend's held fixes and stuck PRs, the same items the Approach section lists.
     private var tendNeeds: [NeedsItem] { snap.approach?.needs ?? [] }
 
-    private var needsCount: Int { held.count + tooLarge.count + tendNeeds.count }
+    private var needsCount: Int { store.needsCount }
 
     /// True when the newest run finished with no error and no stopped PR: then the all-clear line can promise that
     /// every open PR is reviewed.

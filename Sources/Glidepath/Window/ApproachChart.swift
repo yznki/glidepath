@@ -83,10 +83,6 @@ enum ApproachGeometry {
     }
 }
 
-extension ApproachPlane: Identifiable {
-    var id: String { "\(slug)#\(n)" }
-}
-
 /// Maps the 1000 x 330 model space to a canvas. The full chart keeps the model's aspect ratio. The compact chart (the
 /// popover's) squeezes the same layout into its frame, with no labels.
 struct ApproachFrame {

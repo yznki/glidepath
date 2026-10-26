@@ -205,19 +205,11 @@ struct MenuBarLabel: View {
     @StateObject private var ticker = SweepTicker()
     @AppStorage("glyphStyle") private var style = GlyphStyle.glider.rawValue
     @AppStorage("glyphBadge") private var badgeOn = true
-    @AppStorage("signalColour") private var signalKey = "amber"
 
     var body: some View {
-        // The badge marks an update, or held reviews waiting for the user (when the badge setting is on).
-        let badge = store.availableUpdate != nil || (badgeOn && store.draftCount > 0)
-        // A small amber dot while a tended PR holds for the user: a fix held, or a PR stuck.
-        let holding = store.snap.approach?.planes.contains { $0.phase == .holding } ?? false
+        // The badge marks an update, or anything that needs the user (when the badge setting is on).
+        let badge = store.availableUpdate != nil || (badgeOn && store.needsCount > 0)
         Image(nsImage: image(store.glyph, badge: badge))
-            .overlay(alignment: .topTrailing) {
-                if holding {
-                    Circle().fill(Gotham.signal(signalKey)).frame(width: 4, height: 4)
-                }
-            }
             .onAppear { ticker.setRunning(store.snap.running || store.snap.dryRunning) }
             .onChange(of: store.snap.running || store.snap.dryRunning) { _, busy in ticker.setRunning(busy) }
     }
@@ -229,7 +221,7 @@ struct MenuBarLabel: View {
         case .dot:
             return MenuGlyph.dotImage(glyph, progress: ticker.progress, ink: .black, template: true, badge: badge)
         case .count:
-            return MenuGlyph.countImage(store.draftCount, ink: .black, template: true, badge: badge)
+            return MenuGlyph.countImage(store.needsCount, ink: .black, template: true, badge: badge)
         }
     }
 }

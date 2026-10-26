@@ -48,6 +48,8 @@ struct Snapshot {
     var dryRun: RunState?
     var paused = false
     var pausedSince: Date?
+    /// When a timed pause ends. Nil for an open-ended pause.
+    var pausedUntil: Date?
     var jobInstalled = true
     var nextRun: Date?
     /// Snapshot rendering only: the clock the window reads for "in 2 h 41 min", in place of Date().
@@ -100,4 +102,21 @@ struct Snapshot {
     var splits: [String: SplitPlan] = [:]
     /// Snapshot rendering only: whether a Linear key is saved, in place of reading the Keychain. Nil in the live app.
     var linearKey: Bool?
+    /// A tend check holds its lock: a round on one of the user's PRs may be running.
+    var tendRunning = false
+    /// What the last tend check left waiting for usage or quiet hours, from `tend/queue.json`.
+    var queue: [TendQueueItem] = []
+    /// The Claude usage against the reserve, from `usage.json`. Nil when no window is live.
+    var usage: UsageReading?
+}
+
+/// The tool checks setup and Settings show. The checks themselves run from the CLI (`Checks.tools`).
+enum Checks {
+    struct Item {
+        let name: String
+        let ok: Bool
+        let fix: String
+        /// The command "Fix all in Terminal" runs. Nil when no single command fixes it.
+        var command: String? = nil
+    }
 }

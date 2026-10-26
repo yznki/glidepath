@@ -37,6 +37,9 @@ struct Paths {
     var lockFile: String { stateDir + "/run.lock" }
     /// The running sweep's process id, which is also its process group: Stop signals the whole group.
     var pidFile: String { stateDir + "/run.pid" }
+    /// The tend check's lock, and its process id while it runs (also its process group, so Stop signals its sessions too).
+    var tendLockFile: String { stateDir + "/tend.lock" }
+    var tendPidFile: String { stateDir + "/tend.pid" }
     var scratchDir: String { stateDir + "/scratch" }
     var skillDir: String { home + "/.claude/skills/glidepath" }
     var appsDir: String { home + "/Applications" }

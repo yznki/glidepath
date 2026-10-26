@@ -89,6 +89,27 @@ struct UsageState: Codable, Equatable {
     private static func file(_ paths: Paths) -> String { paths.stateDir + "/usage.json" }
 }
 
+/// How much of the Claude usage is spent now, against the share kept for the user. Read from the busiest live window.
+struct UsageReading: Equatable {
+    /// 0 to 100.
+    var used: Int
+    /// The percent `tend.usage_reserve` keeps for the user.
+    var reserve: Int
+    var resetsAt: Date?
+
+    /// Past this, tend holds its work back for the reset.
+    var overReserve: Bool { used >= 100 - reserve }
+}
+
+extension UsageState {
+    /// The busiest live window against `reserve`. Nil when no window is live.
+    func reading(reserve: Int, now: Date) -> UsageReading? {
+        guard let w = windows.values.filter({ UsageGuard.isLive($0, now: now) }).max(by: { $0.utilization < $1.utilization })
+        else { return nil }
+        return UsageReading(used: Int((w.utilization * 100).rounded()), reserve: reserve, resetsAt: w.resetsAt)
+    }
+}
+
 enum WorkClass: String, Codable, Equatable { case urgent, normal, deferred }
 
 enum SpendDecision: Equatable {
@@ -99,6 +120,9 @@ enum SpendDecision: Equatable {
 
 /// Decides whether tend may spend Claude usage now, from the rate-limit windows Claude reported.
 enum UsageGuard {
+    /// The reason deferred work gives while it waits for quiet hours. The app tells this wait from a usage wait by it.
+    static let quietReason = "Waiting for quiet hours"
+
     /// The rate-limit windows in a stream-json transcript: each `rate_limit_event` line, seen at `now`.
     static func events(stream: String, now: Date) -> [UsageWindow] {
         stream.components(separatedBy: "\n").flatMap { line -> [UsageWindow] in
@@ -135,7 +159,7 @@ enum UsageGuard {
     static func decide(_ cls: WorkClass, _ usage: UsageState, reserve: Int, quiet: QuietHours, now: Date,
                        calendar: Calendar = .current) -> SpendDecision {
         if cls == .deferred && !quiet.contains(now, calendar: calendar) {
-            return .wait(until: quiet.nextStart(after: now, calendar: calendar), reason: "Waiting for quiet hours")
+            return .wait(until: quiet.nextStart(after: now, calendar: calendar), reason: quietReason)
         }
         let over = usage.windows.values.filter { isLive($0, now: now) && $0.utilization * 100 >= Double(100 - reserve) }
         guard !over.isEmpty else { return .now }
@@ -146,7 +170,7 @@ enum UsageGuard {
     }
 
     /// A window is live until its reset. One with no reset time is live for its length after it was seen.
-    private static func isLive(_ w: UsageWindow, now: Date) -> Bool {
+    static func isLive(_ w: UsageWindow, now: Date) -> Bool {
         if let resets = w.resetsAt { return resets > now }
         let length: TimeInterval = w.type == "seven_day" ? 7 * 86_400 : 5 * 3_600
         return now.timeIntervalSince(w.seen) < length

@@ -85,7 +85,7 @@ struct Sidebar: View {
 
     private func navRow(_ section: WindowSection) -> some View {
         let on = router.section == section
-        let count = section == .now ? store.waitingCount : 0
+        let count = section == .now ? store.needsCount : 0
         let inAir = store.snap.approach?.planes.filter { $0.phase != .landed }.count ?? 0
         return Button {
             router.section = section

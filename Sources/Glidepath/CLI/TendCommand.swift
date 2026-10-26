@@ -208,17 +208,6 @@ enum TendCommand {
     }
 }
 
-/// A PR whose round waits for usage to reset or for quiet hours. Written to `tend/queue.json` for the app.
-struct TendQueueItem: Codable, Equatable {
-    var slug: String
-    var n: Int
-    var cls: WorkClass
-    var until: Date?
-    var reason: String
-
-    enum CodingKeys: String, CodingKey { case slug, n, cls = "class", until, reason }
-}
-
 /// What a fix session writes to `result.json` in its scratch folder.
 struct TendResult: Decodable, Equatable {
     var action: String
@@ -323,13 +312,21 @@ final class Tender {
         }
         let lock: RunLock?
         do {
-            lock = try RunLock.acquire(paths.stateDir + "/tend.lock")
+            lock = try RunLock.acquire(paths.tendLockFile)
         } catch {
             eprint("\(error)")
             return 1
         }
         guard let lock else {
             print("another tend check is running")
+            return 0
+        }
+        // Stop can end this check and the sessions it starts together.
+        Stop.register(pidFile: paths.tendPidFile)
+        defer { try? FileManager.default.removeItem(atPath: paths.tendPidFile) }
+        // Read again under the lock: a pause made while this check was starting found nothing to stop.
+        if Pause.isPaused(paths) {
+            print("paused; tend check skipped")
             return 0
         }
         return withExtendedLifetime(lock) { run(now, tended) }
@@ -690,7 +687,12 @@ final class Tender {
 
     /// Pushes HEAD to the PR's branch. Never forces: a rejected push is rebased once onto the branch and pushed again,
     /// unless `rebase` is false, when it throws. Returns the new head.
+    /// A stop that comes in during a push waits until it is done.
     private func pushBranch(_ repo: RepoConfig, branch: String, wt: String, rebase: Bool = true) throws -> String {
+        try Stop.finishing { try pushing(repo, branch: branch, wt: wt, rebase: rebase) }
+    }
+
+    private func pushing(_ repo: RepoConfig, branch: String, wt: String, rebase: Bool) throws -> String {
         let refspec = "HEAD:refs/heads/\(branch)"
         let auth = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"]
         if git(["-C", wt] + auth + ["push", RepoClone.cloneURL(repo.slug), refspec]).ok {
@@ -1276,7 +1278,12 @@ final class Tender {
     /// Merges a ready PR. Once GitHub reads it as merged, then: its children retargeted to the default branch; its branch
     /// deleted, unless kept; its state forgotten; and the merge recorded for the watch. A failed merge leaves the PR stuck.
     /// A merge GitHub does not show as done (a merge queue) waits for the next check, and nothing else is done.
+    /// A stop that comes in during a landing waits until it is done.
     private func land(_ repo: RepoConfig, _ pr: OpenPR, _ prs: [OpenPR], now: Date) -> LandResult {
+        Stop.finishing { landing(repo, pr, prs, now: now) }
+    }
+
+    private func landing(_ repo: RepoConfig, _ pr: OpenPR, _ prs: [OpenPR], now: Date) -> LandResult {
         let merge = Shell.run("gh", Tender.mergeArguments(slug: repo.slug, n: pr.n, method: repo.mergeMethod, head: pr.head),
                               env: env, timeout: 120)
         guard merge.ok else {
@@ -1288,6 +1295,11 @@ final class Tender {
             tower(repo.slug, pr.n, "queued to merge", amber: false, now: now)
             return .queued
         }
+        // Recorded before anything else, so main is watched even if what follows fails. The merge commit is filled in
+        // below, or by the next watch.
+        var records = store.loadLanded()
+        records.append(TendLanded(slug: repo.slug, n: pr.n, title: pr.title, sha: "", parent: "", at: now, status: "watching"))
+        try? store.saveLanded(records)
         var retargeted = true
         for child in Landing.children(of: pr, in: prs) {
             let r = Shell.run("gh", ["pr", "edit", String(child.n), "-R", repo.slug, "--base", pr.defaultBranch],
@@ -1306,20 +1318,29 @@ final class Tender {
         landable.remove("\(repo.slug)#\(pr.n)")
         forget(repo, pr.n)
 
-        let sha = Shell.run("gh", ["pr", "view", String(pr.n), "-R", repo.slug, "--json", "mergeCommit", "-q", ".mergeCommit.oid"],
-                            env: env, timeout: 120).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        let parent = sha.isEmpty ? "" : Shell.run("gh", ["api", "repos/\(repo.slug)/commits/\(sha)", "-q", ".parents[0].sha"],
-                                                  env: env, timeout: 120).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let (sha, parent) = mergeCommit(repo.slug, pr.n)
         // Without the merge commit main cannot be watched; the landing still shows for an hour.
         let watching = !sha.isEmpty && !parent.isEmpty
-        var records = store.loadLanded()
-        records.append(TendLanded(slug: repo.slug, n: pr.n, title: pr.title, sha: sha, parent: parent, at: now,
-                                  status: watching ? "watching" : "ok"))
-        try? store.saveLanded(records)
+        records = store.loadLanded()
+        if let i = records.lastIndex(where: { $0.slug == repo.slug && $0.n == pr.n && $0.sha.isEmpty }) {
+            records[i].sha = sha
+            records[i].parent = parent
+            records[i].status = watching ? "watching" : "ok"
+            try? store.saveLanded(records)
+        }
         tower(repo.slug, pr.n, watching ? "landed · \(sha.prefix(7))" : "landed · main not watched", amber: false, now: now)
         try? saveRun(Runner.makeID(now), now: now, repo: repo, pr: pr, summary: "Landed on \(pr.defaultBranch)",
                      action: "landed", check: nil, tokens: 0)
         return .landed
+    }
+
+    /// A merged PR's merge commit and the commit before it on the default branch. Empty when GitHub cannot say.
+    private func mergeCommit(_ slug: String, _ n: Int) -> (sha: String, parent: String) {
+        let sha = Shell.run("gh", ["pr", "view", String(n), "-R", slug, "--json", "mergeCommit", "-q", ".mergeCommit.oid"],
+                            env: env, timeout: 120).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parent = sha.isEmpty ? "" : Shell.run("gh", ["api", "repos/\(slug)/commits/\(sha)", "-q", ".parents[0].sha"],
+                                                  env: env, timeout: 120).stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (sha, parent)
     }
 
     /// Whether GitHub reads the PR as merged. Asked up to three times, two seconds apart, since a merge can take a moment
@@ -1367,7 +1388,9 @@ final class Tender {
 
     /// `tend land`: merges one PR now, when it is ready. A PR that is not says the first gate it has not met.
     func landNow(_ repo: RepoConfig, _ n: Int) throws {
-        let lock = try RunLock.acquire(paths.stateDir + "/tend.lock", wait: true)
+        let lock = try RunLock.acquire(paths.tendLockFile, wait: true)
+        Stop.register(pidFile: paths.tendPidFile)
+        defer { try? FileManager.default.removeItem(atPath: paths.tendPidFile) }
         try withExtendedLifetime(lock) {
             me = try login()
             seedLandable()
@@ -1399,6 +1422,15 @@ final class Tender {
         let tended = config.repos.filter(\.tend)
         for i in records.indices where records[i].status == "watching"
             || (records[i].status == "broke" && records[i].revert == nil && now.timeIntervalSince(records[i].at) <= 3600) {
+            // A landing stopped before its merge commit was read has it read here.
+            if records[i].sha.isEmpty || records[i].parent.isEmpty {
+                let (sha, parent) = mergeCommit(records[i].slug, records[i].n)
+                if !sha.isEmpty, !parent.isEmpty {
+                    records[i].sha = sha
+                    records[i].parent = parent
+                    changed = true
+                }
+            }
             let rec = records[i]
             let expired = rec.status == "watching" && now.timeIntervalSince(rec.at) > 3600
             func timeOut() {
@@ -1470,7 +1502,9 @@ final class Tender {
 
     /// `tend revert`: opens the revert PR of a landed PR that broke main, and nothing else.
     func revertNow(_ repo: RepoConfig, _ n: Int) throws {
-        let lock = try RunLock.acquire(paths.stateDir + "/tend.lock", wait: true)
+        let lock = try RunLock.acquire(paths.tendLockFile, wait: true)
+        Stop.register(pidFile: paths.tendPidFile)
+        defer { try? FileManager.default.removeItem(atPath: paths.tendPidFile) }
         try withExtendedLifetime(lock) {
             var records = store.loadLanded()
             guard let i = records.firstIndex(where: { $0.slug == repo.slug && $0.n == n && $0.status == "broke" && $0.revert == nil })
@@ -1492,8 +1526,13 @@ final class Tender {
     /// The record takes the new PR's number and status "reverted". A revert branch already on the remote is never
     /// force-pushed: its open PR is adopted, or the revert goes on a branch named with the time. A rebase-merged PR is
     /// not reverted here. Returns false, with the reason in the tower, when any step fails. The worktree is removed either way.
+    /// A stop that comes in while it runs waits until it is done, so a pushed revert branch gets its PR.
     @discardableResult
     private func openRevert(_ record: inout TendLanded, _ repo: RepoConfig, branch: String, now: Date) -> Bool {
+        Stop.finishing { opening(&record, repo, branch: branch, now: now) }
+    }
+
+    private func opening(_ record: inout TendLanded, _ repo: RepoConfig, branch: String, now: Date) -> Bool {
         let n = record.n
         let dir = store.revertDir(repo.slug, n)
         defer { try? locked(repo.slug) { removeWorktree(repo, dir) } }

@@ -10,7 +10,7 @@ final class GlidepathAppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.appearance = NSAppearance(named: .darkAqua)
-        badgeSink = Store.shared.$snap.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.updateBadge() }
+        badgeSink = Store.shared.$needsYou.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.updateBadge() }
         updateBadge()
     }
 
@@ -55,9 +55,9 @@ final class GlidepathAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func togglePause() { Store.shared.togglePause() }
 
-    /// The number of reviews waiting on the user, on the Dock icon. Nil (no badge) when none wait.
+    /// The Needs-you count on the Dock icon. Nil (no badge) when nothing needs the user.
     private func updateBadge() {
-        let count = Store.shared.waitingCount
+        let count = Store.shared.needsCount
         NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : nil
     }
 }

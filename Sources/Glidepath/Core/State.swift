@@ -86,6 +86,11 @@ struct RunState: Codable, Equatable {
     var tendThreads: [ThreadVerdict]? = nil
     /// For a tend run that held a council sitting: one record per sitting. Optional so older run files decode.
     var council: [CouncilRecord]? = nil
+    /// True for a dry run, which posts nothing. Nil for other runs and for files from before 2.0.
+    var dryRun: Bool? = nil
+
+    /// A run a tend check wrote: one round, landing or tidy on the user's PRs.
+    var isTend: Bool { kind == "tend" }
 
     static func new(id: String, now: Date, kind: String? = nil, target: String? = nil) -> RunState {
         RunState(id: id, started: now, finished: nil, repos: [], tokens: 0, error: nil, kind: kind, target: target)
@@ -371,25 +376,34 @@ final class RunLock {
 
     private init(fd: Int32) { self.fd = fd }
 
-    /// Takes the lock. Without `wait`, a lock that is held gives nil at once. With `wait`, the call blocks until it is free.
+    /// Takes the lock. Without `wait`, a lock that stays held for 200 ms gives nil. With `wait`, the call blocks until it is free.
     static func acquire(_ path: String, wait: Bool = false) throws -> RunLock? {
         try FileManager.default.createDirectory(
             atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
         let fd = open(path, O_CREAT | O_RDWR, 0o644)
         guard fd >= 0 else { throw StateError("cannot open lock file \(path)") }
-        guard flock(fd, wait ? LOCK_EX : LOCK_EX | LOCK_NB) == 0 else {
-            close(fd)
-            if wait { throw StateError("cannot lock \(path)") }
-            return nil
+        if wait {
+            guard flock(fd, LOCK_EX) == 0 else {
+                close(fd)
+                throw StateError("cannot lock \(path)")
+            }
+            return RunLock(fd: fd)
         }
-        return RunLock(fd: fd)
+        // A few tries, so the brief shared hold of an `isHeld` probe never makes a starting check skip itself.
+        for attempt in 0..<5 {
+            if attempt > 0 { Thread.sleep(forTimeInterval: 0.05) }
+            if flock(fd, LOCK_EX | LOCK_NB) == 0 { return RunLock(fd: fd) }
+        }
+        close(fd)
+        return nil
     }
 
+    /// Whether another holder has the lock. Probes with a shared lock, released at once, so it never holds it exclusively.
     static func isHeld(_ path: String) -> Bool {
         let fd = open(path, O_RDONLY)
         guard fd >= 0 else { return false }
         defer { close(fd) }
-        guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { return true }
+        guard flock(fd, LOCK_SH | LOCK_NB) == 0 else { return true }
         flock(fd, LOCK_UN)
         return false
     }

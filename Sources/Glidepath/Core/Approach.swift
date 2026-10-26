@@ -139,6 +139,10 @@ struct ApproachPlane: Codable, Equatable {
     var selfReview: String?
 }
 
+extension ApproachPlane: Identifiable {
+    var id: String { "\(slug)#\(n)" }
+}
+
 /// A thing the user must decide: a held fix, or a stuck PR. `kind` is "held" or "stuck".
 struct NeedsItem: Codable, Equatable {
     var id: String
