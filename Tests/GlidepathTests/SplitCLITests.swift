@@ -56,6 +56,20 @@ final class SplitCLITests: XCTestCase {
         XCTAssertEqual(Tender.splitComment(prs: [1301, 1302, 1303]), "Split into #1301 → #1302 → #1303.")
     }
 
+    func testPlanArgumentsAreReadOnlyOpusOnHighEffortUnderTheSandbox() {
+        let config = Config(schedule: [], limits: Limits(), repos: [])
+        let args = Tender.splitPlanArguments(prompt: "plan", system: "skill", scratch: "/tmp/s", worktree: "/tmp/wt",
+                                             config: config)
+        XCTAssertEqual(flag(args, "--tools"), "Read,Grep,Glob")
+        XCTAssertEqual(flag(args, "--model"), "opus")
+        XCTAssertEqual(flag(args, "--effort"), "high")
+        XCTAssertEqual(flag(args, "--max-budget-usd"), String(config.tend.maxUsdPerSession))
+        XCTAssertFalse(args.contains("--advisor"))
+        XCTAssertEqual(flag(args, "--output-format"), "stream-json")
+        XCTAssertTrue(args.contains("--verbose"))
+        XCTAssertNotNil(flag(args, "--settings"))
+    }
+
     func testCheckArgumentsAreBashOnlyHaikuOnLowEffort() {
         let config = Config(schedule: [], limits: Limits(), repos: [])
         let args = Tender.splitCheckArguments(prompt: "run", scratch: "/tmp/s", config: config)
