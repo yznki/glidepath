@@ -185,15 +185,7 @@ enum StateCommand {
 }
 
 /// Requirement checks shared by `init` (which stops on a failed required check) and `doctor`.
-enum Checks {
-    struct Item {
-        let name: String
-        let ok: Bool
-        let fix: String
-        /// The command "Fix all in Terminal" runs. Nil when no single command fixes it.
-        var command: String? = nil
-    }
-
+extension Checks {
     /// `env` supplies the PATH the tools are looked up on. Callers pass `Runner.environment`, since a Finder launch lacks Homebrew.
     static func tools(env: [String: String]) -> [Item] {
         [

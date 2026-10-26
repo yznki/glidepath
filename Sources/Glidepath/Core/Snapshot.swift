@@ -101,3 +101,14 @@ struct Snapshot {
     /// Snapshot rendering only: whether a Linear key is saved, in place of reading the Keychain. Nil in the live app.
     var linearKey: Bool?
 }
+
+/// The tool checks setup and Settings show. The checks themselves run from the CLI (`Checks.tools`).
+enum Checks {
+    struct Item {
+        let name: String
+        let ok: Bool
+        let fix: String
+        /// The command "Fix all in Terminal" runs. Nil when no single command fixes it.
+        var command: String? = nil
+    }
+}
