@@ -139,6 +139,13 @@ enum Snapshotter {
         for dark in [true, false] {
             writeWindow(callScreen, dark: dark, to: dir.appendingPathComponent("approach-call-edit-\(dark ? "dark" : "light").png"))
         }
+        // Approach with the Split builder open on #1270's proposed split.
+        let splitStore = Store(snapshot: WindowFixtures.section("approach", now: now))
+        let splitScreen = WindowScreen(store: splitStore, router: WindowRouter(section: .approach, showOnboarding: false),
+                                       splitOpen: "lumen/api#1270/split")
+        for dark in [true, false] {
+            writeWindow(splitScreen, dark: dark, to: dir.appendingPathComponent("approach-split-\(dark ? "dark" : "light").png"))
+        }
         let steps: [(String, OnboardingStep, Bool)] = [
             ("onb-welcome", .welcome, false), ("onb-tools", .tools, false), ("onb-repos", .repos, false),
             ("onb-review", .review, false), ("onb-schedule", .schedule, false),
