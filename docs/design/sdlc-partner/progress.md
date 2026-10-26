@@ -37,6 +37,13 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | 1.8 | live: scratch #7 landed, land-e deleted, main green watch | done | |
 | 1.8 | released 1.8.0: PR https://github.com/yznki/glidepath/pull/12, release https://github.com/yznki/glidepath/releases/tag/v1.8.0, tap bffe90a, sha256 7f35c047…, snapshots /tmp/gp-1.8 | done | 4fa784c |
 | 1.9 | branch sdlc-1.9 from main 9b11183; core: config, Linear, Nudge, Describe, Briefing, consolidation, self asks (542 pass) | done | 4bb7f71 |
+| 1.9 | CLI: Linear key via /usr/bin/security (stdin), self-review, description upkeep, nudges + `tend ping`, Linear comments, briefing, consolidation (554 pass) | done | 2e0f87d..8f65bfa |
+| 1.9 | App: briefing card, Ping rows, drawer self-review + changes, Linear row, Settings → Playbook; snapshots /tmp/gp-1.9 | done | 12661af c7feb69 66b23b9 aefa056 |
+| 1.9 | live: scratch #8 self-review (nothing posted) → finding fixed + pushed a7ae02a (13k tokens), PR body block added with original text kept, briefing written; Linear key round trip on a temp keychain; curl header file verified | done | |
+| 1.9 | Sonnet review: 14 findings (self-review vs run.lock, failure retry, double count, symlink token undercount, review budget cap, child timeout, body-only findings, state merge + ping lock, unbalanced markers, consolidation safety, playbook editor identity, Linear/Ping guards, self-review switch, rounds count) all fixed, 570 pass | done | |
+| 1.9 | live re-check: draft→ready re-runs self-review, kind self-review, nothing posted; token count still 0 → found Foundation strips /private again, fixed with realpath | done | 324ad81 |
+| 1.9 | released 1.9.0: PR https://github.com/yznki/glidepath/pull/13, release https://github.com/yznki/glidepath/releases/tag/v1.9.0, tap b3d594c, sha256 1af9ecbc…, snapshots /tmp/gp-1.9 | done | f2a0d98 |
+| 1.10 | branch sdlc-1.10 from main 1585853; core: Split plans, validate, branches, stack table, skill split.md (588 pass) | done | ae3f8e0 |
 
 ## Decisions (Yazan should know)
 
@@ -74,6 +81,11 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 - 1.9: Linear key lives in the Keychain via `/usr/bin/security` (key passed on stdin), so the launchd job can read it
   after brew upgrades without a prompt.
 - 1.9: turning tending on writes `self_review = true` (also over an explicit false), like `merge = "ask"`.
+
+- 1.9: Ping and nudges were not tried live (the scratch repo has no second human reviewer; a ping would notify a real
+  person). Linear posting was not tried live (only Sager's Linear exists); mechanism parts verified locally.
+- 1.9: review token counts were 0 for any clone path under /tmp (symlink to /private/tmp); fixed in 1.9.0. Yazan's
+  clones are under his home, so his past counts were not affected.
 
 ## Open issues
 
