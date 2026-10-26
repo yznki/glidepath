@@ -118,6 +118,8 @@ struct Snapshot {
     var briefing: Briefing?
     /// Each approach plane's tend state, by `ApproachPlane.id`: its changes since review, and when each reviewer was pinged.
     var prStates: [String: TendPR] = [:]
+    /// Each approach plane's split plan, by `ApproachPlane.id`, from `tend/split/`. Only planes that have one.
+    var splits: [String: SplitPlan] = [:]
     /// Snapshot rendering only: whether a Linear key is saved, in place of reading the Keychain. Nil in the live app.
     var linearKey: Bool?
 }
@@ -393,6 +395,7 @@ final class Store: ObservableObject {
         s.briefing = BriefingFile.load(paths)
         for plane in s.approach?.planes ?? [] {
             if let state = tend.load(plane.slug, plane.n) { s.prStates[plane.id] = state }
+            if let plan = tend.loadSplit(plane.slug, plane.n) { s.splits[plane.id] = plan }
         }
         // A landed PR that broke main needs a revert. Tend writes that need too; the id keeps one copy of each.
         if var approach = s.approach {
