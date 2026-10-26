@@ -37,6 +37,8 @@ struct SplitPlan: Codable, Equatable {
     var failed: String? = nil
     /// The PR number of each part once it is open, in part order.
     var prs: [Int] = []
+    /// One line per check command the build ran, e.g. "part 1: npm test ok".
+    var checks: [String] = []
     var at: Date
 }
 
@@ -52,6 +54,7 @@ extension SplitPlan {
         status = try c.decode(String.self, forKey: .status)
         failed = try c.decodeIfPresent(String.self, forKey: .failed)
         prs = try c.decodeIfPresent([Int].self, forKey: .prs) ?? []
+        checks = try c.decodeIfPresent([String].self, forKey: .checks) ?? []
         at = try c.decode(Date.self, forKey: .at)
     }
 }
@@ -59,14 +62,22 @@ extension SplitPlan {
 /// Split plans: validation, the branch chain, the stack table, reading a plan session's answer, and when a PR is due one.
 enum Split {
     static let partCounts = 2...6
+    static let titleLimit = 120
+    static let whyLimit = 500
+    /// A plan still planning or building this long after `at` was interrupted.
+    static let staleAfter: TimeInterval = 2 * 3600
 
     /// The first problem with the parts, or nil. Every part names only changed files, and each changed file is in
-    /// exactly one part. Each part has a title and files; `dependsOn` is nil or an earlier part.
+    /// exactly one part. Each part has a title and files; `dependsOn` is nil or an earlier part. A title is one line.
     static func validate(_ parts: [SplitPart], changed: [String]) -> String? {
         guard partCounts.contains(parts.count) else { return "A split has 2 to 6 parts, not \(parts.count)" }
         for (i, part) in parts.enumerated() {
             let k = i + 1
             if part.title.trimmingCharacters(in: .whitespaces).isEmpty { return "Part \(k) has no title" }
+            if part.title.count > titleLimit || part.title.rangeOfCharacter(from: .newlines) != nil {
+                return "Part \(k)'s title is over \(titleLimit) characters or has a line break"
+            }
+            if part.why.count > whyLimit { return "Part \(k)'s why is over \(whyLimit) characters" }
             if part.files.isEmpty { return "Part \(k) has no files" }
             if let dep = part.dependsOn, !(1..<k).contains(dep) {
                 return "Part \(k) depends on part \(dep), which is not an earlier part"
@@ -99,6 +110,36 @@ enum Split {
         }.joined(separator: "\n")
     }
 
+    /// The first title or why that may not go on GitHub, by the reply guard's rules: no mention, link or markup. Nil when
+    /// every part's text may go.
+    static func publicTextRefusal(_ parts: [SplitPart], slug: String, n: Int) -> String? {
+        for (i, part) in parts.enumerated() {
+            for text in [part.title, part.why] where ReplyGuard.check(text, author: "", slug: slug, n: n) != nil {
+                return "Part \(i + 1) has a mention, a link or markup, which a PR may not carry"
+            }
+        }
+        return nil
+    }
+
+    /// Whether a planning or building plan is stale: its `at` is more than `staleAfter` old, so it was interrupted.
+    static func isStale(_ plan: SplitPlan, now: Date) -> Bool {
+        ["planning", "building"].contains(plan.status) && now.timeIntervalSince(plan.at) > staleAfter
+    }
+
+    /// The plan as it stands now: a stale plan reads as failed, "Interrupted".
+    static func effective(_ plan: SplitPlan, now: Date) -> SplitPlan {
+        guard isStale(plan, now: now) else { return plan }
+        var out = plan
+        out.status = "failed"
+        out.failed = "Interrupted"
+        return out
+    }
+
+    /// Whether a branch is one a split built, `<branch>-part-<k>`. Those are never split again.
+    static func isPartBranch(_ branch: String) -> Bool {
+        branch.range(of: #"-part-\d+$"#, options: .regularExpression) != nil
+    }
+
     /// The parts in a plan session's answer: the last line that reads as `{"parts": [...]}` or a bare array, from its
     /// first brace or bracket. Nil when none does.
     static func parse(_ text: String) -> [SplitPart]? {
@@ -112,11 +153,12 @@ enum Split {
         return nil
     }
 
-    /// A PR a split plan is due for: not a draft, a fork or hands-off, over `overLines` changed lines, and no plan for
-    /// its head yet. The caller passes only PRs tending is on for.
+    /// A PR a split plan is due for: not a draft, a fork, hands-off or a part branch, over `overLines` changed lines, and
+    /// no plan for it at all, whatever its head or status. Automatic planning happens once per PR; the user can replan
+    /// with Split. The caller passes only PRs tending is on for.
     static func due(_ pr: OpenPR, plan: SplitPlan?, overLines: Int) -> Bool {
-        !pr.isDraft && !pr.isFork && Approach.tendable(pr, nil)
-            && pr.additions + pr.deletions > overLines && plan?.head != pr.head
+        !pr.isDraft && !pr.isFork && Approach.tendable(pr, nil) && !isPartBranch(pr.branch)
+            && pr.additions + pr.deletions > overLines && plan == nil
     }
 
     private struct Wrapped: Decodable {
