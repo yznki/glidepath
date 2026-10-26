@@ -725,6 +725,8 @@ struct ApproachDrawer: View {
         if !plane.off && plane.phase != .landed {
             let plan = store.snap.splits[plane.id]
             let planning = store.tendBusy.contains("\(plane.id)/split")
+            // A plan that is being made or built cannot be planned again until it ends or is stale.
+            let working = ["planning", "building"].contains(plan?.status ?? "")
             let proposed = plan?.status == "proposed"
             HStack(spacing: 10) {
                 Text(verbatim: splitCaption(plan))
@@ -733,11 +735,12 @@ struct ApproachDrawer: View {
                     .lineLimit(2)
                 Spacer(minLength: 8)
                 SettingButton(title: planning ? "Planning a split…" : proposed ? "Review split" : "Split…",
-                              prominent: proposed && !planning, enabled: !planning) {
+                              prominent: proposed && !planning, enabled: !planning && !working) {
                     if proposed {
                         onReviewSplit()
                     } else {
-                        store.tendCommand(["split", "plan", plane.slug, String(plane.n)], item: "\(plane.id)/split")
+                        store.tendCommand(["split", "plan", plane.slug, String(plane.n)], item: "\(plane.id)/split",
+                                          timeout: 7200)
                     }
                 }
             }
