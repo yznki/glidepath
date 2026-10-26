@@ -1763,7 +1763,10 @@ final class Tender {
         let r = Shell.run("gh", ["pr", "view", String(n), "-R", slug, "--json", "body"], env: env, timeout: 120)
         guard r.ok, let data = r.stdout.data(using: .utf8),
               let body = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["body"] as? String else { return }
-        let updated = Describe.rewrite(body, block: Describe.block(lines: s.changes, checks: checks))
+        guard let updated = Describe.rewrite(body, block: Describe.block(lines: s.changes, checks: checks)) else {
+            tower(slug, n, "PR body not updated · its Glidepath markers are unbalanced", amber: true)
+            return
+        }
         guard updated != body else { return }
         let file = NSTemporaryDirectory() + "glidepath-body-" + UUID().uuidString + ".md"
         guard (try? updated.write(toFile: file, atomically: true, encoding: .utf8)) != nil else { return }

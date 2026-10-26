@@ -61,8 +61,22 @@ final class ExtrasTests: XCTestCase {
         XCTAssertEqual(Describe.rewrite("Body", block: "B"), "Body\n\nB")
     }
 
-    func testRewriteAppendsWhenOnlyOpeningMarker() {
-        XCTAssertEqual(Describe.rewrite("Body\n<!-- glidepath -->\nx", block: "B"), "Body\n<!-- glidepath -->\nx\n\nB")
+    func testRewriteRefusesOnlyOpeningMarker() {
+        XCTAssertNil(Describe.rewrite("Body\n<!-- glidepath -->\nx", block: "B"))
+    }
+
+    func testRewriteRefusesOnlyClosingMarker() {
+        XCTAssertNil(Describe.rewrite("Body\n<!-- /glidepath -->\nx", block: "B"))
+    }
+
+    func testRewriteRefusesDuplicatedMarkers() {
+        let twice = "<!-- glidepath -->a<!-- /glidepath -->\n<!-- glidepath -->b<!-- /glidepath -->"
+        XCTAssertNil(Describe.rewrite(twice, block: "B"))
+        XCTAssertNil(Describe.rewrite("<!-- glidepath -->a<!-- /glidepath -->\n<!-- /glidepath -->", block: "B"))
+    }
+
+    func testRewriteRefusesCloseBeforeOpen() {
+        XCTAssertNil(Describe.rewrite("x<!-- /glidepath -->y<!-- glidepath -->", block: "B"))
     }
 
     func testRewriteWithNilBodyReturnsBlock() {
