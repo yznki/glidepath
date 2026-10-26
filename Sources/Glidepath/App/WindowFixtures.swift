@@ -385,6 +385,29 @@ enum WindowFixtures {
         snap.prStates = ["lumen/api#1246": pr1246]
         // Seen long ago, so the chart shows #1240 on the runway without a glide.
         snap.landedSeen = [landedID: .distantPast]
+        snap.splits = ["lumen/api#1270": splitPlan(now)]
+    }
+
+    /// #1270's proposed split: a PR of 1,840 lines in three parts that land in order, each building on the one before.
+    /// The parts name every changed file once, so `Split.validate` passes and Build is on.
+    static func splitPlan(_ now: Date) -> SplitPlan {
+        SplitPlan(slug: "lumen/api", n: 1270, head: "3f8a1c9d2e6b0475a1c3e8f9d20b6a7c4e5f1a83",
+                  branch: "certs/pilot-end-to-end", base: "main",
+                  parts: [
+                      SplitPart(title: "Certifications: schema and migration",
+                                why: "Lands first. Nothing else depends on it.",
+                                files: ["prisma/schema.prisma", "prisma/migrations/20261020_certifications/migration.sql",
+                                        "prisma/seed.ts"]),
+                      SplitPart(title: "Certifications: service and API",
+                                why: "Builds on 1. Its unit tests move with it.",
+                                files: ["src/certs/service.ts", "src/certs/routes.ts", "src/certs/service.test.ts",
+                                        "src/certs/routes.test.ts"], dependsOn: 1),
+                      SplitPart(title: "Certifications: Ops sheet, table and E2E",
+                                why: "Builds on 2. The E2E spec runs in CI.",
+                                files: ["src/ops/certs/sheet.tsx", "src/ops/certs/table.tsx",
+                                        "src/ops/certs/table.test.tsx", "e2e/certs.spec.ts"], dependsOn: 2),
+                  ],
+                  status: "proposed", at: now)
     }
 
     /// The id of the landed PR on the runway: #1240, as `ApproachPlane.id` and `Snapshot.landedSeen` key it.
@@ -457,6 +480,10 @@ enum WindowFixtures {
                   gates: [gate("CI", .ok, "3 of 3 checks green"), gate("Threads", .ok, "All resolved"),
                           gate("Approval", .wait, "Waiting on Gadi", who: "Gadi"),
                           gate("Ready", .wait, "Blocked by branch rules")]),
+            plane(1270, "feat(certs): pilot certifications, schema to Ops table", phase: .holding, marker: 2, lane: 2,
+                  label: "Split proposed · 3 parts", ci: "passed",
+                  gates: [gate("CI", .ok, "4 of 4 checks green"), gate("Threads", .ok, "All resolved"),
+                          gate("Approval", .ok, "Approved"), gate("Ready", .wait, "Too big to review as one", who: "you")]),
             plane(1260, "Certifications: draft for self-review", phase: .taxiing, marker: 0, lane: 0,
                   label: "Draft", ci: "pending", selfReview: "Self-review: 2 findings",
                   gates: [gate("CI", .wait, "1 running"), gate("Threads", .ok, "All resolved"),
@@ -479,6 +506,9 @@ enum WindowFixtures {
             NeedsItem(id: "\(slug)#1246/\(gadiCallID)", slug: slug, n: 1246,
                       title: "fix(api): repeated create and retry requests return the first result", kind: "call",
                       detail: "Your call · Gadi: \"use a unique index instead\" · draft reply ready"),
+            NeedsItem(id: "\(slug)#1270/split", slug: slug, n: 1270,
+                      title: "feat(certs): pilot certifications, schema to Ops table", kind: "split",
+                      detail: "Split proposed · 3 parts"),
             NeedsItem(id: "\(slug)#1250/wait-gadi", slug: slug, n: 1250, title: "Card views: pilot certifications list",
                       kind: "blocked", detail: "Waiting 26 h on gadi"),
         ]
