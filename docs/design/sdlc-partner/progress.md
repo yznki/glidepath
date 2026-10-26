@@ -44,6 +44,9 @@ Resume here after a compaction. One line per step; decisions and open issues bel
 | 1.9 | live re-check: draft→ready re-runs self-review, kind self-review, nothing posted; token count still 0 → found Foundation strips /private again, fixed with realpath | done | 324ad81 |
 | 1.9 | released 1.9.0: PR https://github.com/yznki/glidepath/pull/13, release https://github.com/yznki/glidepath/releases/tag/v1.9.0, tap b3d594c, sha256 1af9ecbc…, snapshots /tmp/gp-1.9 | done | f2a0d98 |
 | 1.10 | branch sdlc-1.10 from main 1585853; core: Split plans, validate, branches, stack table, skill split.md (588 pass) | done | ae3f8e0 |
+| 1.10 | CLI: plan session (Opus, read-only), auto trigger, `tend split plan/build/keep`, per-part checks, chained PRs, autopilot council (597 pass) | done | 52fcb01 ab8d2c7 19731a3 |
+| 1.10 | App: split needs, drawer Split…, builder overlay (drag + move menu, live validation); snapshots /tmp/gp-1.10 | done | 8817493..c15e215 |
+| 1.10 | live: scratch #9 → plan 3 parts (8.7k tokens) → build #10→#11→#12 chained, stack tables, #9 drafted + comment, CI green (31k tokens); all closed after. Gap: per-part check recorded once | done | |
 
 ## Decisions (Yazan should know)
 
