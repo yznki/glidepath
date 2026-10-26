@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// State for a `HoldButton`: fill level, whether a press is down, and whether it has fired.
-final class HoldModel: ObservableObject {
+/// State for a `GothamHoldButton`: fill level, whether a press is down, and whether it has fired.
+final class GothamHoldModel: ObservableObject {
     @Published var level = 0.0
     @Published var pressing = false
     @Published var fired = false
@@ -9,7 +9,7 @@ final class HoldModel: ObservableObject {
 
 /// Press-and-hold button. The fill grows over `duration` while held, drains 3x faster on release, and
 /// fires `action` once at full. It then stays filled showing `doneTitle`; give it a new identity to reset.
-struct HoldButton: View {
+struct GothamHoldButton: View {
     let title: String
     let doneTitle: String
     let tint: Color
@@ -18,7 +18,7 @@ struct HoldButton: View {
     var compact = false
     let action: () -> Void
 
-    @StateObject private var model = HoldModel()
+    @StateObject private var model = GothamHoldModel()
 
     var body: some View {
         ZStack(alignment: .leading) {

@@ -365,7 +365,7 @@ struct ApproachPopoverBlock: View {
             Spacer(minLength: 8)
             if land || revert {
                 // Landing and the revert merge or open a PR, so they take a hold, as the Needs rows do.
-                HoldButton(title: land ? "Hold to land" : "Open revert PR", doneTitle: land ? "Landing…" : "Opening…",
+                GothamHoldButton(title: land ? "Hold to land" : "Open revert PR", doneTitle: land ? "Landing…" : "Opening…",
                            tint: Gotham.signal(signalKey), compact: true) {
                     store.tendCommand([land ? "land" : "revert", item.slug, "\(item.n)"], item: item.id)
                 }
@@ -488,13 +488,13 @@ struct TendNeedRow: View {
             callActions
         } else if land {
             // Landing merges the PR on GitHub, so it takes a hold, like a push.
-            HoldButton(title: "Hold to land", doneTitle: "Landing…", tint: signal, compact: true) {
+            GothamHoldButton(title: "Hold to land", doneTitle: "Landing…", tint: signal, compact: true) {
                 store.tendCommand(["land", item.slug, "\(item.n)"], item: item.id)
             }
             .id("\(item.id)#\(store.tendFailures[item.id] ?? 0)")
             .disabled(busy)
         } else if revert {
-            HoldButton(title: "Open revert PR", doneTitle: "Opening…", tint: signal, compact: true) {
+            GothamHoldButton(title: "Open revert PR", doneTitle: "Opening…", tint: signal, compact: true) {
                 store.tendCommand(["revert", item.slug, "\(item.n)"], item: item.id)
             }
             .id("\(item.id)#\(store.tendFailures[item.id] ?? 0)")
@@ -508,7 +508,7 @@ struct TendNeedRow: View {
                     .padding(.horizontal, 10)
                     .frame(height: 28)
                     .disabled(busy)
-                HoldButton(title: "Hold to push", doneTitle: "Pushing…", tint: signal, compact: true) {
+                GothamHoldButton(title: "Hold to push", doneTitle: "Pushing…", tint: signal, compact: true) {
                     store.tendCommand(["push", item.slug, "\(item.n)"], item: item.id)
                 }
                 // A failed push gives the button a new identity, so the hold starts again.

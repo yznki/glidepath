@@ -729,7 +729,7 @@ struct SettingsView: View {
                 if model.matches(SettingsCopy.reset) {
                     SettingItem(label: SettingsCopy.reset.label, caption: SettingsCopy.reset.caption,
                                 error: model.rowErrors["reset"]) {
-                        HoldButton(title: "Hold to reset", doneTitle: "Settings reset", tint: Gotham.signal(signalKey)) {
+                        GothamHoldButton(title: "Hold to reset", doneTitle: "Settings reset", tint: Gotham.signal(signalKey)) {
                             model.resetSettings(store)
                         }
                         .frame(width: 190)

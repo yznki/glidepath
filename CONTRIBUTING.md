@@ -22,6 +22,11 @@ macros.
 
 For screenshots and the design states, run `glidepath --snapshot <dir>`. It renders from fixtures, in light and dark.
 
+The 2.0 kit (`Sources/Glidepath/Kit`) has its own gallery: `glidepath --kit-gallery <dir>` writes every component in
+every state to PNGs (as in `docs/design/v2-ux/kit-shots`). Without a directory it opens the pages as windows;
+`--kit-gallery idle` opens one quiet header for measuring idle CPU. Set `GLIDEPATH_FORCE_FALLBACK_GLASS=1` to see the
+macOS 14–15 materials instead of Liquid Glass.
+
 ## Design
 
 The design spec for v1.3 is in [docs/design/v1.3](docs/design/v1.3). Match it, or change the spec in the same pull
