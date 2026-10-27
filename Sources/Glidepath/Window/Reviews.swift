@@ -219,8 +219,14 @@ final class ReviewsModel: ObservableObject {
         sweeps = newest.map { ReviewSweep(run: $0) }
         if let pending = pendingOpen, !sweeps.isEmpty {
             pendingOpen = nil
-            opened = withPosted(Self.row(runID: pending.runID, stripID: pending.stripID, in: sweeps))
+            opened = withPosted(Self.row(runID: pending.runID, stripID: pending.stripID, in: liveSweeps()))
         }
+    }
+
+    /// The sweeps with the live run rebuilt from the store, since a verdict inside a running run does not reload them.
+    private func liveSweeps() -> [ReviewSweep] {
+        guard let live = store?.snap.run else { return sweeps }
+        return sweeps.map { $0.id == live.id ? ReviewSweep(run: live) : $0 }
     }
 
     /// Opens a PR's review as a run card asks: the card's own run first, else the newest run that has the PR. Before
@@ -231,7 +237,7 @@ final class ReviewsModel: ObservableObject {
             pendingOpen = (runID, stripID)
             return
         }
-        opened = withPosted(Self.row(runID: runID, stripID: stripID, in: sweeps))
+        opened = withPosted(Self.row(runID: runID, stripID: stripID, in: liveSweeps()))
     }
 
     /// Opens a PR from the newest run that has it, as the popover and Now's held drafts ask.
