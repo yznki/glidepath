@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.10.1
+
+- Tending no longer pushes a CI fix it did not check: a fix is pushed only when the session's own log shows the commands it ran passed. Otherwise the fix is held for you.
+- Tending sessions get a pnpm store per repo inside the sandbox, so `pnpm install` and the tests can run there.
+- A self-review the review run skipped says why; a too-large PR is retried the next day or when its head changes.
+- Approach shows a table of your PRs (CI, threads, approval, ready) instead of the chart. The tower has day headings, a PR's title shows once in Needs you, and the briefing's Blocked list is live.
+- The sidebar and Dock badges count what the Now page counts, and the next sweep time respects a pause.
+- Opening a PR from a run that is still going shows that run's review, not an older one.
+
 ## 1.10.0
 
 - Split big PRs: when one of your PRs goes over `split_over_lines`, Glidepath proposes splitting it into 2 to 6 parts by file (planned by Opus, read-only). You can also click Split… in the PR's drawer.
