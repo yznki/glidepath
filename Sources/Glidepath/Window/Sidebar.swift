@@ -61,7 +61,9 @@ struct Sidebar: View {
 
     /// "Next sweep 7:00 PM": the time of the next sweep, from the same function the Schedule subtitle reads.
     private var nextTitle: String {
-        guard let next = store.snap.nextRun else { return "No sweep scheduled" }
+        guard let next = store.snap.nextRun else {
+            return store.snap.paused ? "Paused" : "No sweep scheduled"
+        }
         return "Next sweep \(HeaderCopy.clock(next))"
     }
 
@@ -85,7 +87,7 @@ struct Sidebar: View {
 
     private func navRow(_ section: WindowSection) -> some View {
         let on = router.section == section
-        let count = section == .now ? store.waitingCount : 0
+        let count = section == .now ? store.needsCount : 0
         let inAir = store.snap.approach?.planes.filter { $0.phase != .landed }.count ?? 0
         return Button {
             router.section = section

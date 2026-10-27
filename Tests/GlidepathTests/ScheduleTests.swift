@@ -187,6 +187,22 @@ final class ScheduleTests: XCTestCase {
         XCTAssertEqual(next.timeIntervalSince(before), 23 * 3600)
     }
 
+    func testNextRunWaitsOutATimedPause() throws {
+        let cal = try calendar("Europe/London")
+        // 21 Oct 2026, 10:00. Sweeps at 07:00, 13:00 and 19:00.
+        let times = [ScheduleTime("07:00")!, ScheduleTime("13:00")!, ScheduleTime("19:00")!]
+        let now = try at(cal, 21, 10)
+        // Not paused: the next sweep is the usual one.
+        XCTAssertEqual(ScheduleTimes.nextRun(now: now, paused: false, until: nil, times: times, calendar: cal),
+                       try at(cal, 21, 13))
+        // Paused until 16:00: nothing runs before then, so the first sweep after it is 19:00.
+        XCTAssertEqual(ScheduleTimes.nextRun(now: now, paused: true, until: try at(cal, 21, 16), times: times,
+                                             calendar: cal),
+                       try at(cal, 21, 19))
+        // Paused with no end: no next sweep.
+        XCTAssertNil(ScheduleTimes.nextRun(now: now, paused: true, until: nil, times: times, calendar: cal))
+    }
+
     // MARK: This week
 
     private func pr(_ n: Int, _ verdict: Verdict?, carried: Date? = nil, tokens: Int = 0) -> PRState {

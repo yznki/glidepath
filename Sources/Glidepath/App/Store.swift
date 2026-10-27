@@ -109,9 +109,6 @@ struct Snapshot {
     var tendRounds: [RunState] = []
     /// The PRs tend landed, from `tend/landed.json`: watched, ok, broke or reverted.
     var landed: [TendLanded] = []
-    /// When the app first saw each landed PR, by `ApproachPlane.id`. The chart glides a plane in once, from its first
-    /// sighting. Snapshot rendering sets it directly.
-    var landedSeen: [String: Date] = [:]
     /// Snapshot rendering only: the playbooks by repo, in place of reading them.
     var playbooks: [String: Playbook] = [:]
     /// The morning briefing from `tend/briefing.json`, when tend has written one.
@@ -264,8 +261,15 @@ final class Store: ObservableObject {
         }
     }
 
-    /// What waits on the user: drafts to post, and PRs too large to review. The Overview's "Waiting on you" count.
-    var waitingCount: Int { strips.filter { $0.draft || ($0.skipReason == "size" && $0.verdict == .skipped) }.count }
+    /// Held drafts: the PRs that wait on the user to post or discard them.
+    var heldStrips: [Strip] { strips.filter { $0.draft && $0.verdict != nil } }
+
+    /// The newest run's own PRs skipped for size: each waits for Review anyway.
+    var tooLargeStrips: [Strip] { strips.filter { $0.offersReview && $0.carriedFrom == nil } }
+
+    /// What needs the user: held drafts, the newest run's too-large PRs, and tend's held fixes and stuck PRs. The
+    /// Now header's "Needs you" count, and the sidebar and Dock badges show this one number.
+    var needsCount: Int { heldStrips.count + tooLargeStrips.count + (snap.approach?.needs.count ?? 0) }
 
     /// Reviews held as drafts, from every run.
     var draftCount: Int { strips.filter(\.draft).count }
@@ -320,7 +324,9 @@ final class Store: ObservableObject {
         s.pausedSince = s.paused ? Pause.since(paths) : nil
         s.jobInstalled = FileManager.default.fileExists(atPath: paths.plistFile)
         let config = try? Config.load(paths)
-        s.nextRun = config.flatMap { ScheduleTimes.nextSweep(after: Date(), times: $0.schedule, days: $0.days) }
+        s.nextRun = config.flatMap {
+            ScheduleTimes.nextRun(now: Date(), paused: s.paused, until: Pause.until(paths), times: $0.schedule, days: $0.days)
+        }
         s.postsReviews = config?.repos.contains { $0.posting == .review } ?? false
         s.schedule = config?.schedule ?? []
         s.repoCount = config?.repos.count ?? 0
@@ -368,7 +374,6 @@ final class Store: ObservableObject {
 
         // Held drafts are shown from disk, whichever run wrote them. Notifications above used the run alone.
         s.run?.showDrafts(Drafts.all(paths))
-        s.landedSeen = landedSeen(s, config: config)
         let landed = Set(Store.strips(from: s.run).filter { $0.verdict != nil }.map(\.id)).subtracting(previous)
         if popoverOpen && !landed.isEmpty {
             justLanded = landed
@@ -475,18 +480,6 @@ final class Store: ObservableObject {
             actionError = "could not dismiss the briefing: \(error.localizedDescription)"
         }
         reload()
-    }
-
-    /// The first-seen times after a load: the ones already known, plus each new landed PR at now. On the first load every
-    /// PR is recorded as seen long ago, so nothing glides in at launch.
-    private func landedSeen(_ s: Snapshot, config: Config?) -> [String: Date] {
-        guard !isFixture else { return s.landedSeen }
-        var seen = snap.landedSeen
-        for record in s.landed {
-            let id = "\(record.slug)#\(record.n)"
-            if seen[id] == nil { seen[id] = seenLanded == nil ? .distantPast : Date() }
-        }
-        return seen
     }
 
     /// A stable hash of a string, for notification ids: `hashValue` changes between launches.

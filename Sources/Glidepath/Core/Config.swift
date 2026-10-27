@@ -74,6 +74,15 @@ enum ScheduleTimes {
         }
         return nil
     }
+
+    /// The sweep the app shows as next. While paused, nothing runs until the timed pause ends, so the next sweep is
+    /// the first one after `until`. A pause with no end shows no next sweep.
+    static func nextRun(now: Date, paused: Bool, until: Date?, times: [ScheduleTime], days: ScheduleDays = .all,
+                        calendar: Calendar = .current) -> Date? {
+        guard paused else { return nextSweep(after: now, times: times, days: days, calendar: calendar) }
+        guard let until else { return nil }
+        return nextSweep(after: max(now, until), times: times, days: days, calendar: calendar)
+    }
 }
 
 struct Limits: Equatable {

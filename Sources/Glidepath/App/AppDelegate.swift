@@ -55,9 +55,10 @@ final class GlidepathAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func togglePause() { Store.shared.togglePause() }
 
-    /// The number of reviews waiting on the user, on the Dock icon. Nil (no badge) when none wait.
+    /// The number of things waiting on the user, on the Dock icon: the same count as Now's "Needs you". Nil (no badge)
+    /// when none wait.
     private func updateBadge() {
-        let count = Store.shared.waitingCount
+        let count = Store.shared.needsCount
         NSApp.dockTile.badgeLabel = count > 0 ? "\(count)" : nil
     }
 }

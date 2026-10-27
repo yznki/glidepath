@@ -4,6 +4,8 @@ import SwiftUI
 /// briefing. Dismiss stamps `dismissedAt` in the briefing file (the caller does that).
 struct BriefingCard: View {
     let briefing: Briefing
+    /// The rows that wait on the user now, from the live needs. The briefing's own list goes stale until the next briefing.
+    let blocked: [String]
     let onDismiss: () -> Void
 
     var body: some View {
@@ -27,7 +29,7 @@ struct BriefingCard: View {
                 .padding(.top, 4)
             HStack(alignment: .top, spacing: 22) {
                 column("Landed", briefing.landed, empty: "Nothing landed")
-                column("Blocked", briefing.blocked, empty: "Nothing blocked")
+                column("Blocked", blocked, empty: "Nothing blocked")
                 column("Glidepath did", did, empty: "No rounds")
             }
             .padding(.top, 18)
@@ -46,8 +48,8 @@ struct BriefingCard: View {
 
     private var headline: String {
         let landed = briefing.landed.isEmpty ? "Nothing landed" : "\(briefing.landed.count) landed"
-        let blocked = briefing.blocked.isEmpty ? "nothing blocked" : "\(briefing.blocked.count) blocked"
-        return "\(landed), \(blocked)."
+        let waiting = blocked.isEmpty ? "nothing blocked" : "\(blocked.count) blocked"
+        return "\(landed), \(waiting)."
     }
 
     private var did: [String] {

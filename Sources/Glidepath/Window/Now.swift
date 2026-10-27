@@ -21,15 +21,15 @@ struct NowView: View {
     private var signal: Color { Gotham.signal(signalKey) }
 
     /// Held drafts: the PRs that wait on the user to post or discard them.
-    private var held: [Strip] { store.strips.filter { $0.draft && $0.verdict != nil } }
+    private var held: [Strip] { store.heldStrips }
 
     /// The newest run's own PRs skipped for size: each waits for Review anyway.
-    private var tooLarge: [Strip] { store.strips.filter { $0.offersReview && $0.carriedFrom == nil } }
+    private var tooLarge: [Strip] { store.tooLargeStrips }
 
     /// Tend's held fixes and stuck PRs, the same items the Approach section lists.
     private var tendNeeds: [NeedsItem] { snap.approach?.needs ?? [] }
 
-    private var needsCount: Int { held.count + tooLarge.count + tendNeeds.count }
+    private var needsCount: Int { store.needsCount }
 
     /// True when the newest run finished with no error and no stopped PR: then the all-clear line can promise that
     /// every open PR is reviewed.
@@ -180,10 +180,11 @@ struct NowView: View {
             VStack(spacing: 6) {
                 ForEach(held) { strip in heldRow(strip) }
                 ForEach(tooLarge) { strip in tooLargeRow(strip) }
-                ForEach(tendNeeds, id: \.id) { item in
+                ForEach(Array(tendNeeds.enumerated()), id: \.element.id) { i, item in
                     TendNeedRow(item: item, url: store.approachPlane(item.slug, item.n)?.url ?? "", store: store, onEdit: {
                         calls.open(item, store: store)
-                    }, onReview: { split.open(slug: item.slug, n: item.n, title: item.title, store: store) })
+                    }, onReview: { split.open(slug: item.slug, n: item.n, title: item.title, store: store) },
+                    showTitle: !repeatsPrevious(tendNeeds, i))
                 }
             }
         }

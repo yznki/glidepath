@@ -19,11 +19,16 @@ extension Briefing {
         return Briefing(
             at: now,
             landed: landed.filter { $0.at >= since }.map { "#\($0.n) \($0.title)" },
-            blocked: needs.filter { ["held", "stuck", "call", "blocked"].contains($0.kind) }.map { "#\($0.n) · \($0.detail)" },
+            blocked: blockedLines(needs),
             rounds: recent.filter { $0.tendAction != nil && !["self-review", "consolidated"].contains($0.tendAction ?? "") }.count,
             threads: recent.reduce(0) { $0 + ($1.tendThreads?.count ?? 0) },
             councils: recent.reduce(0) { $0 + ($1.council?.count ?? 0) },
             tokens: recent.reduce(0) { $0 + $1.tokens })
+    }
+
+    /// The rows that wait on the user, as the briefing lists them: "#n · detail" for each held, stuck, call or blocked need.
+    static func blockedLines(_ needs: [NeedsItem]) -> [String] {
+        needs.filter { ["held", "stuck", "call", "blocked"].contains($0.kind) }.map { "#\($0.n) · \($0.detail)" }
     }
 
     /// Due when `time` has passed today, it has not yet been shown today, and today is one of the `days`.

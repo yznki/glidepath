@@ -118,7 +118,6 @@ enum Snapshotter {
         let sections: [(name: String, section: WindowSection, opened: String?, query: String)] = [
             ("now", .now, nil, ""), ("running", .now, nil, ""), ("now-clear", .now, nil, ""), ("now-dry-run", .now, nil, ""),
             ("approach", .approach, nil, ""), ("approach-drawer", .approach, "lumen/api#1246", ""),
-            ("approach-landing", .approach, nil, ""),
             ("reviews", .reviews, nil, ""), ("repos", .repos, nil, ""), ("schedule", .schedule, nil, ""),
             ("settings", .settings, nil, ""), ("settings-tending", .settings, nil, "tend"),
             ("settings-playbook", .settings, nil, "playbook"),

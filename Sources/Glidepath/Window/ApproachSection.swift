@@ -1,10 +1,24 @@
 import SwiftUI
 import AppKit
 
-/// The faint ink of labels and empty values: Gotham has no token for it, and the chart uses the same level.
+/// The faint ink of labels and empty values: Gotham has no token for it, and the PR table uses the same level.
 private let approachFaint = Color.white.opacity(0.22)
 
-/// The Approach section: every PR tend works on, as a chart, with what needs the user and the tower's log. A PR's
+extension ApproachPlane: Identifiable {
+    var id: String { "\(slug)#\(n)" }
+}
+
+extension TowerLine: Identifiable {
+    /// The time, PR and text tell one tower line from another, so a reload keeps each row's identity.
+    var id: String { "\(Int(at.timeIntervalSince1970))#\(n)#\(text.hashValue)" }
+}
+
+/// Whether `items[i]` is the same PR as the item above it, so the row above already names that PR's title.
+func repeatsPrevious(_ items: [NeedsItem], _ i: Int) -> Bool {
+    i > 0 && items[i - 1].slug == items[i].slug && items[i - 1].n == items[i].n
+}
+
+/// The Approach section: every PR tend works on, as a table, with what needs the user and the tower's log. A PR's
 /// drawer opens over the right side, with its gates, rounds, lessons and the hands-off switch.
 struct ApproachSectionView: View {
     @ObservedObject var store: Store
@@ -43,10 +57,13 @@ struct ApproachSectionView: View {
                     header
                     if store.snap.tendOn {
                         if let briefing = store.snap.briefing, briefing.dismissedAt == nil {
-                            BriefingCard(briefing: briefing) { store.dismissBriefing() }
-                                .padding(.top, 18)
+                            BriefingCard(briefing: briefing,
+                                         blocked: approach.map { Briefing.blockedLines($0.needs) } ?? briefing.blocked) {
+                                store.dismissBriefing()
+                            }
+                            .padding(.top, 18)
                         }
-                        chartCard
+                        prTable
                             .padding(.top, 18)
                         columns
                             .padding(.top, 8)
@@ -135,42 +152,91 @@ struct ApproachSectionView: View {
         .accessibilityValue(on ? "On" : "Off")
     }
 
-    // MARK: Chart
+    // MARK: PR table
 
-    private var chartCard: some View {
-        ZStack(alignment: .bottomLeading) {
-            ApproachChart(planes: approach?.planes ?? [], onTap: { model.opened = $0 }, landedSeen: store.snap.landedSeen)
-            legend
-                .padding(.leading, 16)
-                .padding(.bottom, 12)
+    /// The gate columns, left to right. Each name matches a gate's name in `ApproachPlane.gates`.
+    private static let gateColumns = ["CI", "Threads", "Approval", "Ready"]
+
+    /// Every open PR, one row each. Tapping a row opens its drawer.
+    private var prTable: some View {
+        let planes = approach?.planes ?? []
+        return VStack(alignment: .leading, spacing: 0) {
+            if planes.isEmpty {
+                Text("No open PRs")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Gotham.mute)
+                    .padding(16)
+            } else {
+                prHeader
+                ForEach(planes, id: \.id) { plane in
+                    prRow(plane)
+                }
+            }
         }
         .frame(maxWidth: .infinity)
-        // Its natural height (the chart's aspect), so a card above it cannot squeeze the planes together.
-        .fixedSize(horizontal: false, vertical: true)
-        .background(
-            RadialGradient(colors: [.white.opacity(0.05), .clear], center: UnitPoint(x: 0.92, y: 0.5),
-                           startRadius: 0, endRadius: 420)
-        )
         .background(Color(hex: "050507"))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
     }
 
-    private var legend: some View {
-        HStack(spacing: 14) {
-            legendItem("Glidepath flying", Gotham.fg)
-            legendItem("Needs you", signal)
-            legendItem("Waiting on someone", Gotham.fg.opacity(0.4))
+    /// The column captions above the rows. The PR column has none.
+    private var prHeader: some View {
+        HStack(spacing: 0) {
+            Spacer(minLength: 0)
+            ForEach(Self.gateColumns, id: \.self) { title in
+                capLabel(title)
+                    .frame(width: 72, alignment: .center)
+            }
         }
-        .font(.system(size: 11))
-        .foregroundStyle(Color.white.opacity(0.22))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .overlay(alignment: .bottom) { Rectangle().fill(Gotham.edge).frame(height: 1) }
     }
 
-    private func legendItem(_ text: String, _ colour: Color) -> some View {
-        HStack(spacing: 5) {
-            Circle().fill(colour).frame(width: 8, height: 8)
-            Text(text)
+    /// One PR: its number and title, then its state, and a mark per gate on the right. A follower in a stack is indented
+    /// and marked ↳.
+    private func prRow(_ plane: ApproachPlane) -> some View {
+        let follower = (plane.stackIndex ?? 1) > 1
+        let amber = plane.phase == .holding || plane.phase == .cleared
+        return HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(verbatim: "\(follower ? "↳ " : "")#\(String(plane.n))")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Gotham.fg)
+                        .fixedSize()
+                    Text(plane.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Gotham.fg)
+                        .lineLimit(1)
+                }
+                Text(plane.label)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(amber ? signal : Gotham.mute)
+                    .lineLimit(1)
+            }
+            .padding(.leading, follower ? 16 : 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if plane.phase == .landed {
+                // A landed PR has no gates left to pass, so its marks give way to one word across them.
+                Text("Landed")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Gotham.mute)
+                    .frame(width: 72 * CGFloat(Self.gateColumns.count))
+            } else {
+                ForEach(Self.gateColumns, id: \.self) { name in
+                    let gate = plane.gates.first { $0.name == name }
+                    GateMark(state: gate?.state ?? .none, colour: signal)
+                        .frame(width: 72)
+                        .help(gate?.detail ?? "")
+                }
+            }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) { Rectangle().fill(Gotham.edge).frame(height: 1) }
+        .contentShape(Rectangle())
+        .onTapGesture { model.opened = plane.id }
     }
 
     // MARK: Columns
@@ -199,10 +265,10 @@ struct ApproachSectionView: View {
                     .padding(.vertical, 12)
             } else {
                 VStack(spacing: 6) {
-                    ForEach(items, id: \.id) { item in
+                    ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
                         TendNeedRow(item: item, url: store.approachPlane(item.slug, item.n)?.url ?? "", store: store, onEdit: {
                             calls.open(item, store: store)
-                        }, onReview: { openSplit(item.slug, item.n, item.title) })
+                        }, onReview: { openSplit(item.slug, item.n, item.title) }, showTitle: !repeatsPrevious(items, i))
                     }
                 }
             }
@@ -224,7 +290,10 @@ struct ApproachSectionView: View {
                     .foregroundStyle(Gotham.mute)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                    ForEach(Array(lines.enumerated()), id: \.element.id) { i, line in
+                        if i == 0 || !Calendar.current.isDate(line.at, inSameDayAs: lines[i - 1].at) {
+                            dayHeading(line.at)
+                        }
                         towerLine(line)
                     }
                 }
@@ -232,6 +301,12 @@ struct ApproachSectionView: View {
                 .overlay(alignment: .leading) { Rectangle().fill(Gotham.edge).frame(width: 1) }
             }
         }
+    }
+
+    /// The day a run of tower lines belongs to, above its first line: "Today", "Yesterday", or "Mon 20 Oct".
+    private func dayHeading(_ at: Date) -> some View {
+        capLabel(ReviewsModel.dayTitle(Calendar.current.startOfDay(for: at)), approachFaint)
+            .padding(.vertical, 8)
     }
 
     private func towerLine(_ line: TowerLine) -> some View {
@@ -288,8 +363,8 @@ struct ApproachSectionView: View {
     }
 }
 
-/// The popover's tend block, shown while tending is on: a mini approach chart, up to three holding items, and when tend
-/// next looks. Empty otherwise.
+/// The popover's tend block, shown while tending is on: up to three holding items, and when tend next looks. Empty
+/// otherwise.
 struct ApproachPopoverBlock: View {
     @ObservedObject var store: Store
     let offscreen: Bool
@@ -298,13 +373,9 @@ struct ApproachPopoverBlock: View {
     var body: some View {
         if store.snap.tendOn, let approach = store.snap.approach {
             VStack(alignment: .leading, spacing: 0) {
-                ApproachChart(planes: approach.planes, compact: true, landedSeen: store.snap.landedSeen)
-                    .frame(maxWidth: .infinity)
-                    .background(Color(hex: "060608"))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Gotham.edge, lineWidth: 1))
-                ForEach(Array(actionFirst(approach.needs).prefix(3)), id: \.id) { item in
-                    strip(item)
+                let rows = Array(actionFirst(approach.needs).prefix(3))
+                ForEach(Array(rows.enumerated()), id: \.element.id) { i, item in
+                    strip(item, showTitle: !repeatsPrevious(rows, i))
                 }
                 HStack(spacing: 8) {
                     Text(nextLook(approach))
@@ -333,7 +404,8 @@ struct ApproachPopoverBlock: View {
         return acting + needs.filter { $0.kind != "land" && $0.kind != "revert" }
     }
 
-    private func strip(_ item: NeedsItem) -> some View {
+    /// One holding item as a popover row. Without its title, a call, ready or revert row carries its `#n` on the line.
+    private func strip(_ item: NeedsItem, showTitle: Bool) -> some View {
         let call = item.kind == "call", land = item.kind == "land", revert = item.kind == "revert"
         let parts = item.detail.components(separatedBy: " · ")
         // A call reads "#n needs your call" and names the reviewer whose draft waits; its Review button opens Approach.
@@ -347,17 +419,21 @@ struct ApproachPopoverBlock: View {
                 return parts.first { $0.hasPrefix("then ") } ?? parts.dropFirst().joined(separator: " · ")
             }
             if revert { return parts.dropFirst().joined(separator: " · ") + " failed on the merge commit" }
-            guard call else { return "\(item.detail) · \(item.slug) #\(String(item.n))" }
+            guard call else { return showTitle ? "\(item.detail) · \(item.slug) #\(String(item.n))" : item.detail }
             let who = store.snap.calls[item.id]?.author ?? "a reviewer"
             return "\(store.snap.calls[item.id]?.draft == nil ? "reply" : "draft reply") to \(who)"
         }()
+        // Without its title, the row starts with its PR number, so the number survives a truncated line.
+        let ref = showTitle ? "" : "#\(String(item.n)) · "
         return HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(Gotham.fg)
-                    .lineLimit(1)
-                Text(verbatim: line)
+                if showTitle {
+                    Text(title)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(Gotham.fg)
+                        .lineLimit(1)
+                }
+                Text(verbatim: ref + line)
                     .font(.system(size: 11.5))
                     .foregroundStyle(Gotham.mute)
                     .lineLimit(1)
@@ -413,6 +489,9 @@ struct TendNeedRow: View {
     var onEdit: () -> Void = {}
     /// Opens the Split builder for a split row. Only split rows use it.
     var onReview: () -> Void = {}
+    /// The title line. Off for a row under another row for the same PR, which already shows the title; the detail line
+    /// still names the PR as `slug #n`.
+    var showTitle: Bool = true
     @AppStorage("signalColour") private var signalKey = "amber"
 
     private var signal: Color { Gotham.signal(signalKey) }
@@ -453,10 +532,12 @@ struct TendNeedRow: View {
                 .background(Circle().fill(Gotham.row))
                 .overlay(Circle().strokeBorder(signal.opacity(0.3), lineWidth: 1))
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Gotham.fg)
-                    .lineLimit(1)
+                if showTitle {
+                    Text(item.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Gotham.fg)
+                        .lineLimit(1)
+                }
                 // The detail leads with its state ("Fix held", "Stuck"), which takes the signal colour.
                 (Text(lead)
                     .foregroundStyle(signal)

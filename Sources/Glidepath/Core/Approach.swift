@@ -117,7 +117,7 @@ struct Gate: Codable, Equatable {
     var who: String?
 }
 
-/// One PR's place in the approach chart.
+/// One PR's place in the approach table.
 struct ApproachPlane: Codable, Equatable {
     var slug: String
     var n: Int

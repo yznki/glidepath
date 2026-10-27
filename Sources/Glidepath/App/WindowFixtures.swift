@@ -219,15 +219,11 @@ enum WindowFixtures {
             snap.dryRunning = true
             snap.dryRun = firstSweepRun(now, landed: false)
         }
-        if ["approach", "approach-drawer", "approach-landing", "settings-playbook"].contains(name) {
+        if ["approach", "approach-drawer", "settings-playbook"].contains(name) {
             addTend(&snap, now: now)
         }
         if name == "approach" {
             snap.briefing = briefing(now)
-        }
-        if name == "approach-landing" {
-            // #1240 landed a moment ago and its glide is at 0.6 of the way to the runway.
-            snap.landedSeen[landedID] = now.addingTimeInterval(-0.6 * ApproachGeometry.landingDuration)
         }
         return snap
     }
@@ -369,7 +365,7 @@ enum WindowFixtures {
 
     // MARK: Tending
 
-    /// Adds tend's state to a fixture snapshot: the approach chart, the tower, today's rounds, the user's call and a
+    /// Adds tend's state to a fixture snapshot: the PR table, the tower, today's rounds, the user's call and a
     /// playbook. The planes are one morning in lumen/api: a stack of three landing in order, a fix in flight, a held fix,
     /// a stuck PR, a PR waiting on Gadi, a draft, and #1240 landed and watching main.
     static func addTend(_ snap: inout Snapshot, now: Date) {
@@ -383,8 +379,6 @@ enum WindowFixtures {
         var pr1246 = TendPR(slug: "lumen/api", n: 1246)
         pr1246.changes = ["a91c03e return the stored response on retry", "5e27b10 await the save"]
         snap.prStates = ["lumen/api#1246": pr1246]
-        // Seen long ago, so the chart shows #1240 on the runway without a glide.
-        snap.landedSeen = [landedID: .distantPast]
         snap.splits = ["lumen/api#1270": splitPlan(now)]
     }
 
@@ -409,9 +403,6 @@ enum WindowFixtures {
                   ],
                   status: "proposed", at: now)
     }
-
-    /// The id of the landed PR on the runway: #1240, as `ApproachPlane.id` and `Snapshot.landedSeen` key it.
-    static let landedID = "lumen/api#1240"
 
     /// Landed PRs: #1240 merged 20 min ago and is watching main; #1238 merged 3 h ago and broke main, so it needs a revert.
     static func landedRecords(_ now: Date) -> [TendLanded] {
