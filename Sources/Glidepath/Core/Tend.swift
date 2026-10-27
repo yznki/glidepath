@@ -102,6 +102,8 @@ struct TendPR: Codable, Equatable {
     var selfReview: SelfReview?
     /// When a self-review that did not run may be tried again. Optional so older files decode.
     var selfReviewRetry: Date?
+    /// The head the self-review retry was set on. A retry for another head does not hold the review back.
+    var selfReviewRetryHead: String?
     /// Whether the PR was a draft at the last check.
     var wasDraft = false
     /// Lines for the PR description's "Changes since review" block.
@@ -141,6 +143,7 @@ struct TendPR: Codable, Equatable {
         seeded = try c.decodeIfPresent(Bool.self, forKey: .seeded) ?? false
         selfReview = try c.decodeIfPresent(SelfReview.self, forKey: .selfReview)
         selfReviewRetry = try c.decodeIfPresent(Date.self, forKey: .selfReviewRetry)
+        selfReviewRetryHead = try c.decodeIfPresent(String.self, forKey: .selfReviewRetryHead)
         wasDraft = try c.decodeIfPresent(Bool.self, forKey: .wasDraft) ?? false
         changes = try c.decodeIfPresent([String].self, forKey: .changes) ?? []
         pinged = try c.decodeIfPresent([String: Date].self, forKey: .pinged) ?? [:]
@@ -151,7 +154,7 @@ struct TendPR: Codable, Equatable {
     private enum CodingKeys: String, CodingKey {
         case slug, n, fingerprint, roundsToday, roundsDate, triesByHead, rerunsByHead, held, stuck, off
         case pendingRan, pendingRanHead, lastRound, answered, resolvedByUs, calls, rereq, handled, seeded
-        case selfReview, selfReviewRetry, wasDraft, changes, pinged, linearPosted, linearRetry
+        case selfReview, selfReviewRetry, selfReviewRetryHead, wasDraft, changes, pinged, linearPosted, linearRetry
     }
 
     /// Marks the PR's reviews and plain comments so far as answered, the first time a check sees the PR. Threads are not
@@ -168,7 +171,7 @@ struct TendPR: Codable, Equatable {
     /// `handled` keeps the disk's value for each key, pings keep the newest day per login, `off` comes from disk, and a
     /// held fix comes from disk unless the round set one. The change lines keep the disk's list only when it is longer:
     /// the list is capped, so a round that adds to a full list leaves both at the cap, and this copy's must win.
-    /// A self-review, its retry and the Linear retry come from disk when this copy has none.
+    /// A self-review, its retry (with its head) and the Linear retry come from disk when this copy has none.
     func merged(disk d: TendPR, startCalls: Set<String>) -> TendPR {
         var out = self
         let removed = startCalls.subtracting(d.calls.map(\.id))
@@ -181,7 +184,10 @@ struct TendPR: Codable, Equatable {
         if changes.count < d.changes.count { out.changes = d.changes }
         out.linearPosted += d.linearPosted.filter { !linearPosted.contains($0) }
         if out.selfReview == nil { out.selfReview = d.selfReview }
-        if out.selfReviewRetry == nil { out.selfReviewRetry = d.selfReviewRetry }
+        if out.selfReviewRetry == nil {
+            out.selfReviewRetry = d.selfReviewRetry
+            out.selfReviewRetryHead = d.selfReviewRetryHead
+        }
         if out.linearRetry == nil { out.linearRetry = d.linearRetry }
         out.off = d.off
         if out.held == nil { out.held = d.held }

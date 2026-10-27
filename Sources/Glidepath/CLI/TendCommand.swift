@@ -550,14 +550,17 @@ final class Tender {
     private func session(_ repo: RepoConfig, prompt: String, scratch: String, wt: String) throws -> (TendResult?, Int) {
         let skill = try String(contentsOfFile: SkillText.installedDir() + "/tend.md", encoding: .utf8)
         let system = skill + "\n\n# Playbook\n\n" + Playbook.load(repo.slug, paths: paths).render()
-        let args = Self.sessionArguments(prompt: prompt, systemPrompt: system, scratch: scratch, worktree: wt, config: config)
+        let args = Self.sessionArguments(prompt: prompt, systemPrompt: system, scratch: scratch, worktree: wt, config: config,
+                                         pnpmDir: pnpmDir(repo.slug))
         // No GitHub sign-in in the session: gh's config folder is left out, and the sandbox denies it anyway.
-        let session = Shell.run("claude", args, cwd: wt, env: claudeEnv(), timeout: 3600)
+        let session = Shell.run("claude", args, cwd: wt, env: sessionEnv(repo.slug), timeout: 3600)
         try? session.stdout.write(toFile: scratch + "/claude.jsonl", atomically: true, encoding: .utf8)
         Runner.recordUsage(stream: session.stdout, paths: paths)
         let tokens = Transcript.tokens(lines: session.stdout.split(separator: "\n").map(String.init))
-        let result = (try? String(contentsOfFile: scratch + "/result.json", encoding: .utf8))
+        var result = (try? String(contentsOfFile: scratch + "/result.json", encoding: .utf8))
             .flatMap { try? JSONDecoder().decode(TendResult.self, from: Data($0.utf8)) }
+        // The model's list of checks is its own word. Only the commands its stream shows it ran count as checks.
+        if let ran = result?.ran { result?.ran = Self.verifiedRan(ran, stream: session.stdout) }
         return (result, tokens)
     }
 
@@ -606,6 +609,41 @@ final class Tender {
         }
     }
 
+    /// The entries of `ran` the session's stream shows it ran: a Bash call whose command contains the entry, with no
+    /// result marked `is_error`. Lines that do not parse are skipped. Pure, so the rule can be pinned.
+    static func verifiedRan(_ ran: [String], stream: String) -> [String] {
+        var bashCommands: [String: String] = [:]
+        var failedCalls = Set<String>()
+        for line in stream.split(separator: "\n") {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                  let message = object["message"] as? [String: Any],
+                  let blocks = message["content"] as? [[String: Any]] else { continue }
+            for block in blocks {
+                if block["type"] as? String == "tool_use", block["name"] as? String == "Bash", let id = block["id"] as? String,
+                   let command = (block["input"] as? [String: Any])?["command"] as? String {
+                    bashCommands[id] = command
+                }
+                if block["type"] as? String == "tool_result", block["is_error"] as? Bool == true,
+                   let id = block["tool_use_id"] as? String {
+                    failedCalls.insert(id)
+                }
+            }
+        }
+        let commands = bashCommands.filter { !failedCalls.contains($0.key) }.map(\.value)
+        return ran.filter { entry in
+            let needle = entry.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !needle.isEmpty && commands.contains { $0.contains(needle) }
+        }
+    }
+
+    /// Why a fix is held, or nil when it goes out. A CI fix that ran no local check is held: nothing showed it passes.
+    static func holdReason(approvedHold: Bool, lowConfidenceHold: Bool, ciFix: Bool, ran: [String]) -> String? {
+        if approvedHold { return "approved" }
+        if lowConfidenceHold { return "low confidence" }
+        if ciFix && ran.isEmpty { return "not checked locally" }
+        return nil
+    }
+
     /// Checks the session's change, commits it, and pushes it or holds it. A refused change is reset and the PR is stuck.
     /// A change with only thread verdicts is no commit at all: the replies go out alone.
     private func fix(_ result: TendResult, _ repo: RepoConfig, _ pr: OpenPR, _ s: inout TendPR, check: String,
@@ -639,22 +677,22 @@ final class Tender {
         // Held when the PR is approved and the push needs the user; a low-confidence fix is held or sent to the council.
         let approvedHold = Autopilot.actor(.pushFix(approved: pr.approved),
                                            autopilot: config.tend.autopilot, push: config.tend.push) == .you
-        var hold = approvedHold
+        var lowConfidenceHold = false
         if result.confidence == "low" {
             switch Autopilot.actor(.lowConfidence, autopilot: config.tend.autopilot, push: config.tend.push) {
             case .act: break
-            case .you: hold = true
+            case .you: lowConfidenceHold = true
             case .council:
                 let evidence = fixEvidence(wt: wt, summary: result.summary)
                 if runCouncil(slug: repo.slug, n: pr.n, topic: "Push this fix?", evidence: evidence, now: now)?.outcome != "act" {
-                    hold = true
+                    lowConfidenceHold = true
                 }
             }
         }
-        if hold {
+        if let reason = Self.holdReason(approvedHold: approvedHold, lowConfidenceHold: lowConfidenceHold,
+                                        ciFix: !pr.failedChecks.isEmpty, ran: ran) {
             s.held = TendHeld(commit: sha, summary: result.summary, at: now, ran: ran)
-            tower(repo.slug, pr.n, "fix held · \(approvedHold ? "approved" : "low confidence")", amber: true,
-                  detail: commitDetail(wt), now: now)
+            tower(repo.slug, pr.n, "fix held · \(reason)", amber: true, detail: commitDetail(wt), now: now)
             return RoundOutcome(action: "held", summary: result.summary, commit: sha, held: true)
         }
         let head = try locked(repo.slug) { try pushBranch(repo, branch: pr.branch, wt: wt) }
@@ -1068,6 +1106,26 @@ final class Tender {
         var childEnv = Claude.childEnvironment(parent: env, binding: [:])
         childEnv["GH_CONFIG_DIR"] = nil
         if let claudeDir = config.claudeConfigDir { childEnv["CLAUDE_CONFIG_DIR"] = claudeDir }
+        return childEnv
+    }
+
+    /// The folder holding one repo's pnpm store, cache and state. It is glidepath's own, never the user's global store, and
+    /// it is per repo: a store is shared only within one repo, so PR code cannot poison another repo's installs.
+    private func pnpmDir(_ slug: String) -> String {
+        paths.stateDir + "/tend/pnpm/" + slug.replacingOccurrences(of: "/", with: "-")
+    }
+
+    /// `claudeEnv()` for a session that may run pnpm: the repo's store, cache and state folders are made and pnpm is
+    /// pointed at them.
+    private func sessionEnv(_ slug: String) -> [String: String] {
+        let dir = pnpmDir(slug)
+        for sub in ["store", "cache", "state"] {
+            try? FileManager.default.createDirectory(atPath: dir + "/" + sub, withIntermediateDirectories: true)
+        }
+        var childEnv = claudeEnv()
+        childEnv["npm_config_store_dir"] = dir + "/store"
+        childEnv["npm_config_cache_dir"] = dir + "/cache"
+        childEnv["npm_config_state_dir"] = dir + "/state"
         return childEnv
     }
 
@@ -1731,7 +1789,7 @@ final class Tender {
             let lines = inputs.map(\.text)
             try? FileManager.default.createDirectory(atPath: store.dir, withIntermediateDirectories: true)
             let r = Shell.run("claude", Self.lessonArguments(prompt: Lessons.consolidatePrompt(lines), config: config),
-                              cwd: store.dir, env: claudeEnv(), timeout: 300)
+                              cwd: store.dir, env: sessionEnv(repo.slug), timeout: 300)
             Runner.recordUsage(stream: r.stdout, paths: paths)
             let tokens = Transcript.tokens(lines: r.stdout.split(separator: "\n").map(String.init))
             // Read again after the model answered: a lesson taught or learned meanwhile must not be lost.
@@ -1761,7 +1819,7 @@ final class Tender {
             return
         }
         guard config.tend.selfReview, !pr.isFork, Approach.tendable(pr, s), s.selfReview == nil || s.wasDraft,
-              (s.selfReviewRetry ?? .distantPast) <= now, !selfReviewedThisCheck else { return }
+              s.selfReviewRetryHead != pr.head || (s.selfReviewRetry ?? .distantPast) <= now, !selfReviewedThisCheck else { return }
         // A review run in progress holds run.lock. The self-review waits for a later check instead of failing against it.
         guard !RunLock.isHeld(paths.lockFile) else { return }
         switch UsageGuard.decide(.deferred, UsageState.load(paths), reserve: config.tend.usageReserve,
@@ -1777,18 +1835,22 @@ final class Tender {
         }
         let startCalls = Set(s.calls.map(\.id))
         selfReviewedThisCheck = true
-        let review = selfReviewOf(repo, pr, now: now)
+        let (review, skip) = selfReviewOf(repo, pr, now: now)
         // The review took a while: what is on disk is merged in under the PR's lock, as a round does.
         try? withPRLock(repo.slug, pr.n) {
             if let review {
                 s.selfReview = review
                 s.wasDraft = false
                 s.selfReviewRetry = nil
+                s.selfReviewRetryHead = nil
                 // New findings are new asks, which the PR's fingerprint must not hide.
                 if !review.findings.isEmpty { s.fingerprint = nil }
             } else {
-                // Nothing is stored for a review that did not run. The PR is tried again in an hour.
-                s.selfReviewRetry = now.addingTimeInterval(3600)
+                // Nothing is stored for a review that did not run. A "too large" skip holds for a day; any other skip or a
+                // failure is tried in an hour. The retry is for this head only.
+                let tooLarge = skip?.hasPrefix(PRFilter.tooLargeReason) ?? false
+                s.selfReviewRetry = now.addingTimeInterval(tooLarge ? 24 * 3600 : 3600)
+                s.selfReviewRetryHead = pr.head
             }
             s = s.merged(disk: store.load(repo.slug, pr.n) ?? s, startCalls: startCalls)
             try store.save(s)
@@ -1797,8 +1859,9 @@ final class Tender {
 
     /// Runs `glidepath review --self` on the PR's head: a dry run that posts nothing, with the tend's budget, under a
     /// timeout above the session's own. Its verdict is read from the run's final.json. Nil when the review did not run
-    /// (a failed exit, no run id, or no final.json); the caller retries later.
-    private func selfReviewOf(_ repo: RepoConfig, _ pr: OpenPR, now: Date) -> SelfReview? {
+    /// (a failed exit, no run id, or no final.json); the caller retries later. `skip` is the reason the review's run
+    /// skipped the PR (too large, diff unavailable), nil when it did not skip.
+    private func selfReviewOf(_ repo: RepoConfig, _ pr: OpenPR, now: Date) -> (review: SelfReview?, skip: String?) {
         let r = Shell.run(InitCommand.binaryPath(), ["review", repo.slug, String(pr.n), "--self"],
                           env: env, timeout: 3900)
         let runId = Tender.selfReviewRunID(r.stdout)
@@ -1806,9 +1869,13 @@ final class Tender {
             FileManager.default.contents(atPath: paths.scratchDir + "/" + id + "/" + repo.owner + "-" + repo.name + "/\(pr.n)/final.json")
         }.flatMap { try? JSONDecoder().decode(Draft.self, from: $0) }
         guard r.ok, let runId, let draft else {
+            if r.ok, let runId, let reason = skipReason(runId, repo, pr) {
+                tower(repo.slug, pr.n, "self-review skipped · \(reason)", amber: false, now: now)
+                return (nil, reason)
+            }
             let why = r.ok ? "no review written" : "review exited with \(r.status)"
             tower(repo.slug, pr.n, "self-review did not run · \(why)", amber: false, now: now)
-            return nil
+            return (nil, nil)
         }
         let changes = draft.verdict == "changes"
         var findings = changes ? draft.comments : []
@@ -1822,8 +1889,19 @@ final class Tender {
         // The review's own run counts its tokens, so this record counts none.
         try? saveRun(Runner.makeID(now), now: now, repo: repo, pr: pr, summary: line, action: "self-review", check: nil,
                      tokens: 0)
-        return SelfReview(head: pr.head, at: now, verdict: changes ? "changes" : "clean", findings: findings,
-                          done: findings.isEmpty)
+        return (SelfReview(head: pr.head, at: now, verdict: changes ? "changes" : "clean", findings: findings,
+                           done: findings.isEmpty), nil)
+    }
+
+    /// Why the review's run skipped the PR, from the run's state file: the run's full reason, so the tower names the size
+    /// and not just the flag. Nil when the run did not skip it.
+    private func skipReason(_ runId: String, _ repo: RepoConfig, _ pr: OpenPR) -> String? {
+        let row = (try? RunStore(paths: paths).load(runId))?.repos.first { $0.slug == repo.slug }?.prs.first { $0.n == pr.n }
+        guard row?.verdict == .skipped else { return nil }
+        if let reason = row?.reason, !reason.isEmpty { return reason }
+        // The bare "size" flag is no reason to show: a too-large skip says so in words.
+        if row?.skipReason == "size" { return PRFilter.tooLargeReason }
+        return row?.skipReason ?? "no reason given"
     }
 
     /// The run id a `glidepath review` printed: the word after `run` on its first `run` line. Nil when there is none.
@@ -2033,7 +2111,7 @@ final class Tender {
                     _ = try gitOK(["-C", wt, "commit", "--quiet", "-m", part.title])
                 }
                 if !commands.isEmpty {
-                    let failure = checkPart(wt, part: k + 1, commands: commands, scratch: scratch, tokens: &tokens,
+                    let failure = checkPart(repo.slug, wt, part: k + 1, commands: commands, scratch: scratch, tokens: &tokens,
                                             checks: &plan.checks)
                     // The checks may leave files behind or replace the git link: both go before the next part.
                     try locked(repo.slug) {
@@ -2150,15 +2228,16 @@ final class Tender {
     /// `splitCheckLine` gives, and stops at the first that fails. Glidepath reads the exit files, not the session's answer.
     /// Nil when every command exited 0. Otherwise the failing command and the last 20 lines of its log. `checks` gets one
     /// line per command, and the session's tokens are added to `tokens`.
-    private func checkPart(_ wt: String, part k: Int, commands: [String], scratch: String, tokens: inout Int,
+    private func checkPart(_ slug: String, _ wt: String, part k: Int, commands: [String], scratch: String, tokens: inout Int,
                            checks: inout [String]) -> String? {
         try? FileManager.default.createDirectory(atPath: scratch, withIntermediateDirectories: true)
         let lines = commands.enumerated().map { i, cmd in Tender.splitCheckLine(cmd, scratch: scratch, part: k, index: i + 1) }
         let prompt = "Run each numbered line below with Bash, one at a time, in order, from the worktree root. Change nothing. "
             + "Stop after the first line whose exit file does not contain 0. Then reply with the word done.\n\n"
             + lines.enumerated().map { "\($0.offset + 1). `\($0.element)`" }.joined(separator: "\n")
-        let out = Shell.run("claude", Self.splitCheckArguments(prompt: prompt, scratch: scratch, config: config),
-                            cwd: wt, env: claudeEnv(), timeout: 1800)
+        let out = Shell.run("claude", Self.splitCheckArguments(prompt: prompt, scratch: scratch, config: config,
+                                                               pnpmDir: pnpmDir(slug)),
+                            cwd: wt, env: sessionEnv(slug), timeout: 1800)
         try? out.stdout.write(toFile: scratch + "/claude-checks-\(k).jsonl", atomically: true, encoding: .utf8)
         Runner.recordUsage(stream: out.stdout, paths: paths)
         tokens += Transcript.tokens(lines: out.stdout.split(separator: "\n").map(String.init))
@@ -2631,25 +2710,28 @@ final class Tender {
     }
 
     /// The sandbox every tend session runs under: Bash sandboxed, no unsandboxed commands, network to the registries
-    /// only, and the credential folders denied for reads. Passed to `claude --settings`.
-    static func sandboxSettings(config: Config) -> [String: Any] {
+    /// only and the credential folders denied for reads. A session that may run pnpm also gets writes to its repo's pnpm
+    /// folder, `pnpmDir`; a read-only session gets none. Passed to `claude --settings`.
+    static func sandboxSettings(config: Config, pnpmDir: String?) -> [String: Any] {
         var denyRead = ["~/.config/gh", "~/.ssh", "~/.git-credentials", "~/Library/Keychains",
                         "~/.claude", "~/.npmrc", "~/.aws", "~/.netrc", "~/.docker", "~/.kube", "~/.gnupg",
                         "~/.config/glidepath", "~/Library/Application Support"]
         if let dir = config.claudeConfigDir { denyRead.append(dir) }
+        var filesystem: [String: Any] = ["denyRead": denyRead]
+        if let pnpmDir { filesystem["allowWrite"] = [pnpmDir] }
         return ["sandbox": [
             "enabled": true,
             "autoAllowBashIfSandboxed": true,
             "allowUnsandboxedCommands": false,
             "network": ["allowedDomains": config.tend.registries],
-            "filesystem": ["denyRead": denyRead],
+            "filesystem": filesystem,
         ] as [String: Any]]
     }
 
     /// The arguments of one fix session: a `claude -p` in the worktree, sandboxed, with no GitHub access and network only
     /// to the registries. Pure, so the flags can be pinned.
     static func sessionArguments(prompt: String, systemPrompt: String, scratch: String, worktree: String,
-                                 config: Config) -> [String] {
+                                 config: Config, pnpmDir: String) -> [String] {
         let tree = Claude.permissionPath(worktree) + "/**"
         let notes = Claude.permissionPath(scratch) + "/**"
         let allowed = ["Read(\(tree))", "Edit(\(tree))", "Read(\(notes))", "Edit(\(notes))", "Bash"]
@@ -2664,7 +2746,7 @@ final class Tender {
             "--output-format", "stream-json", "--verbose",
             "--permission-mode", "dontAsk",
             "--setting-sources", "user",
-            "--settings", Claude.json(sandboxSettings(config: config)),
+            "--settings", Claude.json(sandboxSettings(config: config, pnpmDir: pnpmDir)),
             "--strict-mcp-config", "--mcp-config", Claude.json(["mcpServers": [String: Any]()]),
             "--add-dir", scratch,
             "--allowedTools", allowed.joined(separator: ","),
@@ -2688,7 +2770,7 @@ final class Tender {
             "--output-format", "stream-json", "--verbose",
             "--permission-mode", "dontAsk",
             "--setting-sources", "user",
-            "--settings", Claude.json(sandboxSettings(config: config)),
+            "--settings", Claude.json(sandboxSettings(config: config, pnpmDir: nil)),
             "--strict-mcp-config", "--mcp-config", Claude.json(["mcpServers": [String: Any]()]),
             "--add-dir", scratch,
             "--allowedTools", "Read(\(tree)),Read(\(notes)),Grep,Glob",
@@ -2698,7 +2780,7 @@ final class Tender {
 
     /// The arguments of a split check session: a small model that runs the playbook's verified commands in the part's
     /// worktree, with Bash only, under the tend sandbox and a dollar at most.
-    static func splitCheckArguments(prompt: String, scratch: String, config: Config) -> [String] {
+    static func splitCheckArguments(prompt: String, scratch: String, config: Config, pnpmDir: String) -> [String] {
         [
             "-p", prompt,
             "--tools", "Bash",
@@ -2707,7 +2789,7 @@ final class Tender {
             "--output-format", "stream-json", "--verbose",
             "--permission-mode", "dontAsk",
             "--setting-sources", "user",
-            "--settings", Claude.json(sandboxSettings(config: config)),
+            "--settings", Claude.json(sandboxSettings(config: config, pnpmDir: pnpmDir)),
             "--strict-mcp-config", "--mcp-config", Claude.json(["mcpServers": [String: Any]()]),
             "--add-dir", scratch,
             "--allowedTools", "Bash",

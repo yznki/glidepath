@@ -97,11 +97,13 @@ final class SplitCLITests: XCTestCase {
         XCTAssertEqual(flag(args, "--output-format"), "stream-json")
         XCTAssertTrue(args.contains("--verbose"))
         XCTAssertNotNil(flag(args, "--settings"))
+        // The plan session is read-only: no folder of its own is writable.
+        XCTAssertFalse(flag(args, "--settings")?.contains("allowWrite") ?? true)
     }
 
     func testCheckArgumentsAreBashOnlyHaikuOnLowEffort() {
         let config = Config(schedule: [], limits: Limits(), repos: [])
-        let args = Tender.splitCheckArguments(prompt: "run", scratch: "/tmp/s", config: config)
+        let args = Tender.splitCheckArguments(prompt: "run", scratch: "/tmp/s", config: config, pnpmDir: "/tmp/store")
         XCTAssertEqual(flag(args, "--tools"), "Bash")
         XCTAssertEqual(flag(args, "--model"), "haiku")
         XCTAssertEqual(flag(args, "--effort"), "low")
