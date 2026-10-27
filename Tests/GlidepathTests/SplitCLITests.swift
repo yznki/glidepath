@@ -88,7 +88,7 @@ final class SplitCLITests: XCTestCase {
     func testPlanArgumentsAreReadOnlyOpusOnHighEffortUnderTheSandbox() {
         let config = Config(schedule: [], limits: Limits(), repos: [])
         let args = Tender.splitPlanArguments(prompt: "plan", system: "skill", scratch: "/tmp/s", worktree: "/tmp/wt",
-                                             config: config)
+                                             config: config, pnpmStore: "/tmp/store")
         XCTAssertEqual(flag(args, "--tools"), "Read,Grep,Glob")
         XCTAssertEqual(flag(args, "--model"), "opus")
         XCTAssertEqual(flag(args, "--effort"), "high")
@@ -101,7 +101,7 @@ final class SplitCLITests: XCTestCase {
 
     func testCheckArgumentsAreBashOnlyHaikuOnLowEffort() {
         let config = Config(schedule: [], limits: Limits(), repos: [])
-        let args = Tender.splitCheckArguments(prompt: "run", scratch: "/tmp/s", config: config)
+        let args = Tender.splitCheckArguments(prompt: "run", scratch: "/tmp/s", config: config, pnpmStore: "/tmp/store")
         XCTAssertEqual(flag(args, "--tools"), "Bash")
         XCTAssertEqual(flag(args, "--model"), "haiku")
         XCTAssertEqual(flag(args, "--effort"), "low")

@@ -76,7 +76,7 @@ final class TendCLITests: XCTestCase {
         var config = try Config.parse("schedule = [\"07:00\"]\n", home: "/fake/home")
         config.tend.advisor = .off
         let off = Tender.sessionArguments(prompt: "Tend round.", systemPrompt: "skill", scratch: "/fake/scratch",
-                                          worktree: "/fake/wt", config: config)
+                                          worktree: "/fake/wt", config: config, pnpmStore: "/fake/state/tend/pnpm-store")
         XCTAssertTrue(off.contains("stream-json"))
         XCTAssertEqual(value(after: "--output-format", in: off), "stream-json")
         XCTAssertEqual(value(after: "--max-budget-usd", in: off), "2")
@@ -99,17 +99,31 @@ final class TendCLITests: XCTestCase {
         // A separate Claude account's folder is denied too, written as the config gives it.
         config.claudeConfigDir = "/fake/alt"
         let alt = Tender.sessionArguments(prompt: "Tend round.", systemPrompt: "skill", scratch: "/fake/scratch",
-                                          worktree: "/fake/wt", config: config)
+                                          worktree: "/fake/wt", config: config, pnpmStore: "/fake/state/tend/pnpm-store")
         let altSettings = try XCTUnwrap(value(after: "--settings", in: alt))
         let altRoot = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(altSettings.utf8)) as? [String: Any])
         let altSandbox = try XCTUnwrap(altRoot["sandbox"] as? [String: Any])
         let altFilesystem = try XCTUnwrap(altSandbox["filesystem"] as? [String: Any])
         XCTAssertEqual((altFilesystem["denyRead"] as? [String])?.last, "/fake/alt")
+        // pnpm may write its store under glidepath's state only, never the user's global store.
+        XCTAssertEqual(filesystem["allowWrite"] as? [String], ["/fake/state/tend/pnpm-store"])
 
         config.tend.advisor = .opus
         let on = Tender.sessionArguments(prompt: "Tend round.", systemPrompt: "skill", scratch: "/fake/scratch",
-                                         worktree: "/fake/wt", config: config)
+                                         worktree: "/fake/wt", config: config, pnpmStore: "/fake/state/tend/pnpm-store")
         XCTAssertEqual(value(after: "--advisor", in: on), "opus")
+    }
+
+    func testHoldReasonNamesWhyAFixIsHeld() {
+        // The approved hold wins, then low confidence, then a CI fix no local check ran.
+        XCTAssertEqual(Tender.holdReason(approvedHold: true, lowConfidenceHold: true, ciFix: true, ran: []), "approved")
+        XCTAssertEqual(Tender.holdReason(approvedHold: false, lowConfidenceHold: true, ciFix: true, ran: ["npm test"]),
+                       "low confidence")
+        XCTAssertEqual(Tender.holdReason(approvedHold: false, lowConfidenceHold: false, ciFix: true, ran: []),
+                       "not checked locally")
+        XCTAssertNil(Tender.holdReason(approvedHold: false, lowConfidenceHold: false, ciFix: true, ran: ["npm test"]))
+        // A thread-only fix is not held for want of a local check.
+        XCTAssertNil(Tender.holdReason(approvedHold: false, lowConfidenceHold: false, ciFix: false, ran: []))
     }
 
     func testTendResultReadsCommitMessageKey() throws {
