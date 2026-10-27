@@ -76,7 +76,7 @@ final class TendCLITests: XCTestCase {
         var config = try Config.parse("schedule = [\"07:00\"]\n", home: "/fake/home")
         config.tend.advisor = .off
         let off = Tender.sessionArguments(prompt: "Tend round.", systemPrompt: "skill", scratch: "/fake/scratch",
-                                          worktree: "/fake/wt", config: config, pnpmStore: "/fake/state/tend/pnpm-store")
+                                          worktree: "/fake/wt", config: config, pnpmDir: "/fake/state/tend/pnpm/acme-api")
         XCTAssertTrue(off.contains("stream-json"))
         XCTAssertEqual(value(after: "--output-format", in: off), "stream-json")
         XCTAssertEqual(value(after: "--max-budget-usd", in: off), "2")
@@ -99,18 +99,18 @@ final class TendCLITests: XCTestCase {
         // A separate Claude account's folder is denied too, written as the config gives it.
         config.claudeConfigDir = "/fake/alt"
         let alt = Tender.sessionArguments(prompt: "Tend round.", systemPrompt: "skill", scratch: "/fake/scratch",
-                                          worktree: "/fake/wt", config: config, pnpmStore: "/fake/state/tend/pnpm-store")
+                                          worktree: "/fake/wt", config: config, pnpmDir: "/fake/state/tend/pnpm/acme-api")
         let altSettings = try XCTUnwrap(value(after: "--settings", in: alt))
         let altRoot = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(altSettings.utf8)) as? [String: Any])
         let altSandbox = try XCTUnwrap(altRoot["sandbox"] as? [String: Any])
         let altFilesystem = try XCTUnwrap(altSandbox["filesystem"] as? [String: Any])
         XCTAssertEqual((altFilesystem["denyRead"] as? [String])?.last, "/fake/alt")
-        // pnpm may write its store under glidepath's state only, never the user's global store.
-        XCTAssertEqual(filesystem["allowWrite"] as? [String], ["/fake/state/tend/pnpm-store"])
+        // pnpm may write its store under glidepath's state, for this repo only, never the user's global store.
+        XCTAssertEqual(filesystem["allowWrite"] as? [String], ["/fake/state/tend/pnpm/acme-api"])
 
         config.tend.advisor = .opus
         let on = Tender.sessionArguments(prompt: "Tend round.", systemPrompt: "skill", scratch: "/fake/scratch",
-                                         worktree: "/fake/wt", config: config, pnpmStore: "/fake/state/tend/pnpm-store")
+                                         worktree: "/fake/wt", config: config, pnpmDir: "/fake/state/tend/pnpm/acme-api")
         XCTAssertEqual(value(after: "--advisor", in: on), "opus")
     }
 
@@ -124,6 +124,19 @@ final class TendCLITests: XCTestCase {
         XCTAssertNil(Tender.holdReason(approvedHold: false, lowConfidenceHold: false, ciFix: true, ran: ["npm test"]))
         // A thread-only fix is not held for want of a local check.
         XCTAssertNil(Tender.holdReason(approvedHold: false, lowConfidenceHold: false, ciFix: false, ran: []))
+    }
+
+    func testVerifiedRanKeepsOnlyCommandsTheStreamShowsSucceeded() {
+        // Hand-written stream: `npm test` ran and passed, `npm run lint` ran and failed, `npm run build` never ran.
+        let stream = [
+            #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cd app && npm test -- --ci"}}]}}"#,
+            #"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}"#,
+            #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"npm run lint"}}]}}"#,
+            #"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":"lint failed"}]}}"#,
+            "not json",
+        ].joined(separator: "\n")
+        let ran = ["npm test", "npm run lint", "npm run build", "  "]
+        XCTAssertEqual(Tender.verifiedRan(ran, stream: stream), ["npm test"])
     }
 
     func testTendResultReadsCommitMessageKey() throws {
